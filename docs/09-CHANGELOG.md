@@ -4,6 +4,20 @@
 
 ---
 
+## v0.0.7 — 2026-05-09
+**The product loop is closed end-to-end.**
+
+- Added `@anthropic-ai/sdk` dependency
+- POST `/api/close/extract` — Claude Sonnet 4.6 with bilingual OCR prompt for end-of-day close sheets
+- POST `/api/expense/extract` — Claude Sonnet 4.6 with bilingual OCR prompt for supplier invoices/receipts (extracts supplier name, invoice #, subtotal/VAT/total, payment method, suggests category)
+- `/close` page rewritten as 3-stage flow (capture → processing → review-and-confirm) with confidence-coded form fields
+- `/expense` page rewritten as 3-stage flow with smart supplier picker (existing dropdown OR new supplier text input with auto-create on submit) and AI-suggested category
+- `submitClosing` server action — derives status from confidence + reconciliation, inserts closing row
+- `submitExpense` server action — auto-creates new supplier if needed, derives status, inserts expense row
+- `/today` page wired to real DB — shows current barista's submissions for current UAE-local day, with success banner on `?submitted=closing|expense`
+- Per D5 enforced: status='confirmed' only when AI is high-confidence on all key fields AND the math reconciles within 0.02 AED; otherwise pending_review
+- Photo storage deferred — photo held in browser memory only during OCR, discarded after submit. Drive sync ships next session.
+
 ## v0.0.6 — 2026-05-09
 - Wired all owner pages with real database CRUD
 - Baristas: full CRUD (add, on-shift toggle, PIN rotate, deactivate/reactivate)

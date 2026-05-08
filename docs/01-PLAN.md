@@ -22,17 +22,17 @@
 - [ ] Legacy credentials rotated *(owner action — urgent)*
 
 ## Phase 1 — Barista flow alive
-**Status:** Auth shipped. Submission flows next.
+**Status:** Closing + Expense flows shipped with Claude OCR. PWA + Drive sync remain.
 
 - [x] Login: numpad + 4-digit PIN
 - [x] Two-button home screen ("End of Day Close" / "Log Expense")
-- [x] `/today` placeholder for today's submissions
-- [ ] End of Day Close: photo → AI extract → review → confirm
-- [ ] Log Expense: photo → AI extract → review → category → confirm
-- [ ] Today's submissions list (real data)
-- [ ] Photos to Google Drive primary
+- [x] `/today` page with real submissions (filtered to current barista, current UAE-local day)
+- [x] End of Day Close: photo → AI extract → review → confirm → submit
+- [x] Log Expense: photo → AI extract → review → category → confirm → submit
+- [x] Today's submissions list (real DB, success banner on submit)
+- [ ] Photos to Google Drive primary *(deferred — photo currently held in browser memory only during OCR, then discarded)*
 
-**Done when:** A barista can close the day from the phone in under 30 seconds.
+**Done when:** A barista can close the day from the phone in under 30 seconds. ✅ — pending real-world calibration with an actual Qave close sheet photo.
 
 ## Phase 1.5 — PWA + offline submit
 **Status:** Not started

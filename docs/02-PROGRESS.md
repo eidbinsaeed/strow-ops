@@ -82,14 +82,47 @@
 - Real Anthropic OCR + photo capture — Phase 1 work for next session
 - Supabase Storage / Drive sync — needs the close/expense flow first
 
+**Then — same session, kept going. The killer feature is real:**
+
+Both barista flows now ship with Claude OCR end-to-end.
+
+- **Close-of-day flow** (`/close`):
+  - 3-stage UI: capture → processing → review
+  - Photo capture via camera on mobile, gallery on desktop
+  - POST to `/api/close/extract` → Claude Sonnet 4.6 with bilingual extraction prompt
+  - Returns: closing_date, cash_total, card_total, online_total, grand_total, cash_float_start/end, notes + per-field confidence
+  - Review form pre-filled with extracted values, color-coded by confidence (green=high, amber=medium, red=low)
+  - `submitClosing` server action: validates, computes over_short, derives status (confirmed only if reconciles within 0.02 AED + all key fields high confidence; else pending_review)
+  - Redirects to `/today?submitted=closing` on success
+
+- **Expense flow** (`/expense`):
+  - Same 3-stage pattern, different OCR prompt
+  - Extracts: supplier_name, expense_date, invoice_number, subtotal, vat_amount, total, payment_method, category_hint
+  - Smart supplier picker: auto-detects whether OCR-extracted supplier matches existing → defaults to "Existing" mode (dropdown) or "New" mode (text input)
+  - "New supplier" mode auto-creates the supplier record on submit (with note "Auto-created from expense submission")
+  - Category dropdown pre-selects AI-suggested category if it matches one of the 11 seeded categories
+  - Payment method as 4 radio buttons (cash/card/bank_transfer/credit), pre-selected from OCR
+  - VAT handling: only computes if both subtotal+total visible (many UAE small suppliers don't charge VAT)
+
+- **`/today` page** (was placeholder, now real):
+  - Shows current barista's submissions for current UAE-local day
+  - Joins closings + expenses, color-coded status badges
+  - Success banner if `?submitted=closing` or `?submitted=expense` query param
+  - Empty state with CTAs to /close and /expense
+  - Uses Asia/Dubai timezone for "today" calculation (not UTC)
+
+- **Anthropic SDK** added to dependencies (`@anthropic-ai/sdk`)
+- **Photo storage**: deferred per pragmatic call — photo lives in browser memory only during OCR, then discarded. Drive sync ships next session. `photo_storage_url`/`photo_drive_url`/`photo_drive_path` all stored as null on the closing/expense row.
+
 **Owner action items:**
 1. **Rotate compromised credentials** — partial Anthropic API key + Google Drive client secret leaked in chat earlier. Legacy Whapi/Twilio creds also need rotation per original brief.
-2. Test all CRUD flows on `strow-ops.vercel.app/owner` to catch any edge cases
-3. Send sample photo of an actual Qave end-of-day close sheet (Q2) for OCR prompt calibration
+2. Send a real Qave end-of-day close sheet photo + a real supplier invoice photo so the OCR prompts can be calibrated against actual UAE formats (Q2)
+3. Test the full barista loop: login as Ahmed (PIN 1234), tap "End of Day Close", snap any close-sheet-like image, watch the AI fill it in, confirm. Then tap "Log Expense" and do the same with a receipt photo.
 4. Decide on owner auth approach: Supabase Auth magic link vs email/password
 
 **Next session goals:**
 1. Owner Supabase Auth (proper gating of `/owner/**`)
-2. Barista close-of-day flow with photo capture + Anthropic OCR
-3. Drive sync background job
-4. Audit log writes from all mutations
+2. Photo storage via Google Drive sync (needs Drive OAuth refresh token provisioned)
+3. Audit log writes from all mutations
+4. Calibrate OCR prompts against real Qave receipt photos
+5. PWA shell + offline submit queue (Phase 1.5)
