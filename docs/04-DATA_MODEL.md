@@ -45,9 +45,8 @@ Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). 
 - `cash_float_end` numeric
 - `over_short` numeric — computed
 - `liabilities_held` numeric — e.g. customer money kept overnight
-- `photo_storage_url` text (Supabase)
-- `photo_drive_url` text nullable (until sync completes)
-- `photo_drive_path` text
+- `photo_drive_id` text — Drive file ID (stable primary key for the file)
+- `photo_drive_path` text — human-readable path at upload time (display only)
 - `ai_confidence` jsonb — per-field scores returned by extraction prompt
 - `status` enum (`pending_review`, `confirmed`, `flagged`, `rejected`)
 - `notes` text
@@ -64,9 +63,8 @@ Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). 
 - `vat_amount` numeric
 - `total` numeric
 - `payment_method` enum (`cash`, `card`, `bank_transfer`, `credit`)
-- `photo_storage_url` text
-- `photo_drive_url` text
-- `photo_drive_path` text
+- `photo_drive_id` text — Drive file ID
+- `photo_drive_path` text — human-readable path at upload time
 - `ai_confidence` jsonb
 - `status` enum
 - `notes` text

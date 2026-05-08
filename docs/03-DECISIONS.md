@@ -40,12 +40,13 @@ Each entry: date, decision, rationale, alternatives considered, who decided.
 - **Alternatives:** Every submission gates on owner approval (slow), no review queue (no safety net)
 - **Decided by:** Claude (owner delegated)
 
-### D6 — Photo storage: Supabase primary, Google Drive mirror
-- **Date:** 2026-05-08
-- **Decision:** Photos upload directly to Supabase Storage (transactional — submit blocks until uploaded). Background sync job mirrors to Google Drive at `/Strow/[Location]/[YYYY-MM]/[closings|expenses]/`. Owner UI shows Drive path and "Open in Drive" link once mirror completes.
-- **Rationale:** Drive auth or quota issues should never block a barista mid-shift. Drive remains the human-browsable archive.
-- **Alternatives:** Drive primary (auth fragility), Drive only (no transactional guarantee)
-- **Decided by:** Claude (owner delegated)
+### D6 — Photo storage: Google Drive only
+- **Date:** 2026-05-08 *(revised same day — superseded original "Supabase primary, Drive mirror" decision)*
+- **Decision:** Photos go directly to Google Drive at `/Strow/[Location]/[YYYY-MM]/[closings|expenses]/`. No Supabase Storage involvement. Photos are sent to Anthropic API as base64 during extraction (in-memory only), then uploaded to Drive for permanent storage. AI extraction does NOT require photos to be hosted.
+- **Rationale:** Drive 15GB free tier covers ~3 years at full multi-location volume. Supabase Storage Pro plan ($25/mo) was solving a non-problem. Drive auth fragility addressed via long-lived OAuth refresh token + Phase 1.5 offline submit queue handles transient upload failures.
+- **Schema impact:** `closings` and `expenses` drop `photo_storage_url`. Keep `photo_drive_id` (file ID — stable primary key) and `photo_drive_path` (human-readable display path at upload time). View URL is derivable from ID.
+- **Alternatives reconsidered:** Original Supabase-primary plan added cost and complexity for a backup nobody asked for.
+- **Decided by:** Owner pushed back on cost, Claude updated plan
 
 ### D7 — Inventory: supplier-level for v1
 - **Date:** 2026-05-08
