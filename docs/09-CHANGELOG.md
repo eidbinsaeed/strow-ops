@@ -1,30 +1,45 @@
 # Strow Ops — Changelog
 
-**Last updated:** 2026-05-08
+**Last updated:** 2026-05-09
 
 ---
 
-## v0.0.4 — 2026-05-08 (deployed)
-- **First public deploy.** Live on Vercel at strow-ops.vercel.app; strow.app domain cutover in progress.
-- Barista PIN login wired end-to-end (numpad → bcrypt → JWT → cookie → middleware)
-- Barista home placeholder with greeting and two disabled buttons
-- Production env vars set in Vercel (separate JWT secret from dev)
-- Build fix: CookieToSet type on setAll callback (TS strict mode)
+## v0.0.6 — 2026-05-09
+- Wired all owner pages with real database CRUD
+- Baristas: full CRUD (add, on-shift toggle, PIN rotate, deactivate/reactivate)
+- Suppliers: add + delete
+- Categories: add + soft-delete + reactivate
+- Fixed costs: add + soft-delete (with monthly recurring total)
+- Liabilities: record + settle + reopen (with open total)
+- Read-only pages with real DB queries: closings, expenses, review queue, audit log
+- Smart placeholder for reports listing 6 planned reports
+- Pattern: Server Actions + useTransition + revalidatePath throughout
+
+## v0.0.5 — 2026-05-09 (overnight)
+- Complete app shell shipped — every route navigates somewhere real
+- Owner side: 12 routes with shared sidebar/top-bar layout, active-state highlighting
+- Barista `/today` page added
+- `/owner` dashboard wired to live DB counts (locations, baristas, on-shift, suppliers, categories)
+- `/owner/baristas` initial list view (read-only, replaced by full CRUD in v0.0.6)
+- Reusable `PlaceholderPage` component
+- Typed routes via `Route` from "next" — type-safe href everywhere
+
+## v0.0.4 — 2026-05-08
+- Activated barista home buttons
+- Added `/close` and `/expense` placeholder routes
 
 ## v0.0.3 — 2026-05-08
-- Schema v1 (0001) applied to live Supabase project (Singapore region, project ref: dubheyebpmcaqegfmzeb)
-- RLS policies (0002) applied — 14 policies across 12 tables, all in public schema
-- Fixed: is_owner() helper moved from auth schema (locked by Supabase) to public schema
-- Verified live DB has all expected policies via pg_policies query
+- PIN auth wired end-to-end (numpad UI + JWT + middleware)
+- Deployed to Vercel at strow-ops.vercel.app
+- All env vars provisioned in Vercel
+- Phase 0 closed
 
 ## v0.0.2 — 2026-05-08
-- Phase 0 scaffold: Next.js 15 + Tailwind 4 + Supabase clients
-- Supabase migrations 0001 (schema v1) + 0002 (RLS policies v1) written
-- D6 revised: Drive primary for photo storage, no Supabase Storage. Saves ~$300/yr Pro plan cost.
-- DATA_MODEL.md updated: removed `photo_storage_url` columns
+- Schema v1 applied: 12 tables, RLS on all
+- Migration `0001_initial_schema.sql` + `0002_rls_policies.sql`
+- Fixed RLS: moved `is_owner` helper from `auth` to `public` schema
 
 ## v0.0.1 — 2026-05-08
-- Project memory folder created at `/docs/` with all 11 files seeded.
-- Foundational decisions locked (D1–D13 in `03-DECISIONS.md`).
-- Repo cloned to `C:\Users\eidbi\Projects\strow-ops` and initial commit pushed.
-- No application code yet — Next.js scaffolding next session.
+- Project memory folder created at `/docs/` with all 11 files seeded
+- Foundational decisions locked (D1–D13 in `03-DECISIONS.md`)
+- No code written yet

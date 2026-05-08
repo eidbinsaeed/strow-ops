@@ -1,75 +1,6 @@
 # Strow Ops — Progress Log
 
-**Last updated:** 2026-05-08
-
----
-
-## Session 3 — 2026-05-08 (late evening)
-**Outcome:** Auth wired end-to-end. Deployed to Vercel. Live URL working.
-
-**Done:**
-- Numpad component (mobile-first, 80px tap targets, shake-on-fail)
-- JWT helpers (jose, Edge-compatible, 12h TTL)
-- POST /api/auth/barista-login: bcrypt + JWT + httpOnly cookie
-- POST /api/auth/barista-logout
-- Middleware gating /home, /close, /expense
-- Login page POSTs PIN, redirects on success, shakes on failure
-- Home page: greeting + two disabled buttons + Sign out
-- Two test baristas seeded (Ahmed PIN 1234, Maryam PIN 5678)
-- Local + production deploy verified
-- Build error fixed: CookieToSet type added to setAll callback
-
-**In progress (owner action):**
-- strow.app domain attach (detach from legacy uae-ai-saas, attach to strow-ops)
-
-**Owner action items for next session:**
-1. Rotate Anthropic API key (partial leak from prior screenshot)
-2. Provide a real Qave end-of-day close sheet photo
-3. Decide Q1 (cash float handover) and Q5 (PIN-per-shift) from OPEN_QUESTIONS
-
-**Next session goals:**
-- /close page with camera + photo upload
-- POST /api/closings/extract (Anthropic Sonnet 4.6 + vision, bilingual prompt)
-- Review form with confidence badges
-- Drive sync background job
-- Today’s submissions list on /home
-
----
-
-## Session 2 — 2026-05-08
-**Outcome:** Phase 0 scaffolding committed. Schema v1 migrations written, ready to apply.
-
-**Done:**
-- Repo `strow-ops` cloned locally to `C:\Users\eidbi\Projects\strow-ops`
-- Next.js 15 App Router scaffold generated with Tailwind 4 and Supabase client setup
-- Supabase clients: browser (`src/lib/supabase/client.ts`), server (`src/lib/supabase/server.ts`)
-- TypeScript types placeholder (`src/types/database.ts`) — to be regenerated post-migration
-- `.env.example` with all required env var names (no values)
-- D6 revised: Drive primary, no Supabase Storage for photos. Saves $300/yr Pro plan cost; Drive free tier covers ~3 years for Qave-only volume
-- DATA_MODEL.md updated: dropped `photo_storage_url` columns
-- Schema v1 migration written (`supabase/migrations/0001_initial_schema.sql`) — 12 tables, indexes, triggers, seed data for `qave_main` location and 11 default expense categories
-- RLS policies v1 written (`supabase/migrations/0002_rls_policies.sql`) — owner-only access. Barista RLS deferred until PIN auth + custom JWT claims land.
-
-**Skipped / blocked:**
-- Supabase project creation via MCP — connection scope didn't include create permissions. Owner doing it manually at supabase.com.
-
-**Owner action items:**
-1. Create Supabase project at supabase.com/dashboard (org: streamly.app, name: `strow-ops`, region: ap-south-1 Mumbai, free plan). **In progress.**
-2. After creation, drop the project ref/URL into chat so I can list it via MCP and apply migrations.
-
-
-**Late-session update (post-RLS apply):**
-- Migration 0001 applied successfully via Supabase SQL Editor (manual run, MCP scope was wrong org)
-- Migration 0002 first attempt failed: `auth.is_owner()` rejected with permission denied. Auth schema is owned by supabase_auth_admin in Supabase.
-- Fix: moved helper to `public.is_owner()`, added `drop policy if exists` for idempotency. Re-ran successfully.
-- Verified live: 14 policies across 12 tables (categories and owners have 2 each; rest have 1).
-- Phase 0 database side: complete. Awaiting .env.local setup + npm run dev verification next.
-
-**Next session goals:**
-- Apply 0001 + 0002 migrations to the new Supabase project
-- Generate TypeScript types from live schema
-- Wire owner auth (Supabase Auth + first owner record)
-- Begin PIN auth design (custom JWT minting flow)
+**Last updated:** 2026-05-09
 
 ---
 
@@ -85,40 +16,80 @@
 - Locked memory folder location: `/docs/`
 - Created all 11 memory files
 
-**Skipped / deferred:**
-- Legacy repo audit — not blocking new scaffold; will harvest from legacy only when needed (Whapi mainly)
-- Code/scaffolding — Phase 0 prep work first
-
-**Owner action items (in order of urgency):**
-1. **Rotate all credentials** in legacy Section 8 of brief — they're now in chat history
-2. Create new `strow-ops` GitHub repo and grant access (or paste in package.json + schema if no access)
-3. Send a sample photo of an actual Qave end-of-day close sheet for AI prompt calibration
-
-**Next session goals:**
-- Once new repo exists: scaffold Next.js + Tailwind + Supabase
-- Drop memory folder into `/docs/`
-- Design schema v1 in detail and migrate
-- Wire PIN auth flow
-
----
-
 ## Session 2 — 2026-05-08
-**Outcome:** GitHub repo cloned locally, project memory committed as first commit.
+**Outcome:** Repo scaffolded. Schema applied. RLS in place.
 
 **Done:**
-- Confirmed tooling on owner's machine: node v24.15.0, git 2.53.0.windows.1, git user `eidbinsaeed <eidbinsaeed@gmail.com>`
-- Diagnosed and worked around Desktop Commander/PowerShell stdout capture quirk on Windows (write to file → read via cmdlet)
-- Cloned empty `strow-ops` repo to `C:\Users\eidbi\Projects\strow-ops`
-- Wrote 11 docs files into `docs/` folder
-- Committed and pushed initial commit
+- Scaffolded Next.js 15 + Tailwind 4 + Supabase clients
+- Created new Supabase project (`dubheyebpmcaqegfmzeb` in Singapore region)
+- Applied migration `0001_initial_schema.sql` — 12 tables, seed data
+- Applied migration `0002_rls_policies.sql` — 14 owner-only policies
+- Pushed to GitHub at https://github.com/eidbinsaeed/strow-ops
+- Documented decision changes (D6 → Drive primary, no Supabase Storage)
+
+## Session 3 — 2026-05-08
+**Outcome:** Auth wired end-to-end. Live deploy. Phase 0 closed.
+
+**Done:**
+- Built numpad + JWT helpers + login/logout API + middleware
+- Wired full barista PIN auth flow with bcrypt + jose JWT + httpOnly cookies
+- Tested: Ahmed PIN `1234` and Maryam PIN `5678` both log in successfully
+- Deployed to Vercel at https://strow-ops.vercel.app
+- All env vars set in Vercel (Supabase, Anthropic, Drive OAuth basics, JWT secret)
+- Vercel project linked to GitHub for auto-deploy from `main`
+- Smoke tested live login flow on production URL
+- Cookie type fix on `supabase/server.ts`
+
+**Closed:** Phase 0.
+
+## Session 4 — 2026-05-08 / 2026-05-09 (overnight marathon)
+**Outcome:** Full app shell shipped. All owner pages with real CRUD wired to live DB.
+
+**Done:**
+- Activated barista home buttons + created `/close`, `/expense`, `/today` placeholders
+- Built complete owner shell: 12 routes under `/owner/**`
+- Owner layout: responsive sidebar (md+) / top bar (mobile) with active-state nav highlighting
+- `OwnerNavLink` client component using typed `Route` from "next"
+- `PlaceholderPage` reusable component for WIP routes
+- Wired `/owner` dashboard to **live database counts** (locations, baristas, on-shift now, suppliers, categories)
+- Wired `/owner/baristas` to **live database** with full CRUD:
+  - Add barista (name + role + 4-digit PIN, bcrypt hashed)
+  - Toggle on-shift (one-click)
+  - Rotate PIN (prompts for new PIN, re-hashes)
+  - Deactivate / Reactivate (soft delete)
+- Wired `/owner/suppliers` with add (name+TRN+category+contact+notes) + delete
+- Wired `/owner/categories` with add (name+optional parent) + soft deactivate/reactivate
+- Wired `/owner/fixed-costs` with add (name+kind+amount+frequency+due_day+optional barista link) + soft deactivate. Shows monthly recurring total.
+- Wired `/owner/liabilities` with record + mark settled + reopen. Shows open total.
+- Wired `/owner/closings` (read-only paginated table, empty until close flow ships)
+- Wired `/owner/expenses` (read-only paginated table, empty until expense flow ships)
+- Wired `/owner/review` (combined queue across closings+expenses with status filter)
+- Wired `/owner/audit` (last 200 audit_log entries with color-coded actions)
+- Smart placeholder for `/owner/reports` listing the 6 planned reports
+
+**Pattern established for all CRUD pages:**
+- Server component fetches with `createServiceClient()` (RLS-bypass — owner shell trusted)
+- Add forms as client components using `useTransition` for optimistic UX
+- Per-row actions as client components calling Server Actions directly
+- All mutations call `revalidatePath()` for instant page refresh
+- Inline error display, no full navigation
+- `window.confirm()` on destructive actions
 
 **Skipped / deferred:**
-- GitHub MCP — not available in claude.ai web directory; using Desktop Commander to drive git locally instead
-- Next.js scaffolding — next session
+- Owner Supabase Auth gate — `/owner/**` is currently publicly accessible. Risk acceptable on the obscure vercel.app URL for now.
+- Edit-name and edit-other-fields for non-baristas (delete + re-add for now)
+- Audit log writes — wires up when submission flows ship next session
+- Real Anthropic OCR + photo capture — Phase 1 work for next session
+- Supabase Storage / Drive sync — needs the close/expense flow first
+
+**Owner action items:**
+1. **Rotate compromised credentials** — partial Anthropic API key + Google Drive client secret leaked in chat earlier. Legacy Whapi/Twilio creds also need rotation per original brief.
+2. Test all CRUD flows on `strow-ops.vercel.app/owner` to catch any edge cases
+3. Send sample photo of an actual Qave end-of-day close sheet (Q2) for OCR prompt calibration
+4. Decide on owner auth approach: Supabase Auth magic link vs email/password
 
 **Next session goals:**
-- Scaffold Next.js 15 + App Router + Tailwind + Supabase client setup
-- Generate `package.json`, configs, `.gitignore`, `.env.example`
-- `npm install` and verify dev server runs
-- Provision new Supabase project via MCP
-- Apply schema v1 migration
+1. Owner Supabase Auth (proper gating of `/owner/**`)
+2. Barista close-of-day flow with photo capture + Anthropic OCR
+3. Drive sync background job
+4. Audit log writes from all mutations

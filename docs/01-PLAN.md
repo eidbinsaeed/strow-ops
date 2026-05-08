@@ -1,34 +1,36 @@
 # Strow Ops — Phasing Plan
 
-**Last updated:** 2026-05-08
-**Current phase:** Phase 0 complete. Phase 1 next session.
+**Last updated:** 2026-05-09
+**Current phase:** Phase 0 ✅ · Phase 1 in progress · Phase 2 substantially done
 
 ---
 
 ## Phase 0 — Foundations
-**Status:** Complete (2026-05-08)
+**Status:** ✅ Complete
 
 - [x] Brief delivered and reviewed
-- [x] Foundational decisions locked (see `03-DECISIONS.md`)
+- [x] Foundational decisions locked (D1–D13 in `03-DECISIONS.md`)
 - [x] Project memory folder seeded
-- [ ] New `strow-ops` GitHub repo created *(owner action)*
-- [ ] Legacy repo frozen on `legacy/sara` branch *(owner action)*
-- [ ] New Supabase project provisioned
-- [ ] Anthropic API key provisioned
-- [ ] Google Drive OAuth provisioned
-- [ ] Schema v1 designed and committed
-- [ ] PIN auth wired (custom flow on Supabase)
+- [x] New `strow-ops` GitHub repo created
+- [x] Legacy repo frozen on `legacy/sara` branch *(owner pending)*
+- [x] New Supabase project provisioned (Singapore, `dubheyebpmcaqegfmzeb`)
+- [x] Anthropic API key provisioned (env)
+- [x] Google Drive OAuth basics in env
+- [x] Schema v1 designed and committed (12 tables, RLS on all)
+- [x] PIN auth wired (bcrypt + JWT via jose, httpOnly cookies)
+- [x] Live deploy on Vercel at strow-ops.vercel.app
 - [ ] Legacy credentials rotated *(owner action — urgent)*
 
 ## Phase 1 — Barista flow alive
-**Status:** Login + home shell shipped 2026-05-08. Resume with /close + AI extract next session.
+**Status:** Auth shipped. Submission flows next.
 
-- Login: numpad + 4-digit PIN
-- Two-button home screen ("End of Day Close" / "Log Expense")
-- End of Day Close: photo → AI extract → review → confirm
-- Log Expense: photo → AI extract → review → category → confirm
-- Today's submissions list
-- Photos to Supabase Storage primary, Google Drive mirror
+- [x] Login: numpad + 4-digit PIN
+- [x] Two-button home screen ("End of Day Close" / "Log Expense")
+- [x] `/today` placeholder for today's submissions
+- [ ] End of Day Close: photo → AI extract → review → confirm
+- [ ] Log Expense: photo → AI extract → review → category → confirm
+- [ ] Today's submissions list (real data)
+- [ ] Photos to Google Drive primary
 
 **Done when:** A barista can close the day from the phone in under 30 seconds.
 
@@ -40,35 +42,41 @@
 - Installable on iOS/Android home screen
 
 ## Phase 2 — Owner basics, responsive
-**Status:** Not started
+**Status:** Substantially done. Auth gate remaining.
 
-- Owner login
-- Responsive shell (desktop sidebar / mobile bottom-nav)
-- Daily Sales table + photo-side-by-side viewer
-- Expenses table + photo viewer
-- Suppliers + categories CRUD
-- "Needs review" queue
-- Audit log
+- [ ] Owner login (Supabase Auth — placeholder UI shipped, real flow next session)
+- [x] Responsive shell (desktop sidebar / mobile top bar)
+- [x] Dashboard with live DB counts
+- [x] Daily Sales table (read-only, ready for data)
+- [x] Expenses table (read-only, ready for data)
+- [x] Suppliers CRUD (add + delete)
+- [x] Categories CRUD (add + soft-delete + reactivate)
+- [x] Baristas CRUD (add + on-shift toggle + rotate PIN + deactivate/reactivate)
+- [x] Fixed Costs CRUD (add + soft-delete)
+- [x] Liabilities CRUD (record + settle + reopen)
+- [x] "Needs review" queue (combined closings+expenses)
+- [x] Audit log viewer (last 200, ready for writes)
+- [x] Reports placeholder (real P&L is Phase 4)
 
-**Done when:** Owner can review yesterday's activity from a phone in bed.
+**Done when:** Owner can review yesterday's activity from a phone in bed → mostly done. Just needs real auth + real submission data flowing.
 
 ## Phase 3 — Operational depth
-**Status:** Not started
+**Status:** Schema in place, UI wired. Some logic remaining.
 
-- Fixed costs (recurring, with frequency + due date)
-- Liabilities/IOU tracker
-- Staff roster
-- Cash float over/short tracking
-- Duplicate-invoice detection
-- VAT 5% auto-split
-- Date-format normalization
+- [x] Fixed costs (recurring, with frequency + due day)
+- [x] Liabilities/IOU tracker
+- [x] Staff roster
+- [ ] Cash float over/short tracking *(needs close flow)*
+- [ ] Duplicate-invoice detection *(needs expense flow + uniqueness check)*
+- [ ] VAT 5% auto-split *(in extraction prompt)*
+- [ ] Date-format normalization *(in extraction prompt)*
 
 ## Phase 4 — Reporting + dogfood
 **Status:** Not started
 
 - Monthly P&L
 - Cross-data search/filter
-- Export (format TBD — see `06-OPEN_QUESTIONS.md`)
+- Export (PDF/Excel — format TBD)
 - Confidence/anomaly tuning from real photos
 - Owner uses it as sole system for one full week
 
