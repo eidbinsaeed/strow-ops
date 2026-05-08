@@ -25,6 +25,14 @@
 1. Create Supabase project at supabase.com/dashboard (org: streamly.app, name: `strow-ops`, region: ap-south-1 Mumbai, free plan). **In progress.**
 2. After creation, drop the project ref/URL into chat so I can list it via MCP and apply migrations.
 
+
+**Late-session update (post-RLS apply):**
+- Migration 0001 applied successfully via Supabase SQL Editor (manual run, MCP scope was wrong org)
+- Migration 0002 first attempt failed: `auth.is_owner()` rejected with permission denied. Auth schema is owned by supabase_auth_admin in Supabase.
+- Fix: moved helper to `public.is_owner()`, added `drop policy if exists` for idempotency. Re-ran successfully.
+- Verified live: 14 policies across 12 tables (categories and owners have 2 each; rest have 1).
+- Phase 0 database side: complete. Awaiting .env.local setup + npm run dev verification next.
+
 **Next session goals:**
 - Apply 0001 + 0002 migrations to the new Supabase project
 - Generate TypeScript types from live schema

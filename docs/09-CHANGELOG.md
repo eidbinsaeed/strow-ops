@@ -4,6 +4,12 @@
 
 ---
 
+## v0.0.3 — 2026-05-08
+- Schema v1 (0001) applied to live Supabase project (Singapore region, project ref: dubheyebpmcaqegfmzeb)
+- RLS policies (0002) applied — 14 policies across 12 tables, all in public schema
+- Fixed: is_owner() helper moved from auth schema (locked by Supabase) to public schema
+- Verified live DB has all expected policies via pg_policies query
+
 ## v0.0.2 — 2026-05-08
 - Phase 0 scaffold: Next.js 15 + Tailwind 4 + Supabase clients
 - Supabase migrations 0001 (schema v1) + 0002 (RLS policies v1) written
