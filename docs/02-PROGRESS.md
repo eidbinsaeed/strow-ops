@@ -4,6 +4,38 @@
 
 ---
 
+## Session 3 — 2026-05-08 (late evening)
+**Outcome:** Auth wired end-to-end. Deployed to Vercel. Live URL working.
+
+**Done:**
+- Numpad component (mobile-first, 80px tap targets, shake-on-fail)
+- JWT helpers (jose, Edge-compatible, 12h TTL)
+- POST /api/auth/barista-login: bcrypt + JWT + httpOnly cookie
+- POST /api/auth/barista-logout
+- Middleware gating /home, /close, /expense
+- Login page POSTs PIN, redirects on success, shakes on failure
+- Home page: greeting + two disabled buttons + Sign out
+- Two test baristas seeded (Ahmed PIN 1234, Maryam PIN 5678)
+- Local + production deploy verified
+- Build error fixed: CookieToSet type added to setAll callback
+
+**In progress (owner action):**
+- strow.app domain attach (detach from legacy uae-ai-saas, attach to strow-ops)
+
+**Owner action items for next session:**
+1. Rotate Anthropic API key (partial leak from prior screenshot)
+2. Provide a real Qave end-of-day close sheet photo
+3. Decide Q1 (cash float handover) and Q5 (PIN-per-shift) from OPEN_QUESTIONS
+
+**Next session goals:**
+- /close page with camera + photo upload
+- POST /api/closings/extract (Anthropic Sonnet 4.6 + vision, bilingual prompt)
+- Review form with confidence badges
+- Drive sync background job
+- Today’s submissions list on /home
+
+---
+
 ## Session 2 — 2026-05-08
 **Outcome:** Phase 0 scaffolding committed. Schema v1 migrations written, ready to apply.
 

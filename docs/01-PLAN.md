@@ -1,12 +1,12 @@
 # Strow Ops — Phasing Plan
 
 **Last updated:** 2026-05-08
-**Current phase:** Phase 0 — Foundations
+**Current phase:** Phase 0 complete. Phase 1 next session.
 
 ---
 
 ## Phase 0 — Foundations
-**Status:** In progress
+**Status:** Complete (2026-05-08)
 
 - [x] Brief delivered and reviewed
 - [x] Foundational decisions locked (see `03-DECISIONS.md`)
@@ -21,7 +21,7 @@
 - [ ] Legacy credentials rotated *(owner action — urgent)*
 
 ## Phase 1 — Barista flow alive
-**Status:** Not started
+**Status:** Login + home shell shipped 2026-05-08. Resume with /close + AI extract next session.
 
 - Login: numpad + 4-digit PIN
 - Two-button home screen ("End of Day Close" / "Log Expense")

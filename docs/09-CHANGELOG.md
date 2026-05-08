@@ -4,6 +4,13 @@
 
 ---
 
+## v0.0.4 — 2026-05-08 (deployed)
+- **First public deploy.** Live on Vercel at strow-ops.vercel.app; strow.app domain cutover in progress.
+- Barista PIN login wired end-to-end (numpad → bcrypt → JWT → cookie → middleware)
+- Barista home placeholder with greeting and two disabled buttons
+- Production env vars set in Vercel (separate JWT secret from dev)
+- Build fix: CookieToSet type on setAll callback (TS strict mode)
+
 ## v0.0.3 — 2026-05-08
 - Schema v1 (0001) applied to live Supabase project (Singapore region, project ref: dubheyebpmcaqegfmzeb)
 - RLS policies (0002) applied — 14 policies across 12 tables, all in public schema
