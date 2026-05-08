@@ -24,37 +24,24 @@ function parseNumberOrNull(raw: string | null): number | null {
 }
 
 /**
- * Determine submission status from confidence + reconciliation.
- * Per D5: high-confidence + math reconciles → auto-confirm.
- * Otherwise → pending_review (owner reviews on dashboard).
+ * Derive submission status from per-field confidence.
+ *
+ * Note: grand_total is a GENERATED column in Postgres (computed as
+ * cash + card + online), so by definition it always reconciles.
+ * The only signal we have is the AI's confidence on the input fields.
+ *
+ * Per D5: high-confidence on every key field → auto-confirm. Else → owner reviews.
  */
-function deriveStatus(args: {
-  confidence: ConfidenceMap;
-  cash: number;
-  card: number;
-  online: number;
-  grand: number;
-}): "confirmed" | "pending_review" {
-  const { confidence, cash, card, online, grand } = args;
-
-  // Reconciliation: do the parts add up to the whole? Allow 0.01 AED rounding tolerance.
-  const sum = cash + card + online;
-  const reconciles = Math.abs(sum - grand) < 0.02;
-
-  if (!reconciles) return "pending_review";
-
-  // All key fields high confidence?
+function deriveStatus(confidence: ConfidenceMap): "confirmed" | "pending_review" {
   const fields: (keyof ConfidenceMap)[] = [
     "closing_date",
     "cash_total",
     "card_total",
     "online_total",
-    "grand_total",
   ];
   const anyNotHigh = fields.some(
     (f) => confidence[f] && confidence[f] !== "high"
   );
-
   return anyNotHigh ? "pending_review" : "confirmed";
 }
 
@@ -72,9 +59,6 @@ export async function submitClosing(formData: FormData) {
   const online_total = parseNumberOrNull(
     formData.get("online_total") as string | null
   );
-  const grand_total = parseNumberOrNull(
-    formData.get("grand_total") as string | null
-  );
   const cash_float_start = parseNumberOrNull(
     formData.get("cash_float_start") as string | null
   );
@@ -89,7 +73,7 @@ export async function submitClosing(formData: FormData) {
     const raw = String(formData.get("ai_confidence") ?? "{}");
     confidence = JSON.parse(raw) as ConfidenceMap;
   } catch {
-    // Ignore — treat as no confidence info, will default to pending_review
+    // Ignore — defaults to pending_review
   }
 
   // Validation
@@ -100,29 +84,17 @@ export async function submitClosing(formData: FormData) {
   if (cash_total == null || card_total == null || online_total == null) {
     return { error: "Cash, card, and online totals are all required" };
   }
-  if (grand_total == null) {
-    return { error: "Grand total is required" };
-  }
-  if (cash_total < 0 || card_total < 0 || online_total < 0 || grand_total < 0) {
+  if (cash_total < 0 || card_total < 0 || online_total < 0) {
     return { error: "Totals cannot be negative" };
   }
 
-  // Compute over/short if floats provided
-  const over_short =
-    cash_float_start != null && cash_float_end != null
-      ? cash_float_end - cash_float_start - cash_total
-      : null;
-
-  const status = deriveStatus({
-    confidence,
-    cash: cash_total,
-    card: card_total,
-    online: online_total,
-    grand: grand_total,
-  });
+  const status = deriveStatus(confidence);
 
   const supabase = createServiceClient();
 
+  // Note: grand_total and over_short are GENERATED columns — Postgres
+  // computes them automatically. Do NOT include them in the insert.
+  // Note: photo_storage_url does not exist on the table (per D6 — Drive primary).
   const { error } = await supabase.from("closings").insert({
     location_id: session.lid,
     barista_id: session.bid,
@@ -130,23 +102,18 @@ export async function submitClosing(formData: FormData) {
     cash_total,
     card_total,
     online_total,
-    grand_total,
-    cash_float_start,
-    cash_float_end,
-    over_short,
+    cash_float_start: cash_float_start ?? 0,
+    cash_float_end: cash_float_end ?? 0,
     notes,
     ai_confidence: confidence,
     status,
-    photo_storage_url: null, // photo storage wires when Drive sync ships
-    photo_drive_url: null,
-    photo_drive_path: null,
+    // photo_drive_url and photo_drive_path stay null until Drive sync ships
   });
 
   if (error) {
     return { error: `Could not save closing: ${error.message}` };
   }
 
-  // Refresh dashboard + lists so new closing shows up immediately
   revalidatePath("/owner");
   revalidatePath("/owner/closings");
   revalidatePath("/owner/review");

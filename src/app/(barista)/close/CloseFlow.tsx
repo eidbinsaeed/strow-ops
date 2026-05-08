@@ -52,18 +52,28 @@ function fmtNum(n: number | null | undefined): string {
   return String(n);
 }
 
+function formatAed(n: number) {
+  return `AED ${n.toLocaleString("en-AE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export function CloseFlow({ baristaName }: { baristaName: string }) {
   const [stage, setStage] = useState<Stage>("capture");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
-  const [imageMediaType, setImageMediaType] = useState<string>("image/jpeg");
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, startSubmitTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Controlled state for the three sub-totals so we can compute grand total live.
+  const [cashTotal, setCashTotal] = useState("");
+  const [cardTotal, setCardTotal] = useState("");
+  const [onlineTotal, setOnlineTotal] = useState("");
+
   async function handleFile(file: File) {
     setErrorMsg(null);
-    setImageMediaType(file.type || "image/jpeg");
 
     const dataUrl = await fileToBase64(file);
     setImageDataUrl(dataUrl);
@@ -87,7 +97,11 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
         return;
       }
 
-      setExtracted(json.extracted as Extracted);
+      const ext = json.extracted as Extracted;
+      setExtracted(ext);
+      setCashTotal(fmtNum(ext.cash_total));
+      setCardTotal(fmtNum(ext.card_total));
+      setOnlineTotal(fmtNum(ext.online_total));
       setStage("review");
     } catch (e) {
       setErrorMsg(
@@ -101,10 +115,7 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
     setErrorMsg(null);
     startSubmitTransition(async () => {
       const result = await submitClosing(formData);
-      // submitClosing redirects on success, so we only get here on error
-      if (result?.error) {
-        setErrorMsg(result.error);
-      }
+      if (result?.error) setErrorMsg(result.error);
     });
   }
 
@@ -112,6 +123,9 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
     setStage("capture");
     setImageDataUrl(null);
     setExtracted(null);
+    setCashTotal("");
+    setCardTotal("");
+    setOnlineTotal("");
     setErrorMsg(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -195,8 +209,19 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
   const cashConf: Confidence = c.cash_total ?? "medium";
   const cardConf: Confidence = c.card_total ?? "medium";
   const onlineConf: Confidence = c.online_total ?? "medium";
-  const grandConf: Confidence = c.grand_total ?? "medium";
   const dateConf: Confidence = c.closing_date ?? "medium";
+
+  // Live-computed grand total — single source of truth.
+  // Treats empty input as 0 so partial entry still produces a valid sum.
+  const computedGrand =
+    (parseFloat(cashTotal) || 0) +
+    (parseFloat(cardTotal) || 0) +
+    (parseFloat(onlineTotal) || 0);
+
+  // Sanity check vs AI-extracted grand_total — surface a hint if they disagree.
+  const aiGrand = extracted?.grand_total ?? null;
+  const grandMatchesAi =
+    aiGrand == null || Math.abs(computedGrand - aiGrand) < 0.02;
 
   return (
     <div className="mx-auto w-full max-w-md flex-1 py-8">
@@ -238,11 +263,7 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
       )}
 
       <form action={handleSubmitForm} className="space-y-3">
-        <input
-          type="hidden"
-          name="ai_confidence"
-          value={JSON.stringify(c)}
-        />
+        <input type="hidden" name="ai_confidence" value={JSON.stringify(c)} />
 
         <Field
           label="Closing date"
@@ -253,49 +274,55 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
           required
         />
 
-        <Field
+        <ControlledField
           label="Cash total (AED)"
           name="cash_total"
-          type="number"
-          step="0.01"
-          min="0"
-          defaultValue={fmtNum(extracted?.cash_total)}
+          value={cashTotal}
+          onChange={setCashTotal}
           confidence={cashConf}
           required
         />
 
-        <Field
+        <ControlledField
           label="Card total (AED)"
           name="card_total"
-          type="number"
-          step="0.01"
-          min="0"
-          defaultValue={fmtNum(extracted?.card_total)}
+          value={cardTotal}
+          onChange={setCardTotal}
           confidence={cardConf}
           required
         />
 
-        <Field
+        <ControlledField
           label="Online total (AED)"
           name="online_total"
-          type="number"
-          step="0.01"
-          min="0"
-          defaultValue={fmtNum(extracted?.online_total)}
+          value={onlineTotal}
+          onChange={setOnlineTotal}
           confidence={onlineConf}
           required
         />
 
-        <Field
-          label="Grand total (AED)"
-          name="grand_total"
-          type="number"
-          step="0.01"
-          min="0"
-          defaultValue={fmtNum(extracted?.grand_total)}
-          confidence={grandConf}
-          required
-        />
+        {/* Grand total — live-computed, read-only.
+            The DB also computes it via a generated column, so we don't submit it. */}
+        <div className="rounded-2xl bg-neutral-100 p-4">
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs font-medium uppercase tracking-wider text-neutral-500">
+              Grand total
+            </span>
+            <span className="text-[10px] uppercase tracking-wider text-neutral-400">
+              auto from cash + card + online
+            </span>
+          </div>
+          <p className="mt-1 text-2xl font-light tabular-nums">
+            {formatAed(computedGrand)}
+          </p>
+          {!grandMatchesAi && aiGrand != null && (
+            <p className="mt-2 text-xs text-amber-700">
+              ⚠ AI read the grand total as {formatAed(aiGrand)} on the receipt.
+              The breakdown above adds up to {formatAed(computedGrand)}. Double
+              check one of the sub-totals.
+            </p>
+          )}
+        </div>
 
         <details className="rounded-xl border border-neutral-200 bg-white">
           <summary className="cursor-pointer px-4 py-3 text-sm text-neutral-600">
@@ -400,6 +427,57 @@ function Field({
         defaultValue={defaultValue}
         required={required}
         inputMode={type === "number" ? "decimal" : undefined}
+        className={`w-full rounded-xl border-2 px-3 py-2.5 text-base focus:outline-none ${
+          CONFIDENCE_BORDER[confidence]
+        } focus:border-strow-ink`}
+      />
+    </div>
+  );
+}
+
+function ControlledField({
+  label,
+  name,
+  value,
+  onChange,
+  confidence,
+  required,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (next: string) => void;
+  confidence: Confidence;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between">
+        <label htmlFor={name} className="text-xs font-medium text-neutral-600">
+          {label}
+        </label>
+        <span
+          className={`text-[10px] uppercase tracking-wider ${
+            confidence === "high"
+              ? "text-emerald-600"
+              : confidence === "medium"
+                ? "text-amber-600"
+                : "text-red-600"
+          }`}
+        >
+          {CONFIDENCE_LABEL[confidence]}
+        </span>
+      </div>
+      <input
+        id={name}
+        name={name}
+        type="number"
+        step="0.01"
+        min="0"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        inputMode="decimal"
         className={`w-full rounded-xl border-2 px-3 py-2.5 text-base focus:outline-none ${
           CONFIDENCE_BORDER[confidence]
         } focus:border-strow-ink`}

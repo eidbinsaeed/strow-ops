@@ -163,9 +163,8 @@ export async function submitExpense(formData: FormData) {
     notes,
     ai_confidence: confidence,
     status,
-    photo_storage_url: null,
-    photo_drive_url: null,
-    photo_drive_path: null,
+    // photo_drive_url and photo_drive_path stay null until Drive sync ships
+    // (photo_storage_url does not exist per D6 — Drive primary)
   });
 
   if (error) {
