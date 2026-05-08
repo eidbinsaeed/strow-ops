@@ -1,18 +1,20 @@
 /**
  * Server-side Supabase client.
  *
- * Reads/writes Supabase session cookies via Next.js `cookies()` API.
+ * Reads/writes Supabase session cookies via Next.js cookies() API.
  * Use this in:
  *   - Server Components
- *   - Route handlers (`app/api/.../route.ts`)
+ *   - Route handlers (app/api/.../route.ts)
  *   - Server Actions
  *
  * For elevated operations that bypass RLS (system jobs, the Drive sync
- * worker, the AI extraction callback), use `createServiceClient()` instead.
+ * worker, the AI extraction callback), use createServiceClient() instead.
  */
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+
+type CookieToSet = { name: string; value: string; options: CookieOptions };
 
 /**
  * Standard server client — respects user session, RLS applies.
@@ -28,7 +30,7 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: CookieToSet[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options),
