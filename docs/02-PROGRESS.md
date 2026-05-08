@@ -4,6 +4,35 @@
 
 ---
 
+## Session 2 — 2026-05-08
+**Outcome:** Phase 0 scaffolding committed. Schema v1 migrations written, ready to apply.
+
+**Done:**
+- Repo `strow-ops` cloned locally to `C:\Users\eidbi\Projects\strow-ops`
+- Next.js 15 App Router scaffold generated with Tailwind 4 and Supabase client setup
+- Supabase clients: browser (`src/lib/supabase/client.ts`), server (`src/lib/supabase/server.ts`)
+- TypeScript types placeholder (`src/types/database.ts`) — to be regenerated post-migration
+- `.env.example` with all required env var names (no values)
+- D6 revised: Drive primary, no Supabase Storage for photos. Saves $300/yr Pro plan cost; Drive free tier covers ~3 years for Qave-only volume
+- DATA_MODEL.md updated: dropped `photo_storage_url` columns
+- Schema v1 migration written (`supabase/migrations/0001_initial_schema.sql`) — 12 tables, indexes, triggers, seed data for `qave_main` location and 11 default expense categories
+- RLS policies v1 written (`supabase/migrations/0002_rls_policies.sql`) — owner-only access. Barista RLS deferred until PIN auth + custom JWT claims land.
+
+**Skipped / blocked:**
+- Supabase project creation via MCP — connection scope didn't include create permissions. Owner doing it manually at supabase.com.
+
+**Owner action items:**
+1. Create Supabase project at supabase.com/dashboard (org: streamly.app, name: `strow-ops`, region: ap-south-1 Mumbai, free plan). **In progress.**
+2. After creation, drop the project ref/URL into chat so I can list it via MCP and apply migrations.
+
+**Next session goals:**
+- Apply 0001 + 0002 migrations to the new Supabase project
+- Generate TypeScript types from live schema
+- Wire owner auth (Supabase Auth + first owner record)
+- Begin PIN auth design (custom JWT minting flow)
+
+---
+
 ## Session 1 — 2026-05-08
 **Outcome:** Foundational decisions locked. Project memory folder seeded.
 
