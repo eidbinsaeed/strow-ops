@@ -2,6 +2,8 @@ import Link from "next/link";
 import { PeriodPicker, ReportToolbar } from "@/components/owner/PeriodPicker";
 import { fetchSales, fetchExpenses, sumSales, sumExpenses } from "@/lib/reports/queries";
 import { currentQuarter, parsePeriod } from "@/lib/reports/period";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,6 +21,7 @@ export default async function VatReportPage({
 }) {
   const params = await searchParams;
   const period = parsePeriod(params, currentQuarter());
+  const locale = await getLocale();
 
   const [sales, expenses] = await Promise.all([
     fetchSales(period.from, period.to),
@@ -38,9 +41,7 @@ export default async function VatReportPage({
   return (
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6">
-        <h1 className="text-2xl font-light tracking-tight">
-          VAT Report (5% UAE)
-        </h1>
+        <h1 className="text-2xl font-light tracking-tight">{tr("report.vat", locale)}</h1>
         <p className="mt-1 text-sm text-neutral-500">{period.label}</p>
       </header>
 
@@ -50,7 +51,7 @@ export default async function VatReportPage({
       <div className="space-y-5 print:space-y-3">
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 print:break-inside-avoid">
           <h2 className="mb-3 text-xs uppercase tracking-wider text-neutral-500">
-            Output VAT (collected from sales)
+            {tr("report.section.output_vat", locale)}
           </h2>
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between">
@@ -70,7 +71,7 @@ export default async function VatReportPage({
 
         <div className="rounded-2xl border border-neutral-200 bg-white p-5 print:break-inside-avoid">
           <h2 className="mb-3 text-xs uppercase tracking-wider text-neutral-500">
-            Input VAT (paid on purchases)
+            {tr("report.section.input_vat", locale)}
           </h2>
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between">
@@ -90,7 +91,7 @@ export default async function VatReportPage({
 
         <div className="rounded-2xl border border-strow-ink bg-neutral-50 p-5 print:break-inside-avoid">
           <h2 className="mb-3 text-xs uppercase tracking-wider text-neutral-500">
-            Net VAT payable
+            {tr("report.section.net_vat", locale)}
           </h2>
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between">
@@ -102,7 +103,7 @@ export default async function VatReportPage({
               <span className="tabular-nums">- {aed(inputVat)}</span>
             </div>
             <div className="flex justify-between border-t border-neutral-300 pt-1.5 text-base font-medium">
-              <span>{netVat >= 0 ? "VAT payable to FTA" : "VAT refundable from FTA"}</span>
+              <span>{netVat >= 0 ? tr("report.vat.payable", locale) : tr("report.vat.refundable", locale)}</span>
               <span className="tabular-nums">{aed(Math.abs(netVat))}</span>
             </div>
           </div>
@@ -117,7 +118,7 @@ export default async function VatReportPage({
 
       <p className="mt-8 text-xs text-neutral-400 print:hidden">
         <Link href="/owner/reports" className="underline hover:text-strow-ink">
-          &larr; Reports
+          {tr("nav.reports", locale)}
         </Link>
       </p>
     </div>

@@ -8,6 +8,8 @@ import {
   groupByCategory,
 } from "@/lib/reports/queries";
 import { currentMonth, parsePeriod } from "@/lib/reports/period";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -23,6 +25,7 @@ export default async function MonthlyPnLPage({
 }) {
   const params = await searchParams;
   const period = parsePeriod(params, currentMonth());
+  const locale = await getLocale();
 
   const [sales, expenses] = await Promise.all([
     fetchSales(period.from, period.to),
@@ -41,7 +44,7 @@ export default async function MonthlyPnLPage({
   return (
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6">
-        <h1 className="text-2xl font-light tracking-tight">Monthly P&amp;L</h1>
+        <h1 className="text-2xl font-light tracking-tight">{tr("report.monthly_pnl", locale)}</h1>
         <p className="mt-1 text-sm text-neutral-500">{period.label}</p>
       </header>
 
@@ -49,16 +52,16 @@ export default async function MonthlyPnLPage({
       <ReportToolbar csvHref={csvHref} />
 
       <div className="space-y-5 print:space-y-3">
-        <Section title="Sales">
-          <Row label="Cash" value={aed(sTotals.cash)} />
-          <Row label="Card" value={aed(sTotals.card)} />
-          <Row label="Online" value={aed(sTotals.online)} />
-          <Row label="Total sales" value={aed(sTotals.grand)} bold />
+        <Section title={tr("report.section.sales", locale)}>
+          <Row label={tr("report.label.cash", locale)} value={aed(sTotals.cash)} />
+          <Row label={tr("report.label.card", locale)} value={aed(sTotals.card)} />
+          <Row label={tr("report.label.online", locale)} value={aed(sTotals.online)} />
+          <Row label={tr("report.label.total_sales", locale)} value={aed(sTotals.grand)} bold />
         </Section>
 
-        <Section title="Purchases by category">
+        <Section title={tr("report.section.purchases_by_cat", locale)}>
           {byCat.length === 0 ? (
-            <p className="text-sm text-neutral-500">No purchases in period.</p>
+            <p className="text-sm text-neutral-500">{tr("report.label.no_purchases", locale)}</p>
           ) : (
             byCat.map((c) => (
               <Row
@@ -68,12 +71,12 @@ export default async function MonthlyPnLPage({
               />
             ))
           )}
-          <Row label="Total purchases" value={aed(eTotals.total)} bold />
+          <Row label={tr("report.label.total_purchases", locale)} value={aed(eTotals.total)} bold />
         </Section>
 
-        <Section title="Gross margin">
-          <Row label="Sales" value={aed(sTotals.grand)} />
-          <Row label="Less: purchases" value={`- ${aed(eTotals.total)}`} />
+        <Section title={tr("report.section.gross_margin", locale)}>
+          <Row label={tr("report.section.sales", locale)} value={aed(sTotals.grand)} />
+          <Row label={tr("report.label.total_purchases", locale)} value={`- ${aed(eTotals.total)}`} />
           <Row
             label={`Gross margin (${grossMarginPct.toFixed(1)}%)`}
             value={aed(grossMargin)}
@@ -90,7 +93,7 @@ export default async function MonthlyPnLPage({
 
       <p className="mt-8 text-xs text-neutral-400 print:hidden">
         <Link href="/owner/reports" className="underline hover:text-strow-ink">
-          &larr; Reports
+          {tr("nav.reports", locale)}
         </Link>
       </p>
     </div>

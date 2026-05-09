@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -50,6 +52,7 @@ function formatDate(d: string | null) {
 }
 
 export default async function OwnerReviewPage() {
+  const locale = await getLocale();
   const supabase = createServiceClient();
 
   const [closingsResult, expensesResult] = await Promise.all([
@@ -89,7 +92,7 @@ export default async function OwnerReviewPage() {
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-light tracking-tight">Pending Approval</h1>
+          <h1 className="text-2xl font-light tracking-tight">{tr("page.pending", locale)}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             {items.length} {items.length === 1 ? "item" : "items"} waiting on
             you
@@ -100,7 +103,7 @@ export default async function OwnerReviewPage() {
       {items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
           <p className="text-sm text-neutral-500">
-            Queue is empty. Items the AI is unsure about land here.
+            {tr("summary.queue_empty", locale)}
           </p>
         </div>
       ) : (
@@ -117,7 +120,7 @@ export default async function OwnerReviewPage() {
 
       <p className="mt-6 text-xs text-neutral-400">
         <Link href="/owner" className="underline hover:text-strow-ink">
-          &larr; Dashboard
+          {tr("common.dashboard", locale)}
         </Link>
       </p>
     </div>

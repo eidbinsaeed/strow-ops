@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { tr } from "@/lib/i18n/tr";
+import { useLocale } from "@/components/owner/LocaleProvider";
 import {
   confirmReviewItem,
   rejectReviewItem,
@@ -52,6 +54,7 @@ function driveFileIdFromUrl(url: string | null): string | null {
 }
 
 export function RowActions(props: Props) {
+  const locale = useLocale();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -78,7 +81,7 @@ export function RowActions(props: Props) {
           onClick={() => setViewing(true)}
           className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition active:scale-95"
         >
-          View bill
+          {tr("action.view_bill", locale)}
         </button>
       )}
 
@@ -89,7 +92,7 @@ export function RowActions(props: Props) {
           onClick={() => run(() => confirmReviewItem(props.type, props.id))}
           className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 transition active:scale-95 disabled:opacity-50"
         >
-          Confirm
+          {tr("action.confirm", locale)}
         </button>
       )}
 
@@ -99,7 +102,7 @@ export function RowActions(props: Props) {
         onClick={() => setEditing(true)}
         className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition active:scale-95 disabled:opacity-50"
       >
-        Edit
+        {tr("action.edit", locale)}
       </button>
 
       {isConfirmed && (
@@ -109,7 +112,7 @@ export function RowActions(props: Props) {
           onClick={() => {
             if (
               !window.confirm(
-                "Send this back to pending so it shows in the approval queue again?",
+                tr("action.confirm_send_pending", locale),
               )
             )
               return;
@@ -117,7 +120,7 @@ export function RowActions(props: Props) {
           }}
           className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 transition active:scale-95 disabled:opacity-50"
         >
-          Send to pending
+          {tr("action.send_to_pending", locale)}
         </button>
       )}
 
@@ -126,13 +129,13 @@ export function RowActions(props: Props) {
           type="button"
           disabled={pending}
           onClick={() => {
-            if (!window.confirm("Mark as rejected? Audit log keeps the record."))
+            if (!window.confirm(tr("action.confirm_reject", locale)))
               return;
             run(() => rejectReviewItem(props.type, props.id));
           }}
           className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 transition active:scale-95 disabled:opacity-50"
         >
-          Reject
+          {tr("action.reject", locale)}
         </button>
       )}
 
@@ -142,7 +145,7 @@ export function RowActions(props: Props) {
         onClick={() => {
           if (
             !window.confirm(
-              "Permanently delete this entry? Audit log keeps the snapshot.",
+              tr("action.confirm_delete", locale),
             )
           )
             return;
@@ -150,7 +153,7 @@ export function RowActions(props: Props) {
         }}
         className="rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 transition active:scale-95 disabled:opacity-50"
       >
-        Delete
+        {tr("action.delete", locale)}
       </button>
 
       {error && <span className="ml-2 text-xs text-red-700">{error}</span>}
@@ -160,12 +163,14 @@ export function RowActions(props: Props) {
           fileId={driveFileId}
           driveUrl={props.photoDriveUrl ?? ""}
           onClose={() => setViewing(false)}
+          locale={locale}
         />
       )}
 
       {editing && (
         <EditDialog
           {...props}
+          locale={locale}
           onClose={() => setEditing(false)}
           onSubmit={(formData) => {
             setError(null);
@@ -192,10 +197,12 @@ function ViewBillModal({
   fileId,
   driveUrl,
   onClose,
+  locale,
 }: {
   fileId: string;
   driveUrl: string;
   onClose: () => void;
+  locale: import("@/lib/i18n/dict").Locale;
 }) {
   return (
     <div
@@ -207,7 +214,7 @@ function ViewBillModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
-          <h2 className="text-sm font-medium">Bill photo</h2>
+          <h2 className="text-sm font-medium">{tr("action.view_bill", locale)}</h2>
           <div className="flex items-center gap-3 text-xs">
             <a
               href={driveUrl}
@@ -215,14 +222,14 @@ function ViewBillModal({
               rel="noopener noreferrer"
               className="text-neutral-500 underline hover:text-strow-ink"
             >
-              Open in Drive
+              {tr("action.open_in_drive", locale)}
             </a>
             <button
               type="button"
               onClick={onClose}
               className="rounded-md px-2 py-1 text-neutral-500 hover:bg-neutral-100"
             >
-              Close
+              {tr("common.close", locale)}
             </button>
           </div>
         </div>
@@ -230,7 +237,7 @@ function ViewBillModal({
           src={`https://drive.google.com/file/d/${fileId}/preview`}
           className="flex-1 w-full"
           allow="autoplay"
-          title="Bill photo"
+          title={tr("action.view_bill", locale)}
         />
       </div>
     </div>
@@ -242,6 +249,7 @@ function EditDialog(
     onClose: () => void;
     onSubmit: (formData: FormData) => void;
     pending: boolean;
+    locale: import("@/lib/i18n/dict").Locale;
   },
 ) {
   const isClosing = props.type === "closing";
@@ -257,14 +265,14 @@ function EditDialog(
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-medium">
-            Edit {isClosing ? "sale" : "purchase"}
+            {tr("action.edit", props.locale)}
           </h2>
           <button
             type="button"
             onClick={props.onClose}
             className="text-sm text-neutral-400 hover:text-neutral-700"
           >
-            Cancel
+            {tr("common.cancel", props.locale)}
           </button>
         </div>
 
@@ -284,7 +292,7 @@ function EditDialog(
             disabled={props.pending}
             className="mt-2 w-full rounded-xl bg-strow-ink px-4 py-2.5 text-sm font-medium text-white transition active:scale-95 disabled:opacity-50"
           >
-            {props.pending ? "Saving..." : "Save changes"}
+            {props.pending ? tr("common.saving", props.locale) : tr("common.save", props.locale)}
           </button>
         </form>
       </div>

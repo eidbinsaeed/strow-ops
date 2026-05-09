@@ -1,49 +1,75 @@
 import Link from "next/link";
 import { OwnerNavLink } from "@/components/owner/OwnerNavLink";
 import { OwnerLogoutButton } from "@/components/owner/OwnerLogoutButton";
+import { tr } from "@/lib/i18n/tr";
+import type { Locale } from "@/lib/i18n/dict";
 
 /**
  * The nav content used by both the desktop sidebar and the mobile drawer.
- * Pure server JSX. The mobile drawer attaches its own onClickCapture handler
- * to the wrapping div so it auto-closes when any link is tapped.
  */
-export function OwnerNavContent({ signedIn }: { signedIn: boolean }) {
+export function OwnerNavContent({
+  signedIn,
+  locale,
+}: {
+  signedIn: boolean;
+  locale: Locale;
+}) {
   return (
     <>
       <nav className="flex flex-col gap-3 px-3 pb-4 md:pb-6">
-        <NavGroup label="Operations">
-          <OwnerNavLink href="/owner">Dashboard</OwnerNavLink>
-          <OwnerNavLink href="/owner/review">Pending Approval</OwnerNavLink>
+        <NavGroup label={tr("nav.group.operations", locale)}>
+          <OwnerNavLink href="/owner">{tr("nav.dashboard", locale)}</OwnerNavLink>
+          <OwnerNavLink href="/owner/review">
+            {tr("nav.pending", locale)}
+          </OwnerNavLink>
         </NavGroup>
 
-        <NavGroup label="Books">
-          <OwnerNavLink href="/owner/closings">Sales</OwnerNavLink>
-          <OwnerNavLink href="/owner/expenses">Purchases</OwnerNavLink>
-          <OwnerNavLink href="/owner/fixed-costs">Recurring Costs</OwnerNavLink>
-          <OwnerNavLink href="/owner/liabilities">Liabilities</OwnerNavLink>
+        <NavGroup label={tr("nav.group.books", locale)}>
+          <OwnerNavLink href="/owner/closings">
+            {tr("nav.sales", locale)}
+          </OwnerNavLink>
+          <OwnerNavLink href="/owner/expenses">
+            {tr("nav.purchases", locale)}
+          </OwnerNavLink>
+          <OwnerNavLink href="/owner/fixed-costs">
+            {tr("nav.recurring", locale)}
+          </OwnerNavLink>
+          <OwnerNavLink href="/owner/liabilities">
+            {tr("nav.liabilities", locale)}
+          </OwnerNavLink>
         </NavGroup>
 
-        <NavGroup label="Setup">
-          <OwnerNavLink href="/owner/suppliers">Vendors</OwnerNavLink>
-          <OwnerNavLink href="/owner/categories">Chart of Accounts</OwnerNavLink>
-          <OwnerNavLink href="/owner/baristas">Staff</OwnerNavLink>
+        <NavGroup label={tr("nav.group.setup", locale)}>
+          <OwnerNavLink href="/owner/suppliers">
+            {tr("nav.vendors", locale)}
+          </OwnerNavLink>
+          <OwnerNavLink href="/owner/categories">
+            {tr("nav.coa", locale)}
+          </OwnerNavLink>
+          <OwnerNavLink href="/owner/baristas">
+            {tr("nav.staff", locale)}
+          </OwnerNavLink>
         </NavGroup>
 
-        <NavGroup label="Reporting">
-          <OwnerNavLink href="/owner/reports">Reports</OwnerNavLink>
-          <OwnerNavLink href="/owner/audit">Audit Trail</OwnerNavLink>
+        <NavGroup label={tr("nav.group.reporting", locale)}>
+          <OwnerNavLink href="/owner/reports">
+            {tr("nav.reports", locale)}
+          </OwnerNavLink>
+          <OwnerNavLink href="/owner/audit">
+            {tr("nav.audit", locale)}
+          </OwnerNavLink>
         </NavGroup>
       </nav>
 
       <div className="border-t border-neutral-200 py-4">
         {signedIn ? (
-          <OwnerLogoutButton />
+          <OwnerLogoutButton locale={locale} />
         ) : (
           <Link
             href="/owner/login"
             className="mx-3 block rounded-md px-3 py-2 text-sm text-neutral-500 hover:bg-neutral-100"
           >
-            Sign in
+            {tr("common.signin", locale)}
           </Link>
         )}
       </div>

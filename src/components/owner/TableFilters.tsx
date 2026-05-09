@@ -2,31 +2,34 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useTransition } from "react";
+import { tr } from "@/lib/i18n/tr";
+import { useLocale } from "./LocaleProvider";
 
 type Props = {
   /** Show status pills filter */
   showStatus?: boolean;
   /** Show search box */
   showSearch?: boolean;
-  /** Placeholder for search input */
+  /** Placeholder for search input. If omitted, defaults to localized "Search..." */
   searchPlaceholder?: string;
   /** Show date range filter */
   showDates?: boolean;
 };
 
-const STATUS_OPTIONS = [
-  { v: "confirmed", label: "Confirmed", cls: "bg-emerald-50 text-emerald-700" },
-  { v: "pending_review", label: "Pending", cls: "bg-amber-50 text-amber-700" },
-  { v: "flagged", label: "Flagged", cls: "bg-red-50 text-red-700" },
-  { v: "rejected", label: "Rejected", cls: "bg-neutral-100 text-neutral-500" },
-] as const;
+const STATUS_OPTIONS: { v: string; key: "status.confirmed" | "status.pending" | "status.flagged" | "status.rejected"; cls: string }[] = [
+  { v: "confirmed", key: "status.confirmed", cls: "bg-emerald-50 text-emerald-700" },
+  { v: "pending_review", key: "status.pending", cls: "bg-amber-50 text-amber-700" },
+  { v: "flagged", key: "status.flagged", cls: "bg-red-50 text-red-700" },
+  { v: "rejected", key: "status.rejected", cls: "bg-neutral-100 text-neutral-500" },
+];
 
 export function TableFilters({
   showStatus = true,
   showSearch = true,
-  searchPlaceholder = "Search...",
+  searchPlaceholder,
   showDates = true,
 }: Props) {
+  const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -74,7 +77,7 @@ export function TableFilters({
         <input
           type="search"
           defaultValue={params.get("q") ?? ""}
-          placeholder={searchPlaceholder}
+          placeholder={searchPlaceholder ?? tr("filter.search", locale) + "..."}
           onChange={(e) => {
             const v = e.target.value;
             // debounce: wait 250ms before pushing
@@ -96,7 +99,7 @@ export function TableFilters({
             onChange={(e) => setParam("from", e.target.value || null)}
             className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-strow-ink focus:outline-none"
           />
-          <span className="text-xs text-neutral-400">to</span>
+          <span className="text-xs text-neutral-400">{tr("filter.between", locale)}</span>
           <input
             type="date"
             defaultValue={params.get("to") ?? ""}
@@ -121,7 +124,7 @@ export function TableFilters({
                     : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
                 }`}
               >
-                {opt.label}
+                {tr(opt.key, locale)}
               </button>
             );
           })}
@@ -136,7 +139,7 @@ export function TableFilters({
           }}
           className="ml-auto text-xs text-neutral-500 underline hover:text-strow-ink"
         >
-          Clear filters
+          {tr("filter.clear", locale)}
         </button>
       )}
     </div>

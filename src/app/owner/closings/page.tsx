@@ -4,6 +4,8 @@ import { RowActions } from "@/components/owner/RowActions";
 import { Suspense } from "react";
 import { TableFilters } from "@/components/owner/TableFilters";
 import { parseFilters } from "@/lib/filters";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -53,6 +55,7 @@ export default async function OwnerSalesPage({
 }) {
   const params = await searchParams;
   const filters = parseFilters(params);
+  const locale = await getLocale();
 
   const supabase = createServiceClient();
   let query = supabase
@@ -89,15 +92,14 @@ export default async function OwnerSalesPage({
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-light tracking-tight">Sales</h1>
+          <h1 className="text-2xl font-light tracking-tight">{tr("page.sales", locale)}</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            {closings.length} {closings.length === 1 ? "sale" : "sales"} -{" "}
-            {formatAed(grandSum)} total
+            {closings.length} {tr("summary.sales_count", locale)} - {formatAed(grandSum)} {tr("summary.total_label", locale)}
           </p>
         </div>
       </header>
 
-      <Suspense fallback={null}><TableFilters searchPlaceholder="Search barista or note..." /></Suspense>
+      <Suspense fallback={null}><TableFilters searchPlaceholder={tr("filter.search.barista_or_note", locale)} /></Suspense>
 
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
@@ -106,7 +108,7 @@ export default async function OwnerSalesPage({
       ) : closings.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
           <p className="text-sm text-neutral-500">
-            No sales match the current filters.
+            {tr("summary.no_match", locale)}
           </p>
         </div>
       ) : (
@@ -166,7 +168,7 @@ export default async function OwnerSalesPage({
 
       <p className="mt-6 text-xs text-neutral-400">
         <Link href="/owner" className="underline hover:text-strow-ink">
-          &larr; Dashboard
+          {tr("common.dashboard", locale)}
         </Link>
       </p>
     </div>

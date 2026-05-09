@@ -1,8 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { tr } from "@/lib/i18n/tr";
+import { useLocale } from "./LocaleProvider";
 
 export function PeriodPicker({ defaultFrom, defaultTo }: { defaultFrom: string; defaultTo: string }) {
+  const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -16,7 +19,7 @@ export function PeriodPicker({ defaultFrom, defaultTo }: { defaultFrom: string; 
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
-      <label className="text-xs text-neutral-500">Period</label>
+      <label className="text-xs text-neutral-500">{tr("report.period", locale)}</label>
       <input
         type="date"
         defaultValue={params.get("from") ?? defaultFrom}
@@ -26,7 +29,7 @@ export function PeriodPicker({ defaultFrom, defaultTo }: { defaultFrom: string; 
         }}
         className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-strow-ink focus:outline-none"
       />
-      <span className="text-xs text-neutral-400">to</span>
+      <span className="text-xs text-neutral-400">{tr("filter.between", locale)}</span>
       <input
         type="date"
         defaultValue={params.get("to") ?? defaultTo}
@@ -41,20 +44,21 @@ export function PeriodPicker({ defaultFrom, defaultTo }: { defaultFrom: string; 
 }
 
 export function ReportToolbar({ csvHref }: { csvHref: string }) {
+  const locale = useLocale();
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
       <a
         href={csvHref}
         className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
       >
-        Download CSV
+        {tr("report.download_csv", locale)}
       </a>
       <button
         type="button"
         onClick={() => window.print()}
         className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
       >
-        Print / Save as PDF
+        {tr("report.print_pdf", locale)}
       </button>
     </div>
   );
