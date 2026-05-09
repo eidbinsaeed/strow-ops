@@ -1,8 +1,0 @@
-Now let me also patch a few owner pages to translate their H1s. Pages that still use English H1s:
-- /owner (dashboard)
-- /owner/audit
-- /owner/baristas
-- /owner/suppliers
-- /owner/categories
-- /owner/fixed-costs
-- /owner/liabilities
