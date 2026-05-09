@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,6 +27,7 @@ function StatCard({
 }
 
 export default async function OwnerDashboard() {
+  const locale = await getLocale();
   const supabase = createServiceClient();
 
   // Live counts from the DB — proves the wiring works end-to-end.
@@ -56,7 +59,7 @@ export default async function OwnerDashboard() {
     <div className="px-6 py-8 md:px-10">
       <header className="mb-8 flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-light tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl font-light tracking-tight">{tr("page.dashboard", locale)}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             Today at Qave Cafe — Main
           </p>

@@ -6,6 +6,7 @@ import { TableFilters } from "@/components/owner/TableFilters";
 import { parseFilters } from "@/lib/filters";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
+import { StatusPill } from "@/components/owner/StatusPill";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -121,23 +122,14 @@ export default async function OwnerSalesPage({
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                        STATUS_STYLES[c.status] ?? "bg-neutral-100 text-neutral-500"
-                      }`}
-                    >
-                      {c.status.replace("_", " ")}
-                    </span>
+                    <StatusPill status={c.status} locale={locale} />
                   </div>
                   <p className="mt-2 text-base font-medium">
                     {formatDate(c.closing_date)} -{" "}
                     {formatAed(c.grand_total)}
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Cash {formatAed(c.cash_total)} - Card{" "}
-                    {formatAed(c.card_total)} - Online{" "}
-                    {formatAed(c.online_total)} - by{" "}
-                    {c.baristas?.name ?? "-"}
+                    {tr("card.cash", locale)} {formatAed(c.cash_total)} - {tr("card.card", locale)} {formatAed(c.card_total)} - {tr("card.online", locale)} {formatAed(c.online_total)} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
                   </p>
                   {c.notes && (
                     <p className="mt-2 text-xs italic text-neutral-500">

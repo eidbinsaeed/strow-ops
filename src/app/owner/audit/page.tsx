@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -34,6 +36,7 @@ const ACTION_STYLES: Record<string, string> = {
 };
 
 export default async function OwnerAuditPage() {
+  const locale = await getLocale();
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("audit_log")
@@ -49,7 +52,7 @@ export default async function OwnerAuditPage() {
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-light tracking-tight">Audit Trail</h1>
+          <h1 className="text-2xl font-light tracking-tight">{tr("page.audit", locale)}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             {entries.length === 200
               ? "Last 200 entries"

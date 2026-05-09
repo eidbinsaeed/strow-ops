@@ -6,6 +6,7 @@ import { TableFilters } from "@/components/owner/TableFilters";
 import { parseFilters } from "@/lib/filters";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
+import { StatusPill } from "@/components/owner/StatusPill";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -128,13 +129,7 @@ export default async function OwnerPurchasesPage({
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                        STATUS_STYLES[e.status] ?? "bg-neutral-100 text-neutral-500"
-                      }`}
-                    >
-                      {e.status.replace("_", " ")}
-                    </span>
+                    <StatusPill status={e.status} locale={locale} />
                     {e.categories?.name && (
                       <span className="text-xs text-neutral-500">
                         {e.categories.name}
@@ -142,16 +137,14 @@ export default async function OwnerPurchasesPage({
                     )}
                   </div>
                   <p className="mt-2 text-base font-medium">
-                    {formatDate(e.expense_date)} -{" "}
-                    {e.suppliers?.name ?? "Unknown vendor"} -{" "}
-                    {formatAed(e.total)}
+                    {formatDate(e.expense_date)} - {e.suppliers?.name ?? tr("card.unknown_vendor", locale)} - {formatAed(e.total)}
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    {PAYMENT_LABELS[e.payment_method] ?? e.payment_method}
+                    {tr(("pay." + e.payment_method) as "pay.cash", locale) || e.payment_method}
                     {e.invoice_number ? ` - #${e.invoice_number}` : ""}
-                    {" - VAT "}
+                    {" - " + tr("card.vat", locale) + " "}
                     {formatAed(e.vat_amount)}
-                    {" - by "}
+                    {" - " + tr("card.by", locale) + " "}
                     {e.baristas?.name ?? "-"}
                   </p>
                   {e.notes && (

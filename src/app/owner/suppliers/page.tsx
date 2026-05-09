@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 import { AddSupplierForm } from "./AddSupplierForm";
 import { DeleteSupplierButton } from "./DeleteSupplierButton";
 
@@ -17,6 +19,7 @@ type SupplierRow = {
 };
 
 export default async function OwnerSuppliersPage() {
+  const locale = await getLocale();
   const supabase = createServiceClient();
 
   const [suppliersResult, categoriesResult] = await Promise.all([
@@ -40,7 +43,7 @@ export default async function OwnerSuppliersPage() {
   return (
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6">
-        <h1 className="text-2xl font-light tracking-tight">Suppliers</h1>
+        <h1 className="text-2xl font-light tracking-tight">{tr("page.vendors", locale)}</h1>
         <p className="mt-1 text-sm text-neutral-500">
           {suppliers.length} {suppliers.length === 1 ? "supplier" : "suppliers"}
         </p>

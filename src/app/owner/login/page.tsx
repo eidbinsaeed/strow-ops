@@ -23,9 +23,9 @@ export default async function OwnerLoginPage() {
         </div>
 
         <div className="mt-6 text-center text-xs text-neutral-400">
-          Barista?{" "}
+          {locale === "ar" ? "باريستا؟ " : "Barista? "}
           <Link href="/login" className="underline">
-            Go to barista login
+            {locale === "ar" ? "اذهب لتسجيل دخول الباريستا" : "Go to barista login"}
           </Link>
         </div>
       </div>

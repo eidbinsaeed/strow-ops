@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 import {
   AddFixedCostForm,
   FixedCostRowActions,
@@ -48,6 +50,7 @@ function dayOrdinal(n: number) {
 }
 
 export default async function OwnerFixedCostsPage() {
+  const locale = await getLocale();
   const supabase = createServiceClient();
 
   const [costsResult, baristasResult] = await Promise.all([
@@ -77,7 +80,7 @@ export default async function OwnerFixedCostsPage() {
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-light tracking-tight">Fixed Costs</h1>
+          <h1 className="text-2xl font-light tracking-tight">{tr("page.recurring", locale)}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             {costs.filter((c) => c.is_active).length} active
           </p>

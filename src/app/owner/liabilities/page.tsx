@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 import {
   AddLiabilityForm,
   LiabilityRowActions,
@@ -42,6 +44,7 @@ function formatDate(d: string | null) {
 }
 
 export default async function OwnerLiabilitiesPage() {
+  const locale = await getLocale();
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("liabilities")
@@ -60,7 +63,7 @@ export default async function OwnerLiabilitiesPage() {
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-light tracking-tight">Liabilities</h1>
+          <h1 className="text-2xl font-light tracking-tight">{tr("page.liabilities", locale)}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             {liabilities.filter((l) => l.status === "open").length} open ·{" "}
             {liabilities.filter((l) => l.status === "settled").length} settled

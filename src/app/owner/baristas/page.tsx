@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getLocale } from "@/lib/i18n/locale";
+import { tr } from "@/lib/i18n/tr";
 import { AddBaristaForm } from "./AddBaristaForm";
 import { BaristaRowActions } from "./BaristaRowActions";
 
@@ -17,6 +19,7 @@ type BaristaRow = {
 };
 
 export default async function OwnerBaristasPage() {
+  const locale = await getLocale();
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("baristas")
@@ -30,7 +33,7 @@ export default async function OwnerBaristasPage() {
   return (
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6">
-        <h1 className="text-2xl font-light tracking-tight">Baristas</h1>
+        <h1 className="text-2xl font-light tracking-tight">{tr("page.staff", locale)}</h1>
         <p className="mt-1 text-sm text-neutral-500">
           {activeCount} active · {baristas.length - activeCount} inactive
         </p>

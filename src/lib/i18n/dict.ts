@@ -128,3 +128,18 @@ export const DICT: Record<string, Record<Locale, string>> = {
 };
 
 export type DictKey = keyof typeof DICT;
+
+// More keys appended in mobile/i18n follow-up
+DICT["card.cash"] = { en: "Cash", ar: "نقد" };
+DICT["card.card"] = { en: "Card", ar: "بطاقة" };
+DICT["card.online"] = { en: "Online", ar: "أونلاين" };
+DICT["card.by"] = { en: "by", ar: "بواسطة" };
+DICT["card.vat"] = { en: "VAT", ar: "ضريبة" };
+DICT["card.unknown_vendor"] = { en: "Unknown vendor", ar: "مورد غير معروف" };
+DICT["pay.cash"] = { en: "Cash", ar: "نقد" };
+DICT["pay.card"] = { en: "Card", ar: "بطاقة" };
+DICT["pay.bank_transfer"] = { en: "Bank transfer", ar: "حوالة بنكية" };
+DICT["pay.credit"] = { en: "Credit", ar: "آجل" };
+DICT["page.audit"] = { en: "Audit Trail", ar: "سجل التدقيق" };
+DICT["page.audit.tagline"] = { en: "Last 200 actions across the app.", ar: "آخر ٢٠٠ عملية في النظام." };
+DICT["page.dashboard.tagline"] = { en: "Live snapshot of today's activity.", ar: "نظرة عامة على نشاط اليوم." };

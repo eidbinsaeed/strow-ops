@@ -40,11 +40,34 @@ export function MobileNavDrawer({
     <>
       {/* Mobile top bar */}
       <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3 md:hidden">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label={tr("nav.menu_open", locale)}
+          className="rounded-md p-2 text-neutral-700 hover:bg-neutral-100"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-5 w-5"
+          >
+            <line x1="4" y1="6" x2="20" y2="6" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="18" x2="20" y2="18" />
+          </svg>
+        </button>
         <Link href="/owner" className="text-base font-medium">
           {tr("brand.title", locale)}
         </Link>
-        <div className="flex items-center gap-2">
-          <LangToggle />
+        <LangToggle />
+      </div>
+      {/* Old hamburger position removed */}
+      {false && (
           <button
             type="button"
             onClick={() => setOpen(true)}
@@ -66,8 +89,7 @@ export function MobileNavDrawer({
               <line x1="4" y1="18" x2="20" y2="18" />
             </svg>
           </button>
-        </div>
-      </div>
+      )}
 
       {/* Backdrop + drawer */}
       {open && (
