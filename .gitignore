@@ -52,3 +52,6 @@ yarn-error.log*
 # Supabase local
 **/supabase/.branches
 **/supabase/.temp
+
+# Local automation helpers (DC-driven git ops)
+_*.bat
