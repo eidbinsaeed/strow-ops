@@ -5,10 +5,11 @@ import {
   confirmReviewItem,
   rejectReviewItem,
   deleteReviewItem,
+  sendToPending,
   editClosing,
   editExpense,
   type ItemType,
-} from "./actions";
+} from "@/app/owner/review/actions";
 
 type ClosingFields = {
   closing_date: string;
@@ -29,13 +30,37 @@ type ExpenseFields = {
 };
 
 type Props =
-  | { type: "closing"; id: string; fields: ClosingFields }
-  | { type: "expense"; id: string; fields: ExpenseFields };
+  | {
+      type: "closing";
+      id: string;
+      status: string;
+      fields: ClosingFields;
+      photoDriveUrl: string | null;
+    }
+  | {
+      type: "expense";
+      id: string;
+      status: string;
+      fields: ExpenseFields;
+      photoDriveUrl: string | null;
+    };
 
-export function ReviewRowActions(props: Props) {
+function driveFileIdFromUrl(url: string | null): string | null {
+  if (!url) return null;
+  const m = url.match(/\/file\/d\/([^/]+)/);
+  return m?.[1] ?? null;
+}
+
+export function RowActions(props: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [viewing, setViewing] = useState(false);
+
+  const isPending =
+    props.status === "pending_review" || props.status === "flagged";
+  const isConfirmed = props.status === "confirmed";
+  const driveFileId = driveFileIdFromUrl(props.photoDriveUrl);
 
   function run(fn: () => Promise<{ error?: string; ok?: boolean }>) {
     setError(null);
@@ -45,51 +70,29 @@ export function ReviewRowActions(props: Props) {
     });
   }
 
-  function handleConfirm() {
-    run(() => confirmReviewItem(props.type, props.id));
-  }
-
-  function handleReject() {
-    if (!window.confirm("Mark as rejected? This stays in the audit log.")) return;
-    run(() => rejectReviewItem(props.type, props.id));
-  }
-
-  function handleDelete() {
-    if (
-      !window.confirm(
-        "Permanently delete this submission? Audit log keeps the snapshot.",
-      )
-    ) {
-      return;
-    }
-    run(() => deleteReviewItem(props.type, props.id));
-  }
-
-  function handleEditSubmit(formData: FormData) {
-    setError(null);
-    startTransition(async () => {
-      const r =
-        props.type === "closing"
-          ? await editClosing(props.id, formData)
-          : await editExpense(props.id, formData);
-      if (r?.error) {
-        setError(r.error);
-        return;
-      }
-      setEditing(false);
-    });
-  }
-
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        disabled={pending}
-        onClick={handleConfirm}
-        className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 transition active:scale-95 disabled:opacity-50"
-      >
-        Confirm
-      </button>
+      {props.photoDriveUrl && (
+        <button
+          type="button"
+          onClick={() => setViewing(true)}
+          className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition active:scale-95"
+        >
+          View bill
+        </button>
+      )}
+
+      {isPending && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => run(() => confirmReviewItem(props.type, props.id))}
+          className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 transition active:scale-95 disabled:opacity-50"
+        >
+          Confirm
+        </button>
+      )}
+
       <button
         type="button"
         disabled={pending}
@@ -98,33 +101,138 @@ export function ReviewRowActions(props: Props) {
       >
         Edit
       </button>
+
+      {isConfirmed && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (
+              !window.confirm(
+                "Send this back to pending so it shows in the approval queue again?",
+              )
+            )
+              return;
+            run(() => sendToPending(props.type, props.id));
+          }}
+          className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 transition active:scale-95 disabled:opacity-50"
+        >
+          Send to pending
+        </button>
+      )}
+
+      {isPending && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (!window.confirm("Mark as rejected? Audit log keeps the record."))
+              return;
+            run(() => rejectReviewItem(props.type, props.id));
+          }}
+          className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 transition active:scale-95 disabled:opacity-50"
+        >
+          Reject
+        </button>
+      )}
+
       <button
         type="button"
         disabled={pending}
-        onClick={handleReject}
-        className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 transition active:scale-95 disabled:opacity-50"
-      >
-        Reject
-      </button>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={handleDelete}
+        onClick={() => {
+          if (
+            !window.confirm(
+              "Permanently delete this entry? Audit log keeps the snapshot.",
+            )
+          )
+            return;
+          run(() => deleteReviewItem(props.type, props.id));
+        }}
         className="rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 transition active:scale-95 disabled:opacity-50"
       >
         Delete
       </button>
-      {error && (
-        <span className="ml-2 text-xs text-red-700">{error}</span>
+
+      {error && <span className="ml-2 text-xs text-red-700">{error}</span>}
+
+      {viewing && driveFileId && (
+        <ViewBillModal
+          fileId={driveFileId}
+          driveUrl={props.photoDriveUrl ?? ""}
+          onClose={() => setViewing(false)}
+        />
       )}
+
       {editing && (
         <EditDialog
           {...props}
           onClose={() => setEditing(false)}
-          onSubmit={handleEditSubmit}
+          onSubmit={(formData) => {
+            setError(null);
+            startTransition(async () => {
+              const r =
+                props.type === "closing"
+                  ? await editClosing(props.id, formData)
+                  : await editExpense(props.id, formData);
+              if (r?.error) {
+                setError(r.error);
+                return;
+              }
+              setEditing(false);
+            });
+          }}
           pending={pending}
         />
       )}
+    </div>
+  );
+}
+
+function ViewBillModal({
+  fileId,
+  driveUrl,
+  onClose,
+}: {
+  fileId: string;
+  driveUrl: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
+          <h2 className="text-sm font-medium">Bill photo</h2>
+          <div className="flex items-center gap-3 text-xs">
+            <a
+              href={driveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-neutral-500 underline hover:text-strow-ink"
+            >
+              Open in Drive
+            </a>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-2 py-1 text-neutral-500 hover:bg-neutral-100"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+        <iframe
+          src={`https://drive.google.com/file/d/${fileId}/preview`}
+          className="flex-1 w-full"
+          allow="autoplay"
+          title="Bill photo"
+        />
+      </div>
     </div>
   );
 }
@@ -149,7 +257,7 @@ function EditDialog(
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-medium">
-            Edit {isClosing ? "closing" : "expense"}
+            Edit {isClosing ? "sale" : "purchase"}
           </h2>
           <button
             type="button"
@@ -162,9 +270,13 @@ function EditDialog(
 
         <form action={props.onSubmit} className="space-y-3">
           {isClosing ? (
-            <ClosingFormFields fields={(props as Props & { type: "closing" }).fields} />
+            <ClosingFormFields
+              fields={(props as Props & { type: "closing" }).fields}
+            />
           ) : (
-            <ExpenseFormFields fields={(props as Props & { type: "expense" }).fields} />
+            <ExpenseFormFields
+              fields={(props as Props & { type: "expense" }).fields}
+            />
           )}
 
           <button
@@ -180,16 +292,20 @@ function EditDialog(
   );
 }
 
+function inputClass() {
+  return "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none";
+}
+
 function ClosingFormFields({ fields }: { fields: ClosingFields }) {
   return (
     <>
-      <Label name="closing_date" label="Closing date">
+      <Label name="closing_date" label="Sale date">
         <input
           name="closing_date"
           type="date"
           defaultValue={fields.closing_date}
           required
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
       <Label name="cash_total" label="Cash total (AED)">
@@ -201,7 +317,7 @@ function ClosingFormFields({ fields }: { fields: ClosingFields }) {
           defaultValue={fields.cash_total}
           required
           inputMode="decimal"
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
       <Label name="card_total" label="Card total (AED)">
@@ -213,7 +329,7 @@ function ClosingFormFields({ fields }: { fields: ClosingFields }) {
           defaultValue={fields.card_total}
           required
           inputMode="decimal"
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
       <Label name="online_total" label="Online total (AED)">
@@ -225,7 +341,7 @@ function ClosingFormFields({ fields }: { fields: ClosingFields }) {
           defaultValue={fields.online_total}
           required
           inputMode="decimal"
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
       <Label name="notes" label="Notes">
@@ -233,7 +349,7 @@ function ClosingFormFields({ fields }: { fields: ClosingFields }) {
           name="notes"
           defaultValue={fields.notes ?? ""}
           rows={2}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
     </>
@@ -243,13 +359,13 @@ function ClosingFormFields({ fields }: { fields: ClosingFields }) {
 function ExpenseFormFields({ fields }: { fields: ExpenseFields }) {
   return (
     <>
-      <Label name="expense_date" label="Expense date">
+      <Label name="expense_date" label="Bill date">
         <input
           name="expense_date"
           type="date"
           defaultValue={fields.expense_date}
           required
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
       <Label name="invoice_number" label="Invoice number">
@@ -257,7 +373,7 @@ function ExpenseFormFields({ fields }: { fields: ExpenseFields }) {
           name="invoice_number"
           type="text"
           defaultValue={fields.invoice_number ?? ""}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
       <Label name="subtotal" label="Subtotal (AED)">
@@ -268,7 +384,7 @@ function ExpenseFormFields({ fields }: { fields: ExpenseFields }) {
           min="0"
           defaultValue={fields.subtotal}
           inputMode="decimal"
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
       <Label name="vat_amount" label="VAT (AED)">
@@ -279,7 +395,7 @@ function ExpenseFormFields({ fields }: { fields: ExpenseFields }) {
           min="0"
           defaultValue={fields.vat_amount}
           inputMode="decimal"
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
       <Label name="total" label="Total (AED)">
@@ -291,7 +407,7 @@ function ExpenseFormFields({ fields }: { fields: ExpenseFields }) {
           defaultValue={fields.total}
           required
           inputMode="decimal"
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
       <Label name="payment_method" label="Payment method">
@@ -299,7 +415,7 @@ function ExpenseFormFields({ fields }: { fields: ExpenseFields }) {
           name="payment_method"
           defaultValue={fields.payment_method}
           required
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         >
           <option value="cash">Cash</option>
           <option value="card">Card</option>
@@ -312,7 +428,7 @@ function ExpenseFormFields({ fields }: { fields: ExpenseFields }) {
           name="notes"
           defaultValue={fields.notes ?? ""}
           rows={2}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"
+          className={inputClass()}
         />
       </Label>
     </>
@@ -330,13 +446,13 @@ function Label({
 }) {
   return (
     <div>
-      <label htmlFor={name} className="mb-1 block text-xs font-medium text-neutral-600">
+      <label
+        htmlFor={name}
+        className="mb-1 block text-xs font-medium text-neutral-600"
+      >
         {label}
       </label>
       {children}
     </div>
   );
 }
-
-// Suppress unused vars when narrowing prevents using ItemType here.
-export type { ItemType };

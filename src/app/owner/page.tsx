@@ -127,7 +127,7 @@ export default async function OwnerDashboard() {
           href="/owner/review"
           className="rounded-2xl border border-neutral-200 bg-white p-5 transition hover:border-strow-ink"
         >
-          <p className="text-sm font-medium">Review queue</p>
+          <p className="text-sm font-medium">Pending Approval</p>
           <p className="mt-1 text-xs text-neutral-500">
             Items the AI was not sure about
           </p>

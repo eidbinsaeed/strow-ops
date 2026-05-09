@@ -206,3 +206,25 @@ export async function editExpense(id: string, formData: FormData) {
   revalidateAll("expense");
   return { ok: true };
 }
+
+export async function sendToPending(type: ItemType, id: string) {
+  const supabase = createServiceClient();
+  const { error } = await supabase
+    .from(TABLE[type])
+    .update({ status: "pending_review" })
+    .eq("id", id);
+  if (error) return { error: error.message };
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: "sent_to_pending",
+    entity_type: type,
+    entity_id: id,
+    after_state: { status: "pending_review" },
+  });
+
+  revalidateAll(type);
+  return { ok: true };
+}

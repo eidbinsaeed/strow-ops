@@ -30,18 +30,29 @@ export default async function OwnerLayout({
           )}
         </div>
 
-        <nav className="flex flex-wrap gap-1 px-3 pb-4 md:flex-col md:gap-0.5 md:pb-6">
-          <OwnerNavLink href="/owner">Dashboard</OwnerNavLink>
-          <OwnerNavLink href="/owner/review">Review queue</OwnerNavLink>
-          <OwnerNavLink href="/owner/closings">Daily Sales</OwnerNavLink>
-          <OwnerNavLink href="/owner/expenses">Expenses</OwnerNavLink>
-          <OwnerNavLink href="/owner/suppliers">Suppliers</OwnerNavLink>
-          <OwnerNavLink href="/owner/categories">Categories</OwnerNavLink>
-          <OwnerNavLink href="/owner/baristas">Baristas</OwnerNavLink>
-          <OwnerNavLink href="/owner/fixed-costs">Fixed Costs</OwnerNavLink>
-          <OwnerNavLink href="/owner/liabilities">Liabilities</OwnerNavLink>
-          <OwnerNavLink href="/owner/reports">Reports</OwnerNavLink>
-          <OwnerNavLink href="/owner/audit">Audit log</OwnerNavLink>
+        <nav className="flex flex-col gap-3 px-3 pb-4 md:pb-6">
+          <NavGroup label="Operations">
+            <OwnerNavLink href="/owner">Dashboard</OwnerNavLink>
+            <OwnerNavLink href="/owner/review">Pending Approval</OwnerNavLink>
+          </NavGroup>
+
+          <NavGroup label="Books">
+            <OwnerNavLink href="/owner/closings">Sales</OwnerNavLink>
+            <OwnerNavLink href="/owner/expenses">Purchases</OwnerNavLink>
+            <OwnerNavLink href="/owner/fixed-costs">Recurring Costs</OwnerNavLink>
+            <OwnerNavLink href="/owner/liabilities">Liabilities</OwnerNavLink>
+          </NavGroup>
+
+          <NavGroup label="Setup">
+            <OwnerNavLink href="/owner/suppliers">Vendors</OwnerNavLink>
+            <OwnerNavLink href="/owner/categories">Chart of Accounts</OwnerNavLink>
+            <OwnerNavLink href="/owner/baristas">Staff</OwnerNavLink>
+          </NavGroup>
+
+          <NavGroup label="Reporting">
+            <OwnerNavLink href="/owner/reports">Reports</OwnerNavLink>
+            <OwnerNavLink href="/owner/audit">Audit Trail</OwnerNavLink>
+          </NavGroup>
         </nav>
 
         <div className="hidden border-t border-neutral-200 py-4 md:block">
@@ -59,6 +70,23 @@ export default async function OwnerLayout({
       </aside>
 
       <main className="flex-1 overflow-x-hidden">{children}</main>
+    </div>
+  );
+}
+
+function NavGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+        {label}
+      </p>
+      <div className="flex flex-col gap-0.5">{children}</div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
-import { ReviewRowActions } from "./ReviewRowActions";
+import { RowActions } from "@/components/owner/RowActions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,6 +14,7 @@ type ClosingRow = {
   grand_total: number;
   status: string;
   notes: string | null;
+  photo_drive_url: string | null;
   baristas: { name: string } | null;
 };
 
@@ -27,6 +28,7 @@ type ExpenseRow = {
   payment_method: string;
   status: string;
   notes: string | null;
+  photo_drive_url: string | null;
   suppliers: { name: string } | null;
   baristas: { name: string } | null;
 };
@@ -39,7 +41,7 @@ function formatAed(n: number) {
 }
 
 function formatDate(d: string | null) {
-  if (!d) return "—";
+  if (!d) return "-";
   return new Date(d).toLocaleDateString("en-AE", {
     weekday: "short",
     day: "numeric",
@@ -54,14 +56,14 @@ export default async function OwnerReviewPage() {
     supabase
       .from("closings")
       .select(
-        "id, closing_date, cash_total, card_total, online_total, grand_total, status, notes, baristas(name)",
+        "id, closing_date, cash_total, card_total, online_total, grand_total, status, notes, photo_drive_url, baristas(name)",
       )
       .in("status", ["pending_review", "flagged"])
       .order("closing_date", { ascending: false }),
     supabase
       .from("expenses")
       .select(
-        "id, expense_date, invoice_number, subtotal, vat_amount, total, payment_method, status, notes, suppliers(name), baristas(name)",
+        "id, expense_date, invoice_number, subtotal, vat_amount, total, payment_method, status, notes, photo_drive_url, suppliers(name), baristas(name)",
       )
       .in("status", ["pending_review", "flagged"])
       .order("expense_date", { ascending: false }),
@@ -71,16 +73,8 @@ export default async function OwnerReviewPage() {
   const expenses = (expensesResult.data ?? []) as unknown as ExpenseRow[];
 
   type Item =
-    | {
-        kind: "closing";
-        sortDate: string;
-        row: ClosingRow;
-      }
-    | {
-        kind: "expense";
-        sortDate: string;
-        row: ExpenseRow;
-      };
+    | { kind: "closing"; sortDate: string; row: ClosingRow }
+    | { kind: "expense"; sortDate: string; row: ExpenseRow };
 
   const items: Item[] = [
     ...closings.map(
@@ -95,7 +89,7 @@ export default async function OwnerReviewPage() {
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-light tracking-tight">Review queue</h1>
+          <h1 className="text-2xl font-light tracking-tight">Pending Approval</h1>
           <p className="mt-1 text-sm text-neutral-500">
             {items.length} {items.length === 1 ? "item" : "items"} waiting on
             you
@@ -106,12 +100,7 @@ export default async function OwnerReviewPage() {
       {items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
           <p className="text-sm text-neutral-500">
-            Queue is empty. Items the AI is unsure about will land here for
-            your review.
-          </p>
-          <p className="mt-2 text-xs text-neutral-400">
-            Triggers: low confidence on a field, math does not reconcile,
-            future date, unknown supplier, anomaly vs history.
+            Queue is empty. Items the AI is unsure about land here.
           </p>
         </div>
       ) : (
@@ -128,7 +117,7 @@ export default async function OwnerReviewPage() {
 
       <p className="mt-6 text-xs text-neutral-400">
         <Link href="/owner" className="underline hover:text-strow-ink">
-          ← Dashboard
+          &larr; Dashboard
         </Link>
       </p>
     </div>
@@ -156,29 +145,29 @@ function ClosingCard({ row }: { row: ClosingRow }) {
         <div>
           <div className="flex items-center gap-2">
             <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-xs uppercase tracking-wider text-neutral-600">
-              Closing
+              Sale
             </span>
             <StatusPill status={row.status} />
           </div>
           <p className="mt-2 text-base font-medium">
-            {formatDate(row.closing_date)} · {formatAed(row.grand_total)}
+            {formatDate(row.closing_date)} - {formatAed(row.grand_total)}
           </p>
           <p className="mt-1 text-xs text-neutral-500">
-            Cash {formatAed(row.cash_total)} · Card {formatAed(row.card_total)}{" "}
-            · Online {formatAed(row.online_total)} · by{" "}
-            {row.baristas?.name ?? "—"}
+            Cash {formatAed(row.cash_total)} - Card{" "}
+            {formatAed(row.card_total)} - Online{" "}
+            {formatAed(row.online_total)} - by {row.baristas?.name ?? "-"}
           </p>
           {row.notes && (
-            <p className="mt-2 text-xs italic text-neutral-500">
-              "{row.notes}"
-            </p>
+            <p className="mt-2 text-xs italic text-neutral-500">{row.notes}</p>
           )}
         </div>
       </div>
       <div className="mt-3">
-        <ReviewRowActions
+        <RowActions
           type="closing"
           id={row.id}
+          status={row.status}
+          photoDriveUrl={row.photo_drive_url}
           fields={{
             closing_date: row.closing_date,
             cash_total: Number(row.cash_total),
@@ -199,32 +188,31 @@ function ExpenseCard({ row }: { row: ExpenseRow }) {
         <div>
           <div className="flex items-center gap-2">
             <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-xs uppercase tracking-wider text-neutral-600">
-              Expense
+              Bill
             </span>
             <StatusPill status={row.status} />
           </div>
           <p className="mt-2 text-base font-medium">
-            {formatDate(row.expense_date)} ·{" "}
-            {row.suppliers?.name ?? "Unknown supplier"} ·{" "}
-            {formatAed(row.total)}
+            {formatDate(row.expense_date)} -{" "}
+            {row.suppliers?.name ?? "Unknown vendor"} - {formatAed(row.total)}
           </p>
           <p className="mt-1 text-xs text-neutral-500">
             {row.payment_method.replace("_", " ")}
-            {row.invoice_number ? ` · #${row.invoice_number}` : ""}
-            {" · by "}
-            {row.baristas?.name ?? "—"}
+            {row.invoice_number ? ` - #${row.invoice_number}` : ""}
+            {" - by "}
+            {row.baristas?.name ?? "-"}
           </p>
           {row.notes && (
-            <p className="mt-2 text-xs italic text-neutral-500">
-              "{row.notes}"
-            </p>
+            <p className="mt-2 text-xs italic text-neutral-500">{row.notes}</p>
           )}
         </div>
       </div>
       <div className="mt-3">
-        <ReviewRowActions
+        <RowActions
           type="expense"
           id={row.id}
+          status={row.status}
+          photoDriveUrl={row.photo_drive_url}
           fields={{
             expense_date: row.expense_date,
             subtotal: Number(row.subtotal),

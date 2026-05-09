@@ -23,3 +23,13 @@ body {
   60% { transform: translateX(-4px); }
   80% { transform: translateX(4px); }
 }
+
+/* Print-friendly stylesheet so reports save cleanly as PDF. */
+@media print {
+  body { background: white; }
+  aside { display: none !important; }
+  main { width: 100% !important; }
+  .print\:hidden { display: none !important; }
+  .rounded-2xl { border-radius: 0 !important; }
+  .border { border-color: #ddd !important; }
+}

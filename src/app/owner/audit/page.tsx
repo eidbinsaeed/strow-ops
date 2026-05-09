@@ -49,7 +49,7 @@ export default async function OwnerAuditPage() {
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-light tracking-tight">Audit log</h1>
+          <h1 className="text-2xl font-light tracking-tight">Audit Trail</h1>
           <p className="mt-1 text-sm text-neutral-500">
             {entries.length === 200
               ? "Last 200 entries"
