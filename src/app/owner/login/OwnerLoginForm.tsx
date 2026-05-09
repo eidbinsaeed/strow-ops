@@ -1,57 +1,55 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { requestOwnerMagicLink } from "./actions";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Numpad } from "@/components/Numpad";
 
 export function OwnerLoginForm() {
-  const [pending, startTransition] = useTransition();
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [confirmation, setConfirmation] = useState<string | null>(null);
+  const [shake, setShake] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handle(formData: FormData) {
+  async function handlePin(pin: string) {
+    if (submitting) return;
+    setSubmitting(true);
     setError(null);
-    setConfirmation(null);
-    startTransition(async () => {
-      const result = await requestOwnerMagicLink(formData);
-      if ("error" in result && result.error) {
-        setError(result.error);
+    try {
+      const res = await fetch("/api/auth/owner-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      if (res.ok) {
+        router.replace("/owner");
+        router.refresh();
         return;
       }
-      if ("message" in result && result.message) {
-        setConfirmation(result.message);
-      }
-    });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setError(
+        data.error === "invalid_pin"
+          ? "Wrong PIN. Try again."
+          : "Could not sign in. Try again.",
+      );
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+    } catch {
+      setError("Network error. Try again.");
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <form action={handle} className="space-y-3">
-      <input
-        type="email"
-        name="email"
-        required
-        autoFocus
-        autoComplete="email"
-        placeholder="you@example.com"
-        className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:border-strow-ink focus:outline-none"
-      />
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-lg bg-strow-ink px-4 py-2.5 text-sm font-medium text-white transition active:scale-[0.99] disabled:opacity-50"
-      >
-        {pending ? "Sending…" : "Send magic link"}
-      </button>
-
+    <div className="flex flex-col items-center gap-6">
+      <Numpad onComplete={handlePin} pinLength={4} shake={shake} />
       {error && (
-        <div className="rounded-lg bg-red-50 p-3 text-xs text-red-700">
+        <div className="rounded-lg bg-red-50 px-4 py-2 text-xs text-red-700">
           {error}
         </div>
       )}
-      {confirmation && (
-        <div className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">
-          {confirmation}
-        </div>
-      )}
-    </form>
+    </div>
   );
 }

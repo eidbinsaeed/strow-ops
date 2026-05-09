@@ -1,39 +1,41 @@
 /**
- * Owner session helper — reads the current owner from Supabase Auth.
+ * Owner session helper.
  *
+ * Reads the owner session cookie minted by /api/auth/owner-login.
  * Used by:
  *   - middleware.ts to gate /owner/**
- *   - server actions to attribute audit log entries to the right owner
+ *   - server actions to attribute audit log entries
+ *
+ * Single-owner v1: the cookie just proves the client passed PIN auth.
+ * No per-owner identity yet - all owner audit entries record actor_type
+ * "owner" with actor_id null until per-owner identity ships.
  */
-import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { verifyOwnerSession, OWNER_COOKIE_NAME } from "./owner-jwt";
 
 export type OwnerSession = {
-  id: string;
-  email: string;
+  kind: "owner";
 };
 
 export async function getOwnerSession(): Promise<OwnerSession | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || !user.email) return null;
-  return { id: user.id, email: user.email };
+  const cookieStore = await cookies();
+  const token = cookieStore.get(OWNER_COOKIE_NAME)?.value;
+  if (!token) return null;
+  return verifyOwnerSession(token);
 }
 
 /**
  * For audit log calls from owner-side mutations.
- *
- * Returns `{ id, type: 'owner' }` if signed in.
- * Returns `{ id: null, type: 'system' }` otherwise — used as a transitional
- * fallback while owner auth is being wired in. Once /owner/** is gated, the
- * `null` branch should never fire in practice.
+ * - Returns { id: null, type: "owner" } when signed in.
+ * - Returns { id: null, type: "system" } when not (server actions invoked
+ *   outside an authed session, e.g. callbacks). Once /owner/** is gated,
+ *   the system branch shouldn't fire in practice.
  */
 export async function getOwnerActor(): Promise<{
   id: string | null;
   type: "owner" | "system";
 }> {
   const session = await getOwnerSession();
-  if (session) return { id: session.id, type: "owner" };
+  if (session) return { id: null, type: "owner" };
   return { id: null, type: "system" };
 }

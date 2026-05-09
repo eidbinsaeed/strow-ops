@@ -57,10 +57,9 @@ export default async function BaristaTodayPage({
 
   const supabase = createServiceClient();
 
-  // Use UAE-local "today" — the closings/expenses table stores dates as DATE,
-  // which we want to filter on the local calendar day, not UTC midnight.
-  const today = new Date()
-    .toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); // YYYY-MM-DD
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Dubai",
+  });
 
   const [closingsResult, expensesResult] = await Promise.all([
     supabase
@@ -71,9 +70,7 @@ export default async function BaristaTodayPage({
       .order("created_at", { ascending: false }),
     supabase
       .from("expenses")
-      .select(
-        "id, expense_date, total, status, created_at, suppliers(name)"
-      )
+      .select("id, expense_date, total, status, created_at, suppliers(name)")
       .eq("barista_id", session.bid)
       .eq("expense_date", today)
       .order("created_at", { ascending: false }),
@@ -91,22 +88,32 @@ export default async function BaristaTodayPage({
           href="/home"
           className="text-sm text-neutral-500 transition hover:text-strow-ink"
         >
-          ← Back
+          &larr; Back
         </Link>
         <p className="text-sm text-neutral-500">Today</p>
       </header>
 
       <div className="mx-auto w-full max-w-md flex-1 py-8">
-        {justSubmitted && (
+        {justSubmitted === "closing" && (
           <div className="mb-6 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
-            ✓ {justSubmitted === "closing" ? "Close" : "Expense"} submitted.
-            Nice work, {session.name}.
+            Close submitted. Nice work, {session.name}.
+          </div>
+        )}
+        {justSubmitted === "expense" && (
+          <div className="mb-6 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
+            Expense submitted. Nice work, {session.name}.
+          </div>
+        )}
+        {(justSubmitted === "closing-queued" ||
+          justSubmitted === "expense-queued") && (
+          <div className="mb-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+            Saved offline. We&apos;ll send it the moment your wifi comes back.
           </div>
         )}
 
         <h1 className="mb-1 text-xl font-medium">Your submissions today</h1>
         <p className="mb-6 text-sm text-neutral-500">
-          Hi {session.name} — here is what you have logged today.
+          Hi {session.name} - here is what you have logged today.
         </p>
 
         {isEmpty ? (
@@ -180,7 +187,7 @@ export default async function BaristaTodayPage({
                           {formatAed(Number(e.total))}
                         </p>
                         <p className="text-xs text-neutral-500">
-                          {e.suppliers?.name ?? "Supplier"} ·{" "}
+                          {e.suppliers?.name ?? "Supplier"} -{" "}
                           {formatTime(e.created_at)}
                         </p>
                       </div>

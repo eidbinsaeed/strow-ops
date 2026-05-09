@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { OWNER_COOKIE_NAME } from "@/lib/auth/owner-jwt";
+
+export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
   const url = request.nextUrl.clone();
   url.pathname = "/owner/login";
   url.search = "";
-  return NextResponse.redirect(url, { status: 303 });
+  const response = NextResponse.redirect(url, { status: 303 });
+  response.cookies.set(OWNER_COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+  return response;
 }

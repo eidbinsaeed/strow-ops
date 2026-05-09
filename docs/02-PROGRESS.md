@@ -213,3 +213,48 @@ Both barista flows now ship with Claude OCR end-to-end.
 
 **Owner authentication (Supabase magic link + email allowlist):**
 - N
+## Session 6 (continued) - 2026-05-09
+**Outcome:** Phase 1 closed end-to-end. Owner auth swapped to PIN (no email), review queue is fully editable, Drive photo sync, PWA shell, and offline submit queue all shipped.
+
+**Done:**
+
+**Owner auth - replaced magic link with PIN.**
+- Dropped Supabase Auth + magic-link entirely. Owner now signs in with a PIN at /owner/login using the same numpad UI baristas already use.
+- New env var: OWNER_PIN (4-8 digits). If unset, no one can sign in.
+- Custom JWT cookie (separate from barista cookie), 12h TTL, signed with SESSION_JWT_SECRET. Constant-time comparison on the PIN.
+- Middleware updated to check the new owner JWT cookie. Magic-link callback route, allowlist, and login server action all deleted.
+
+**Review queue - fully actionable.**
+- /owner/review now renders cards (closing or expense), each with four buttons:
+  - Confirm: status -> confirmed, audit logs "confirmed".
+  - Edit: opens a modal dialog with the row's editable fields (closing_date, totals, notes for closings; expense_date, supplier amounts, payment_method, invoice_number, notes for expenses). Saves with audit before/after snapshot.
+  - Reject: status -> rejected, with confirm prompt. Audit logs "rejected".
+  - Delete: hard-delete the row, audit logs "deleted" with the full row before-state captured first so the audit trail keeps it forever.
+
+**Drive photo sync.**
+- src/lib/drive/upload.ts: uploads receipt JPEG to /Strow/<location_slug>/<YYYY-MM>/<closings|expenses>/<id>.jpg via googleapis. Returns Drive file id, displayPath, viewUrl. Idempotent folder creates.
+- scripts/get-drive-refresh-token.mjs: one-time CLI helper that walks through OAuth and prints GOOGLE_DRIVE_REFRESH_TOKEN. Run once, paste the token into Vercel + .env.local.
+- Photo data URL is now threaded through the close + expense submission flows as hidden form fields. After insert, the action calls uploadReceiptPhoto and patches photo_drive_url + photo_drive_path on the row. Failures don't block the submission - upload is best-effort.
+- isDriveConfigured() guards the call: if env vars are missing, the row simply ships with null photo URLs and the rest of the flow is unaffected.
+
+**PWA shell.**
+- public/manifest.webmanifest with name, scope, start_url=/today, display=standalone, theme color, three icon sizes (192, 512, maskable-512 - generated as solid-mark PNGs).
+- public/sw.js with stale-while-revalidate cache for static assets, network-only for /api/*, /owner/*, /login, /today (auth-sensitive routes).
+- src/components/ServiceWorkerRegistrar.tsx registers the SW in production only.
+- Layout now links the manifest, ships the registrar, and includes Apple-touch icon metadata.
+
+**Offline submit queue (Phase 1.5).**
+- src/lib/offline/queue.ts: IndexedDB-backed FormData queue. enqueueSubmission, listQueued, deleteQueued, drainQueue.
+- /api/queue/replay-closing and /api/queue/replay-expense: thin route handlers that re-enter the existing submitClosing/submitExpense server actions, catching the NEXT_REDIRECT and returning JSON.
+- src/components/OfflineQueueRunner.tsx: drains on mount, on `online` event, and on visibility-change. Mounted at the app root in layout.tsx.
+- CloseFlow + ExpenseFlow detect navigator.onLine === false at submit time and enqueue instead of POSTing. Redirect to /today?submitted={kind}-queued. /today shows an amber "Saved offline" banner.
+
+**Owner action items (must do for full prod):**
+1. Set OWNER_PIN in Vercel env vars.
+2. Run `node scripts/get-drive-refresh-token.mjs` locally once, paste the resulting GOOGLE_DRIVE_REFRESH_TOKEN + GOOGLE_DRIVE_ROOT_FOLDER_ID into Vercel.
+3. Vercel will auto-deploy from main. After deploy, set OWNER_EMAILS to blank (no longer used) and remove the Supabase redirect URL if you want.
+
+**Open punch list:**
+- Supabase Auth and OWNER_EMAILS are no longer used at runtime. They can stay in env if you want to ressurect magic link later, but the code path is gone.
+- OCR prompt calibration still blocked on a real Qave receipt sample.
+- `owners` table row not auto-populated (still tolerable - owner audit entries log actor_type=owner with actor_id null).

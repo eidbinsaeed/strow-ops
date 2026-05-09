@@ -1,8 +1,10 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { submitExpense } from "./actions";
+import { enqueueSubmission } from "@/lib/offline/queue";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -67,13 +69,15 @@ export function ExpenseFlow({
   suppliers: Supplier[];
   categories: Category[];
 }) {
+  const router = useRouter();
   const [stage, setStage] = useState<Stage>("capture");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [imageMediaType, setImageMediaType] = useState<string>("image/jpeg");
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, startSubmitTransition] = useTransition();
   const [supplierMode, setSupplierMode] = useState<"existing" | "new">(
-    "existing"
+    "existing",
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -82,6 +86,7 @@ export function ExpenseFlow({
 
     const dataUrl = await fileToBase64(file);
     setImageDataUrl(dataUrl);
+    setImageMediaType(file.type || "image/jpeg");
     setStage("processing");
 
     try {
@@ -105,11 +110,10 @@ export function ExpenseFlow({
       const ext = json.extracted as Extracted;
       setExtracted(ext);
 
-      // Auto-pick supplier mode based on whether AI-detected name matches existing
       if (ext.supplier_name) {
         const matched = suppliers.find(
           (s) =>
-            s.name.toLowerCase() === ext.supplier_name?.toLowerCase().trim()
+            s.name.toLowerCase() === ext.supplier_name?.toLowerCase().trim(),
         );
         setSupplierMode(matched ? "existing" : "new");
       }
@@ -117,7 +121,7 @@ export function ExpenseFlow({
       setStage("review");
     } catch (e) {
       setErrorMsg(
-        e instanceof Error ? e.message : "Network error during extraction"
+        e instanceof Error ? e.message : "Network error during extraction",
       );
       setStage("capture");
     }
@@ -126,6 +130,20 @@ export function ExpenseFlow({
   function handleSubmitForm(formData: FormData) {
     setErrorMsg(null);
     startSubmitTransition(async () => {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        try {
+          await enqueueSubmission("expense", formData);
+          router.replace("/today?submitted=expense-queued");
+          return;
+        } catch (e) {
+          setErrorMsg(
+            e instanceof Error
+              ? `Could not queue offline: ${e.message}`
+              : "Could not queue offline.",
+          );
+          return;
+        }
+      }
       const result = await submitExpense(formData);
       if (result?.error) setErrorMsg(result.error);
     });
@@ -140,14 +158,13 @@ export function ExpenseFlow({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  // ─── STAGE: CAPTURE ────────────────────────────────────────────
   if (stage === "capture") {
     return (
       <div className="mx-auto w-full max-w-md flex-1 py-8">
         <h1 className="text-xl font-medium">Log expense</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Hi {baristaName}. Snap a photo of the supplier invoice or receipt and
-          the AI will read it for you.
+          Hi {baristaName}. Snap a photo of the supplier invoice or receipt
+          and the AI will read it for you.
         </p>
 
         {errorMsg && (
@@ -186,7 +203,6 @@ export function ExpenseFlow({
     );
   }
 
-  // ─── STAGE: PROCESSING ─────────────────────────────────────────
   if (stage === "processing") {
     return (
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 py-12">
@@ -202,14 +218,13 @@ export function ExpenseFlow({
         )}
         <div className="flex items-center gap-3 text-sm text-neutral-600">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-200 border-t-strow-ink" />
-          Reading your receipt…
+          Reading your receipt...
         </div>
-        <p className="text-xs text-neutral-400">Usually takes 5–10 seconds</p>
+        <p className="text-xs text-neutral-400">Usually takes 5-10 seconds</p>
       </div>
     );
   }
 
-  // ─── STAGE: REVIEW ─────────────────────────────────────────────
   const c = extracted?.confidence ?? {};
   const dateConf: Confidence = c.expense_date ?? "medium";
   const supplierConf: Confidence = c.supplier_name ?? "medium";
@@ -219,19 +234,17 @@ export function ExpenseFlow({
   const invoiceConf: Confidence = c.invoice_number ?? "medium";
   const paymentConf: Confidence = c.payment_method ?? "medium";
 
-  // Pre-select category by hint
   const hintedCategoryId = extracted?.category_hint
     ? categories.find(
         (cat) =>
-          cat.name.toLowerCase() === extracted.category_hint?.toLowerCase()
+          cat.name.toLowerCase() === extracted.category_hint?.toLowerCase(),
       )?.id
     : undefined;
 
-  // Pre-select existing supplier by name match
   const matchedSupplier = extracted?.supplier_name
     ? suppliers.find(
         (s) =>
-          s.name.toLowerCase() === extracted.supplier_name?.toLowerCase().trim()
+          s.name.toLowerCase() === extracted.supplier_name?.toLowerCase().trim(),
       )
     : undefined;
 
@@ -265,7 +278,7 @@ export function ExpenseFlow({
       )}
 
       <p className="mb-4 text-xs text-neutral-500">
-        Green = AI confident · Amber = please verify · Red = please correct
+        Green = AI confident. Amber = please verify. Red = please correct.
       </p>
 
       {errorMsg && (
@@ -280,8 +293,17 @@ export function ExpenseFlow({
           name="ai_confidence"
           value={JSON.stringify(c)}
         />
+        <input
+          type="hidden"
+          name="photo_data_url"
+          value={imageDataUrl ?? ""}
+        />
+        <input
+          type="hidden"
+          name="photo_media_type"
+          value={imageMediaType}
+        />
 
-        {/* SUPPLIER */}
         <div>
           <div className="mb-1 flex items-center justify-between">
             <label className="text-xs font-medium text-neutral-600">
@@ -332,7 +354,7 @@ export function ExpenseFlow({
               required={supplierMode === "existing"}
               className={`w-full rounded-xl border-2 bg-white px-3 py-2.5 text-base focus:outline-none ${CONFIDENCE_BORDER[supplierConf]} focus:border-strow-ink`}
             >
-              <option value="">Pick a supplier…</option>
+              <option value="">Pick a supplier...</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -351,13 +373,12 @@ export function ExpenseFlow({
           )}
         </div>
 
-        {/* CATEGORY */}
         <div>
           <label className="mb-1 block text-xs font-medium text-neutral-600">
             Category{" "}
             {extracted?.category_hint && (
               <span className="text-neutral-400">
-                · AI suggests: {extracted.category_hint}
+                - AI suggests: {extracted.category_hint}
               </span>
             )}
           </label>
@@ -366,7 +387,7 @@ export function ExpenseFlow({
             defaultValue={hintedCategoryId ?? ""}
             className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-base focus:border-strow-ink focus:outline-none"
           >
-            <option value="">Pick a category…</option>
+            <option value="">Pick a category...</option>
             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>
                 {cat.name}
@@ -424,7 +445,6 @@ export function ExpenseFlow({
           required
         />
 
-        {/* PAYMENT METHOD */}
         <div>
           <div className="mb-1 flex items-center justify-between">
             <label className="text-xs font-medium text-neutral-600">
@@ -486,7 +506,7 @@ export function ExpenseFlow({
           disabled={isSubmitting}
           className="mt-2 w-full rounded-xl bg-strow-ink px-4 py-3.5 text-base font-medium text-white transition active:scale-95 disabled:opacity-50"
         >
-          {isSubmitting ? "Submitting…" : "Submit expense"}
+          {isSubmitting ? "Submitting..." : "Submit expense"}
         </button>
 
         <p className="text-center text-xs text-neutral-400">

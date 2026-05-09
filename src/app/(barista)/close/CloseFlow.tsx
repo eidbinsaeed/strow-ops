@@ -1,8 +1,10 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { submitClosing } from "./actions";
+import { enqueueSubmission } from "@/lib/offline/queue";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -60,14 +62,15 @@ function formatAed(n: number) {
 }
 
 export function CloseFlow({ baristaName }: { baristaName: string }) {
+  const router = useRouter();
   const [stage, setStage] = useState<Stage>("capture");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [imageMediaType, setImageMediaType] = useState<string>("image/jpeg");
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, startSubmitTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Controlled state for the three sub-totals so we can compute grand total live.
   const [cashTotal, setCashTotal] = useState("");
   const [cardTotal, setCardTotal] = useState("");
   const [onlineTotal, setOnlineTotal] = useState("");
@@ -77,6 +80,7 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
 
     const dataUrl = await fileToBase64(file);
     setImageDataUrl(dataUrl);
+    setImageMediaType(file.type || "image/jpeg");
     setStage("processing");
 
     try {
@@ -105,7 +109,7 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
       setStage("review");
     } catch (e) {
       setErrorMsg(
-        e instanceof Error ? e.message : "Network error during extraction"
+        e instanceof Error ? e.message : "Network error during extraction",
       );
       setStage("capture");
     }
@@ -114,6 +118,21 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
   function handleSubmitForm(formData: FormData) {
     setErrorMsg(null);
     startSubmitTransition(async () => {
+      // Offline? Stash the submission for later replay.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        try {
+          await enqueueSubmission("closing", formData);
+          router.replace("/today?submitted=closing-queued");
+          return;
+        } catch (e) {
+          setErrorMsg(
+            e instanceof Error
+              ? `Could not queue offline: ${e.message}`
+              : "Could not queue offline.",
+          );
+          return;
+        }
+      }
       const result = await submitClosing(formData);
       if (result?.error) setErrorMsg(result.error);
     });
@@ -130,7 +149,6 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  // ─── STAGE: CAPTURE ────────────────────────────────────────────
   if (stage === "capture") {
     return (
       <div className="mx-auto w-full max-w-md flex-1 py-8">
@@ -174,14 +192,13 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
         />
 
         <p className="mt-6 text-xs text-neutral-400">
-          Photo stays on your phone until you confirm. AI extraction takes about
-          5 seconds.
+          Photo stays on your phone until you confirm. AI extraction takes
+          about 5 seconds.
         </p>
       </div>
     );
   }
 
-  // ─── STAGE: PROCESSING ─────────────────────────────────────────
   if (stage === "processing") {
     return (
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 py-12">
@@ -197,28 +214,24 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
         )}
         <div className="flex items-center gap-3 text-sm text-neutral-600">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-200 border-t-strow-ink" />
-          Reading your close sheet…
+          Reading your close sheet...
         </div>
-        <p className="text-xs text-neutral-400">Usually takes 5–10 seconds</p>
+        <p className="text-xs text-neutral-400">Usually takes 5-10 seconds</p>
       </div>
     );
   }
 
-  // ─── STAGE: REVIEW ─────────────────────────────────────────────
   const c = extracted?.confidence ?? {};
   const cashConf: Confidence = c.cash_total ?? "medium";
   const cardConf: Confidence = c.card_total ?? "medium";
   const onlineConf: Confidence = c.online_total ?? "medium";
   const dateConf: Confidence = c.closing_date ?? "medium";
 
-  // Live-computed grand total — single source of truth.
-  // Treats empty input as 0 so partial entry still produces a valid sum.
   const computedGrand =
     (parseFloat(cashTotal) || 0) +
     (parseFloat(cardTotal) || 0) +
     (parseFloat(onlineTotal) || 0);
 
-  // Sanity check vs AI-extracted grand_total — surface a hint if they disagree.
   const aiGrand = extracted?.grand_total ?? null;
   const grandMatchesAi =
     aiGrand == null || Math.abs(computedGrand - aiGrand) < 0.02;
@@ -253,7 +266,7 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
       )}
 
       <p className="mb-4 text-xs text-neutral-500">
-        Green = AI is confident · Amber = please verify · Red = please correct
+        Green = AI is confident. Amber = please verify. Red = please correct.
       </p>
 
       {errorMsg && (
@@ -264,6 +277,16 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
 
       <form action={handleSubmitForm} className="space-y-3">
         <input type="hidden" name="ai_confidence" value={JSON.stringify(c)} />
+        <input
+          type="hidden"
+          name="photo_data_url"
+          value={imageDataUrl ?? ""}
+        />
+        <input
+          type="hidden"
+          name="photo_media_type"
+          value={imageMediaType}
+        />
 
         <Field
           label="Closing date"
@@ -301,8 +324,6 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
           required
         />
 
-        {/* Grand total — live-computed, read-only.
-            The DB also computes it via a generated column, so we don't submit it. */}
         <div className="rounded-2xl bg-neutral-100 p-4">
           <div className="flex items-baseline justify-between">
             <span className="text-xs font-medium uppercase tracking-wider text-neutral-500">
@@ -317,7 +338,7 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
           </p>
           {!grandMatchesAi && aiGrand != null && (
             <p className="mt-2 text-xs text-amber-700">
-              ⚠ AI read the grand total as {formatAed(aiGrand)} on the receipt.
+              AI read the grand total as {formatAed(aiGrand)} on the receipt.
               The breakdown above adds up to {formatAed(computedGrand)}. Double
               check one of the sub-totals.
             </p>
@@ -368,7 +389,7 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
           disabled={isSubmitting}
           className="mt-2 w-full rounded-xl bg-strow-ink px-4 py-3.5 text-base font-medium text-white transition active:scale-95 disabled:opacity-50"
         >
-          {isSubmitting ? "Submitting…" : "Submit closing"}
+          {isSubmitting ? "Submitting..." : "Submit closing"}
         </button>
 
         <p className="text-center text-xs text-neutral-400">

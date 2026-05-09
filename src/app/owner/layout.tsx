@@ -46,7 +46,7 @@ export default async function OwnerLayout({
 
         <div className="hidden border-t border-neutral-200 py-4 md:block">
           {session ? (
-            <OwnerLogoutButton email={session.email} />
+            <OwnerLogoutButton />
           ) : (
             <Link
               href="/owner/login"

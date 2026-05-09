@@ -1,6 +1,6 @@
 "use client";
 
-export function OwnerLogoutButton({ email }: { email: string }) {
+export function OwnerLogoutButton() {
   return (
     <form
       action="/api/auth/owner-logout"
@@ -8,10 +8,7 @@ export function OwnerLogoutButton({ email }: { email: string }) {
       className="block w-full"
     >
       <div className="px-3 pb-2 text-[11px] uppercase tracking-wider text-neutral-400">
-        Signed in as
-      </div>
-      <div className="px-3 pb-3 text-xs text-neutral-700 break-all">
-        {email}
+        Signed in
       </div>
       <button
         type="submit"

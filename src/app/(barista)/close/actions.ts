@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
+import { uploadReceiptPhoto } from "@/lib/drive/upload";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -24,15 +25,6 @@ function parseNumberOrNull(raw: string | null): number | null {
   return isNaN(n) ? null : n;
 }
 
-/**
- * Derive submission status from per-field confidence.
- *
- * Note: grand_total is a GENERATED column in Postgres (computed as
- * cash + card + online), so by definition it always reconciles.
- * The only signal we have is the AI's confidence on the input fields.
- *
- * Per D5: high-confidence on every key field -> auto-confirm. Else -> owner reviews.
- */
 function deriveStatus(
   confidence: ConfidenceMap,
 ): "confirmed" | "pending_review" {
@@ -69,13 +61,16 @@ export async function submitClosing(formData: FormData) {
     formData.get("cash_float_end") as string | null,
   );
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  const photo_data_url = String(formData.get("photo_data_url") ?? "").trim();
+  const photo_media_type =
+    String(formData.get("photo_media_type") ?? "").trim() || "image/jpeg";
 
   let confidence: ConfidenceMap = {};
   try {
     const raw = String(formData.get("ai_confidence") ?? "{}");
     confidence = JSON.parse(raw) as ConfidenceMap;
   } catch {
-    // Ignore - defaults to pending_review
+    // ignore
   }
 
   if (!closing_date) return { error: "Closing date is required" };
@@ -90,11 +85,9 @@ export async function submitClosing(formData: FormData) {
   }
 
   const status = deriveStatus(confidence);
-
   const supabase = createServiceClient();
 
   // grand_total and over_short are GENERATED columns - never insert.
-  // photo_storage_url does not exist (Drive primary per D6).
   const { data: inserted, error } = await supabase
     .from("closings")
     .insert({
@@ -110,13 +103,42 @@ export async function submitClosing(formData: FormData) {
       ai_confidence: confidence,
       status,
     })
-    .select("id")
+    .select("id, location_id")
     .single();
 
   if (error || !inserted) {
     return {
       error: `Could not save closing: ${error?.message ?? "unknown error"}`,
     };
+  }
+
+  // Best-effort Drive upload + row patch. Failures don't undo the submission.
+  if (photo_data_url) {
+    const { data: loc } = await supabase
+      .from("locations")
+      .select("slug")
+      .eq("id", inserted.location_id)
+      .maybeSingle();
+    const slug = loc?.slug ?? "unknown";
+
+    const upload = await uploadReceiptPhoto({
+      imageDataUrl: photo_data_url,
+      mediaType: photo_media_type,
+      locationSlug: slug,
+      kind: "closings",
+      date: closing_date,
+      entityId: inserted.id,
+    });
+
+    if (upload) {
+      await supabase
+        .from("closings")
+        .update({
+          photo_drive_url: upload.viewUrl,
+          photo_drive_path: upload.displayPath,
+        })
+        .eq("id", inserted.id);
+    }
   }
 
   await writeAudit({

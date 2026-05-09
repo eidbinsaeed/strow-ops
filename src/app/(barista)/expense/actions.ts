@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
+import { uploadReceiptPhoto } from "@/lib/drive/upload";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -119,6 +120,9 @@ export async function submitExpense(formData: FormData) {
     formData.get("payment_method") ?? "",
   ).trim();
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  const photo_data_url = String(formData.get("photo_data_url") ?? "").trim();
+  const photo_media_type =
+    String(formData.get("photo_media_type") ?? "").trim() || "image/jpeg";
 
   if (!expense_date) return { error: "Expense date is required" };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expense_date)) {
@@ -140,7 +144,7 @@ export async function submitExpense(formData: FormData) {
     const raw = String(formData.get("ai_confidence") ?? "{}");
     confidence = JSON.parse(raw) as ConfidenceMap;
   } catch {
-    // ignore - defaults to pending_review
+    // ignore
   }
 
   const status = deriveStatus({
@@ -167,13 +171,42 @@ export async function submitExpense(formData: FormData) {
       ai_confidence: confidence,
       status,
     })
-    .select("id")
+    .select("id, location_id")
     .single();
 
   if (error || !inserted) {
     return {
       error: `Could not save expense: ${error?.message ?? "unknown error"}`,
     };
+  }
+
+  // Best-effort Drive upload + row patch.
+  if (photo_data_url) {
+    const { data: loc } = await supabase
+      .from("locations")
+      .select("slug")
+      .eq("id", inserted.location_id)
+      .maybeSingle();
+    const slug = loc?.slug ?? "unknown";
+
+    const upload = await uploadReceiptPhoto({
+      imageDataUrl: photo_data_url,
+      mediaType: photo_media_type,
+      locationSlug: slug,
+      kind: "expenses",
+      date: expense_date,
+      entityId: inserted.id,
+    });
+
+    if (upload) {
+      await supabase
+        .from("expenses")
+        .update({
+          photo_drive_url: upload.viewUrl,
+          photo_drive_path: upload.displayPath,
+        })
+        .eq("id", inserted.id);
+    }
   }
 
   await writeAudit({
