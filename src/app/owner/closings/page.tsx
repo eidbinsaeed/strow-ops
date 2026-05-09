@@ -63,9 +63,6 @@ export default async function OwnerClosingsPage() {
             recorded
           </p>
         </div>
-        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
-          Closings flow ships next session
-        </span>
       </header>
 
       {error ? (
@@ -75,11 +72,11 @@ export default async function OwnerClosingsPage() {
       ) : closings.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
           <p className="text-sm text-neutral-500">
-            No closings yet. Baristas submit end-of-day from{" "}
+            No closings yet. Baristas submit end-of-day from the{" "}
             <Link href="/login" className="underline">
-              strow.app/login
-            </Link>{" "}
-            once the close flow ships.
+              barista login
+            </Link>
+            .
           </p>
         </div>
       ) : (

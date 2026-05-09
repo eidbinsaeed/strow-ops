@@ -72,9 +72,6 @@ export default async function OwnerExpensesPage() {
             recorded · {formatAed(total)} total
           </p>
         </div>
-        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
-          Expense flow ships next session
-        </span>
       </header>
 
       {error ? (
@@ -84,8 +81,7 @@ export default async function OwnerExpensesPage() {
       ) : expenses.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
           <p className="text-sm text-neutral-500">
-            No expenses yet. Baristas log expenses from the home screen once
-            the expense flow ships.
+            No expenses yet. Baristas log expenses from the home screen.
           </p>
         </div>
       ) : (

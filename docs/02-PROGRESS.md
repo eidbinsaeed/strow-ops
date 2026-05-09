@@ -1,6 +1,6 @@
 # Strow Ops — Progress Log
 
-**Last updated:** 2026-05-09
+**Last updated:** 2026-05-09 (Session 5)
 
 ---
 
@@ -126,3 +126,74 @@ Both barista flows now ship with Claude OCR end-to-end.
 3. Audit log writes from all mutations
 4. Calibrate OCR prompts against real Qave receipt photos
 5. PWA shell + offline submit queue (Phase 1.5)
+
+## Session 5 — 2026-05-09
+**Outcome:** First real-world test exposed schema drift between the codebase and the live Supabase DB. Closing & expense submissions now actually work end-to-end.
+
+**Done:**
+- First end-to-end test of the close flow against live data. Submission failed → diagnosed three schema mismatches:
+  - `photo_storage_url` was in the insert payload but was never created on either table (D6 pivoted to Drive-only and the column was dropped from the migration).
+  - `grand_total` is a `GENERATED ALWAYS` column on `closings` — Postgres computes it from `cash_total + card_total + online_total` and rejects any write to it.
+  - `over_short` is also `GENERATED ALWAYS` on `closings`. Same rejection.
+- Removed all three from the close insert. Removed `photo_storage_url` from the expense insert.
+- Reworked `CloseFlow` review screen so the UX matches DB reality:
+  - Cash, card, and online stay as edit-able inputs with confidence colors.
+  - Grand total is now a live-computed read-only display block (`cash + card + online`) — single source of truth, updates as the barista types.
+  - If the AI's extracted `grand_total` from the receipt disagrees with the live sum by more than 0.02 AED, an amber hint surfaces ("AI read grand total as X, breakdown adds up to Y, double-check one of the sub-totals"). This catches a wrong sub-total without forcing a separate verify field.
+- Cleaned stale "ships next session" amber banners off `/owner/closings` and `/owner/expenses` — both flows shipped in Session 4.
+- Documented the fix in `07-KNOWN_ISSUES.md` under Resolved.
+
+**Commits:** `c58440a` (schema fix + grand-total UX).
+
+**Skipped / deferred:**
+- Audit log writes (still not wired — moved up the queue for Session 6).
+- Drive photo sync (still not wired).
+- Owner Supabase Auth gate (still open).
+
+**Owner action items (still open from Session 4):**
+1. Rotate compromised credentials (Anthropic + Google Drive client secret + legacy Whapi/Twilio).
+2. Send a real Qave end-of-day close sheet photo + a real supplier invoice photo to calibrate OCR prompts (Q2).
+3. Decide on owner auth approach: Supabase Auth magic link vs email/password.
+
+**Next session goals (carried over + refined):**
+1. Owner Supabase Auth (proper gating of `/owner/**`).
+2. Audit log writes from close, expense, and all owner CRUD mutations.
+3. Photo storage via Google Drive sync (needs Drive OAuth refresh token).
+4. Calibrate OCR prompts against real Qave receipt photos once samples arrive.
+5. PWA shell + offline submit queue (Phase 1.5).
+(Phase 1.5)
+
+## Session 5 — 2026-05-09
+**Outcome:** First real-world test exposed schema drift between the codebase and the live Supabase DB. Closing & expense submissions now actually work end-to-end.
+
+**Done:**
+- First end-to-end test of the close flow against live data. Submission failed → diagnosed three schema mismatches:
+  - `photo_storage_url` was in the insert payload but was never created on either table (D6 pivoted to Drive-only and the column was dropped from the migration).
+  - `grand_total` is a `GENERATED ALWAYS` column on `closings` — Postgres computes it from `cash_total + card_total + online_total` and rejects any write to it.
+  - `over_short` is also `GENERATED ALWAYS` on `closings`. Same rejection.
+- Removed all three from the close insert. Removed `photo_storage_url` from the expense insert.
+- Reworked `CloseFlow` review screen so the UX matches DB reality:
+  - Cash, card, and online stay as edit-able inputs with confidence colors.
+  - Grand total is now a live-computed read-only display block (`cash + card + online`) — single source of truth, updates as the barista types.
+  - If the AI's extracted `grand_total` from the receipt disagrees with the live sum by more than 0.02 AED, an amber hint surfaces ("AI read grand total as X, breakdown adds up to Y, double-check one of the sub-totals"). This catches a wrong sub-total without forcing a separate verify field.
+- Cleaned stale "ships next session" amber banners off `/owner/closings` and `/owner/expenses` — both flows shipped in Session 4.
+- Documented the fix in `07-KNOWN_ISSUES.md` under Resolved.
+
+**Commits:** `c58440a` (schema fix + grand-total UX), plus a follow-up cleanup commit for the stale banners and docs.
+
+**Skipped / deferred:**
+- Audit log writes (still not wired — moved up the queue for Session 6).
+- Drive photo sync (still not wired).
+- Owner Supabase Auth gate (still open).
+
+**Owner action items (still open from Session 4):**
+1. Rotate compromised credentials (Anthropic + Google Drive client secret + legacy Whapi/Twilio).
+2. Send a real Qave end-of-day close sheet photo + a real supplier invoice photo to calibrate OCR prompts (Q2).
+3. Decide on owner auth approach: Supabase Auth magic link vs email/password.
+
+**Next session goals (carried over + refined):**
+1. Owner Supabase Auth (proper gating of `/owner/**`).
+2. Audit log writes from close, expense, and all owner CRUD mutations.
+3. Photo storage via Google Drive sync (needs Drive OAuth refresh token).
+4. Calibrate OCR prompts against real Qave receipt photos once samples arrive.
+5. PWA shell + offline submit queue (Phase 1.5).
