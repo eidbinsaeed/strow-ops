@@ -1,6 +1,6 @@
 # Strow Ops — Known Issues & Tech Debt
 
-**Last updated:** 2026-05-09
+**Last updated:** 2026-05-09 (Session 6)
 
 ---
 
@@ -13,13 +13,14 @@
 - **Legacy credentials exposed in chat history.** Owner action: rotate before v1 deploy. Tracked in `08-CREDENTIALS_INVENTORY.md`.
 - **No real receipt sample yet.** Calibration of the extraction prompt is blocked on a photo of an actual Qave end-of-day close sheet.
 - **Desktop Commander stdout quirk on Windows.** External binary stdout doesn't pipe back through PowerShell wrapper; workaround is to redirect to a file and read via `Get-Content`. Affects scripted git/npm/node calls but not Desktop Commander's native `write_file`/`read_file` operations.
-- **Owner `/owner/**` routes are publicly accessible.** Risk accepted on the obscure vercel.app URL until owner Supabase Auth gate ships next session.
-- **Audit log not yet wired.** Submission flows (close, expense) and owner CRUD don't write to `audit_log` yet. Planned for Session 6.
 - **Photo storage not wired.** Photos are sent to Anthropic for extraction in-memory only, then discarded. `photo_drive_id` and `photo_drive_path` stay null until the Drive sync ships.
+- **`owners` row not auto-populated on first sign-in.** Supabase Auth creates an `auth.users` entry, but the app-level `public.owners` row is not created automatically. Tolerable until any owner-name display is needed.
 
 ## Resolved
 
-- **2026-05-09 — Schema drift on `closings` and `expenses` insert (commit `c58440a`).** Submissions failed against the live DB because the insert payload included three columns the live schema disagrees on:
+- **2026-05-09 (Session 6) — Owner `/owner/**` routes are now gated.** Magic-link sign-in via Supabase Auth, with an `OWNER_EMAILS` allowlist for double protection. Middleware enforces the gate on every `/owner/**` request except `/owner/login`. Callback double-checks the allowlist before granting access. (Was previously open on the obscure vercel.app URL.)
+- **2026-05-09 (Session 6) — Audit log writes are wired.** All barista submissions and owner CRUD mutations now write to `audit_log` via the `writeAudit` helper. Sensitive fields (PIN) are never logged.
+- **2026-05-09 (Session 5) — Schema drift on `closings` and `expenses` insert (commit `c58440a`).** Submissions failed against the live DB because the insert payload included three columns the live schema disagrees on:
   - `photo_storage_url` — never created (D6 pivoted to Drive-only). Dropped from inserts.
   - `grand_total` — defined in the live DB as a `GENERATED ALWAYS AS (cash_total + card_total + online_total)` column. Postgres rejects writes. Dropped from insert; reads still work.
   - `over_short` — same story (`GENERATED ALWAYS`). Dropped from insert.

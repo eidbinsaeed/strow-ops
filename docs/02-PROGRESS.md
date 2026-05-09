@@ -1,6 +1,6 @@
 # Strow Ops — Progress Log
 
-**Last updated:** 2026-05-09 (Session 5)
+**Last updated:** 2026-05-09 (Session 6)
 
 ---
 
@@ -197,3 +197,19 @@ Both barista flows now ship with Claude OCR end-to-end.
 3. Photo storage via Google Drive sync (needs Drive OAuth refresh token).
 4. Calibrate OCR prompts against real Qave receipt photos once samples arrive.
 5. PWA shell + offline submit queue (Phase 1.5).
+
+## Session 6 — 2026-05-09
+**Outcome:** Audit trail and owner authentication both shipped. The two highest-priority remaining gaps from Session 5 are closed.
+
+**Done:**
+
+**Audit log (`src/lib/audit/log.ts`):**
+- Generic helper `writeAudit({ actor_id, actor_type, action, entity_type, entity_id, before_state?, after_state? })` that writes to `audit_log` and never throws — audit failure must never block a successful business write.
+- Wired into every mutation:
+  - Barista close submission (`submitted_confirmed` or `submitted_pending`).
+  - Barista expense submission, plus a separate `auto_created` entry on `supplier` when a brand-new supplier is created from the expense flow.
+  - Owner CRUD on baristas (created, deactivated, reactivated, pin_rotated, shift_started, shift_ended), suppliers (created, deleted with `before_state` snapshot), categories (created, deactivated, reactivated), fixed_costs (created, deactivated, reactivated), liabilities (created, settled, reopened).
+- Sensitive details — like the actual PIN — are never logged. PIN rotation logs `pin_rotated` with no payload.
+
+**Owner authentication (Supabase magic link + email allowlist):**
+- N

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/server";
+import { writeAudit } from "@/lib/audit/log";
+import { getOwnerActor } from "@/lib/auth/owner-session";
 
 const KINDS = ["customer_held", "iou", "deferred_payment"] as const;
 type Kind = (typeof KINDS)[number];
@@ -29,31 +31,58 @@ export async function createLiability(formData: FormData) {
     .single();
   if (!location) return { error: "Default location not found" };
 
-  const { error } = await supabase.from("liabilities").insert({
-    location_id: location.id,
-    counterparty,
-    kind,
-    amount,
-    incurred_date,
-    status: "open",
-    notes,
+  const { data: inserted, error } = await supabase
+    .from("liabilities")
+    .insert({
+      location_id: location.id,
+      counterparty,
+      kind,
+      amount,
+      incurred_date,
+      status: "open",
+      notes,
+    })
+    .select("id")
+    .single();
+
+  if (error || !inserted) return { error: error?.message ?? "Insert failed" };
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: "created",
+    entity_type: "liability",
+    entity_id: inserted.id,
+    after_state: { counterparty, kind, amount, incurred_date },
   });
 
-  if (error) return { error: error.message };
   revalidatePath("/owner/liabilities");
   return { ok: true };
 }
 
 export async function settleLiability(id: string) {
   const supabase = createServiceClient();
+  const settled_date = new Date().toISOString().slice(0, 10);
   const { error } = await supabase
     .from("liabilities")
     .update({
       status: "settled",
-      settled_date: new Date().toISOString().slice(0, 10),
+      settled_date,
     })
     .eq("id", id);
   if (error) return { error: error.message };
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: "settled",
+    entity_type: "liability",
+    entity_id: id,
+    after_state: { status: "settled", settled_date },
+  });
+
   revalidatePath("/owner/liabilities");
   return { ok: true };
 }
@@ -65,6 +94,17 @@ export async function reopenLiability(id: string) {
     .update({ status: "open", settled_date: null })
     .eq("id", id);
   if (error) return { error: error.message };
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: "reopened",
+    entity_type: "liability",
+    entity_id: id,
+    after_state: { status: "open", settled_date: null },
+  });
+
   revalidatePath("/owner/liabilities");
   return { ok: true };
 }

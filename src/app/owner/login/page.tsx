@@ -1,6 +1,27 @@
 import Link from "next/link";
+import { OwnerLoginForm } from "./OwnerLoginForm";
 
-export default function OwnerLoginPage() {
+export const dynamic = "force-dynamic";
+
+const ERROR_MESSAGES: Record<string, string> = {
+  not_authorized:
+    "That email isn't on the owner allowlist. If you think this is a mistake, contact the account owner.",
+  exchange_failed:
+    "That sign-in link has expired or has already been used. Request a new one.",
+  missing_code: "The sign-in link looked malformed. Request a new one.",
+};
+
+export default async function OwnerLoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const errorKey = params.error;
+  const errorMessage = errorKey
+    ? (ERROR_MESSAGES[errorKey] ?? errorKey.replace(/_/g, " "))
+    : null;
+
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
@@ -10,39 +31,25 @@ export default function OwnerLoginPage() {
         </div>
 
         <div className="rounded-2xl border border-neutral-200 bg-white p-6">
-          <div className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
-            Owner authentication wires next session — email magic link via
-            Supabase Auth. For now the owner shell is open for navigation.
-          </div>
+          {errorMessage && (
+            <div className="mb-4 rounded-lg bg-red-50 p-3 text-xs text-red-700">
+              {errorMessage}
+            </div>
+          )}
 
-          <div className="space-y-3">
-            <input
-              type="email"
-              disabled
-              placeholder="you@example.com"
-              className="w-full rounded-lg border border-neutral-300 bg-neutral-50 px-3 py-2.5 text-sm text-neutral-400"
-            />
-            <button
-              type="button"
-              disabled
-              className="w-full rounded-lg bg-strow-ink px-4 py-2.5 text-sm font-medium text-white opacity-50"
-            >
-              Send magic link
-            </button>
-          </div>
+          <p className="mb-4 text-sm text-neutral-600">
+            Enter your email. If you&apos;re on the owner allowlist, we&apos;ll
+            send a one-tap sign-in link.
+          </p>
 
-          <div className="mt-6 border-t border-neutral-200 pt-4 text-center">
-            <Link
-              href="/owner"
-              className="text-sm text-neutral-500 underline hover:text-strow-ink"
-            >
-              Browse owner shell anyway
-            </Link>
-          </div>
+          <OwnerLoginForm />
         </div>
 
         <div className="mt-6 text-center text-xs text-neutral-400">
-          Barista? <Link href="/login" className="underline">Go to barista login</Link>
+          Barista?{" "}
+          <Link href="/login" className="underline">
+            Go to barista login
+          </Link>
         </div>
       </div>
     </div>

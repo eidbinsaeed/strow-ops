@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/server";
+import { writeAudit } from "@/lib/audit/log";
+import { getOwnerActor } from "@/lib/auth/owner-session";
 
 const KINDS = ["salary", "rent", "utility", "subscription", "other"] as const;
 const FREQUENCIES = ["monthly", "quarterly", "annual", "one_time"] as const;
@@ -27,7 +29,7 @@ export async function createFixedCost(formData: FormData) {
 
   const due_day = parseInt(dueDayRaw, 10);
   if (isNaN(due_day) || due_day < 1 || due_day > 31)
-    return { error: "Due day must be 1–31" };
+    return { error: "Due day must be 1-31" };
 
   const supabase = createServiceClient();
   const { data: location } = await supabase
@@ -37,18 +39,33 @@ export async function createFixedCost(formData: FormData) {
     .single();
   if (!location) return { error: "Default location not found" };
 
-  const { error } = await supabase.from("fixed_costs").insert({
-    location_id: location.id,
-    name,
-    kind,
-    amount,
-    frequency,
-    due_day,
-    linked_barista_id: kind === "salary" ? linked_barista_id : null,
-    is_active: true,
+  const { data: inserted, error } = await supabase
+    .from("fixed_costs")
+    .insert({
+      location_id: location.id,
+      name,
+      kind,
+      amount,
+      frequency,
+      due_day,
+      linked_barista_id: kind === "salary" ? linked_barista_id : null,
+      is_active: true,
+    })
+    .select("id")
+    .single();
+
+  if (error || !inserted) return { error: error?.message ?? "Insert failed" };
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: "created",
+    entity_type: "fixed_cost",
+    entity_id: inserted.id,
+    after_state: { name, kind, amount, frequency, due_day },
   });
 
-  if (error) return { error: error.message };
   revalidatePath("/owner/fixed-costs");
   return { ok: true };
 }
@@ -60,6 +77,16 @@ export async function deactivateFixedCost(id: string) {
     .update({ is_active: false })
     .eq("id", id);
   if (error) return { error: error.message };
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: "deactivated",
+    entity_type: "fixed_cost",
+    entity_id: id,
+  });
+
   revalidatePath("/owner/fixed-costs");
   return { ok: true };
 }
@@ -71,6 +98,16 @@ export async function reactivateFixedCost(id: string) {
     .update({ is_active: true })
     .eq("id", id);
   if (error) return { error: error.message };
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: "reactivated",
+    entity_type: "fixed_cost",
+    entity_id: id,
+  });
+
   revalidatePath("/owner/fixed-costs");
   return { ok: true };
 }

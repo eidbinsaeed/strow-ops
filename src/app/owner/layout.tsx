@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { OwnerNavLink } from "@/components/owner/OwnerNavLink";
+import { OwnerLogoutButton } from "@/components/owner/OwnerLogoutButton";
+import { getOwnerSession } from "@/lib/auth/owner-session";
 
-export default function OwnerLayout({
+export default async function OwnerLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await getOwnerSession();
+
   return (
     <div className="flex min-h-dvh flex-col md:flex-row">
       <aside className="border-b border-neutral-200 bg-white md:w-64 md:flex-shrink-0 md:border-b-0 md:border-r">
@@ -16,12 +20,14 @@ export default function OwnerLayout({
             </Link>
             <p className="text-xs text-neutral-500">Owner</p>
           </div>
-          <Link
-            href="/owner/login"
-            className="text-xs text-neutral-500 hover:text-strow-ink md:hidden"
-          >
-            Sign in
-          </Link>
+          {!session && (
+            <Link
+              href="/owner/login"
+              className="text-xs text-neutral-500 hover:text-strow-ink md:hidden"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
 
         <nav className="flex flex-wrap gap-1 px-3 pb-4 md:flex-col md:gap-0.5 md:pb-6">
@@ -38,13 +44,17 @@ export default function OwnerLayout({
           <OwnerNavLink href="/owner/audit">Audit log</OwnerNavLink>
         </nav>
 
-        <div className="hidden border-t border-neutral-200 px-3 py-4 md:block">
-          <Link
-            href="/owner/login"
-            className="block rounded-md px-3 py-2 text-sm text-neutral-500 hover:bg-neutral-100"
-          >
-            Sign in
-          </Link>
+        <div className="hidden border-t border-neutral-200 py-4 md:block">
+          {session ? (
+            <OwnerLogoutButton email={session.email} />
+          ) : (
+            <Link
+              href="/owner/login"
+              className="mx-3 block rounded-md px-3 py-2 text-sm text-neutral-500 hover:bg-neutral-100"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
       </aside>
 
