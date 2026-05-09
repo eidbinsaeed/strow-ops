@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
-import { TableFilters, parseFilters } from "@/components/owner/TableFilters";
+import { Suspense } from "react";
+import { TableFilters } from "@/components/owner/TableFilters";
+import { parseFilters } from "@/lib/filters";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -102,7 +104,7 @@ export default async function OwnerPurchasesPage({
         </div>
       </header>
 
-      <TableFilters searchPlaceholder="Search vendor, invoice, or note..." />
+      <Suspense fallback={null}><TableFilters searchPlaceholder="Search vendor, invoice, or note..." /></Suspense>
 
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">

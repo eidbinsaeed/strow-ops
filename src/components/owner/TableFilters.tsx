@@ -143,26 +143,3 @@ export function TableFilters({
   );
 }
 
-/**
- * Reads filter params from URL on the server. Use in server components.
- */
-export type FilterParams = {
-  q: string | null;
-  from: string | null;
-  to: string | null;
-  statuses: string[];
-};
-
-export function parseFilters(
-  searchParams: Record<string, string | undefined>,
-): FilterParams {
-  const q = searchParams.q?.trim() || null;
-  const from = searchParams.from?.trim() || null;
-  const to = searchParams.to?.trim() || null;
-  const statuses =
-    searchParams.status
-      ?.split(",")
-      .map((s) => s.trim())
-      .filter(Boolean) ?? [];
-  return { q, from, to, statuses };
-}
