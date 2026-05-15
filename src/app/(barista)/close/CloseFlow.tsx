@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { submitClosing } from "./actions";
 import { enqueueSubmission } from "@/lib/offline/queue";
+import { compressImage } from "@/lib/image";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -47,15 +48,6 @@ const CONFIDENCE_LABEL: Record<Confidence, string> = {
   low: "Please correct",
 };
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 function fmtNum(n: number | null | undefined): string {
   if (n == null) return "";
   return String(n);
@@ -86,26 +78,48 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
 
   async function handleFile(file: File) {
     setErrorMsg(null);
-
-    const dataUrl = await fileToBase64(file);
-    setImageDataUrl(dataUrl);
-    setImageMediaType(file.type || "image/jpeg");
     setStage("processing");
+
+    // Downscale + re-encode to JPEG before upload. Full-res phone photos are
+    // too large for the extract API and slow over café wifi.
+    let dataUrl: string;
+    let mediaType: string;
+    try {
+      const prepared = await compressImage(file);
+      dataUrl = prepared.dataUrl;
+      mediaType = prepared.mediaType;
+    } catch (e) {
+      setErrorMsg(
+        e instanceof Error
+          ? e.message
+          : "Could not read that photo. Please try again.",
+      );
+      setStage("capture");
+      return;
+    }
+    setImageDataUrl(dataUrl);
+    setImageMediaType(mediaType);
 
     try {
       const res = await fetch("/api/close/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: dataUrl,
-          mediaType: file.type || "image/jpeg",
-        }),
+        body: JSON.stringify({ image: dataUrl, mediaType }),
       });
 
-      const json = await res.json();
+      let json: { ok?: boolean; error?: string; extracted?: unknown };
+      try {
+        json = await res.json();
+      } catch {
+        setErrorMsg(
+          `The server sent back an unexpected response (status ${res.status}). Please try again.`,
+        );
+        setStage("capture");
+        return;
+      }
 
       if (!res.ok || !json.ok) {
-        setErrorMsg(json.error ?? "Extraction failed");
+        setErrorMsg(json.error ?? "Extraction failed. Please try again.");
         setStage("capture");
         return;
       }
