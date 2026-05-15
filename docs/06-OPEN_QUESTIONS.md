@@ -7,9 +7,9 @@ Format: question, status (waiting / answered / withdrawn), date asked.
 ---
 
 ### Q1 — Cash float handover protocol
-- **Asked:** 2026-05-08 · **Status:** Waiting (UI now supports it; protocol still undecided)
-- When a shift starts, does the barista enter the float they received from the previous shift, or is it set by the owner once and assumed constant?
-- **Update 2026-05-15:** the close flow now has visible, editable cash-float fields and the columns are nullable + NULL-safe, so per-shift entry is fully supported. Still need the owner's call on the *operational* protocol — should baristas be required to enter the float every shift, or only when it changes?
+- **Asked:** 2026-05-08 · **Status:** Withdrawn (2026-05-15)
+- Originally: when a shift starts, does the barista enter the float they received from the previous shift, or is it set by the owner once?
+- **Withdrawn:** the owner explained Qave's real cash workflow (Session 9) — cash accumulates in a safe, cash expenses draw from the day's takings or the safe, and there is no per-shift register float. The whole float-handover question is moot. Cash is now tracked as a running cash-on-hand position instead (see D17). The remaining loose end is purely cleanup — removing the now-superseded `cash_float_*` fields — tracked in `07-KNOWN_ISSUES.md`, not here.
 
 ### Q2 — POS receipt sample
 - **Asked:** 2026-05-08 · **Status:** Waiting

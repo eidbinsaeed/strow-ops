@@ -1,6 +1,6 @@
 # Strow Ops — Progress Log
 
-**Last updated:** 2026-05-15 (Session 8)
+**Last updated:** 2026-05-15 (Session 9)
 
 ---
 
@@ -325,3 +325,41 @@ Both barista flows now ship with Claude OCR end-to-end.
 2. Build the weekly inventory-approval surface — turn `unmatched_inventory` suggestions into real `inventory_items` rows.
 3. Calibrate the v2 OCR prompts against real photos.
 4. Reconcile the migration-naming mismatch (MCP-applied timestamp versions vs. the repo's `0003_*.sql`).
+
+## Session 9 — 2026-05-15
+**Outcome:** Session 8 verified + shipped. Barista photo-upload bug fixed. Cash modelled as a running position and surfaced on the dashboard.
+
+**Done:**
+
+**Session 8 verified + committed.**
+- `npm run type-check` + `npm run build` ran clean — compiled, linted, all 18 routes generated. Owner committed + pushed; Vercel deployed.
+
+**Barista photo-upload bug fixed.**
+- Real-world test surfaced an immediate error on iPhone Safari ("The string did not match the expected pattern") after taking a photo, on both close and expense flows. Root cause: full-resolution phone photos (4–8 MB) exceed the extract API's request-body limit — the upload bounced before the AI ever saw it. Pre-existing; first surfaced on real use.
+- New `src/lib/image.ts` — `compressImage()` downscales to max 1600px and re-encodes as JPEG (~250 KB) via canvas. Also converts iOS HEIC → JPEG and dodges iOS's canvas-size limit.
+- `CloseFlow.tsx` + `ExpenseFlow.tsx` now compress before upload, with hardened error handling (image prep wrapped in try/catch; `res.json()` guarded against non-JSON responses; plain-language error messages). `fileToBase64` removed. Device-agnostic — works for iPhone and Android.
+- Verified clean build; owner confirmed the flow now reaches the review screen.
+
+**Cash position tracking (D17).**
+- Owner explained Qave's real cash workflow — cash accumulates in a safe, cash expenses draw from the day's takings or the safe — which revealed the `cash_float / over_short` model never fit, and that the dashboard's "May 14 −298 cash short" alert was a formula artifact (May 14: 186 cash sales vs. 1,889.90 cash expenses paid from the safe).
+- Migration `0004`: `cash_events` table (`count` / `withdrawal` events) + `v_cash_position` view (running balance = latest count + cash sales − cash expenses − withdrawals since). Applied via Supabase MCP and verified — opening balance seeded at AED 165.50, view returns 165.50.
+- `src/app/owner/cash/actions.ts` — `recordCashWithdrawal` + `recordCashCount` server actions (audited via `getOwnerActor` + `writeAudit`).
+- `src/components/owner/CashControls.tsx` — dashboard card: cash-on-hand balance + today's in/out, with inline "Take cash out" and "Recount / set balance" (enter 0 to zero out) forms.
+- `owner/page.tsx` — renders the cash card (below the hero); the misleading `over_short` cash-discrepancy alert was removed. 8 new bilingual i18n keys.
+- The `cash_float_*` columns and `over_short` generated column are left in place but **superseded** — flagged in `07-KNOWN_ISSUES.md` for a cleanup pass.
+
+**Not done / pending:**
+- The cash + photo-fix changes are not yet build-checked (same toolchain limitation). Owner runs `npm run build` + `type-check` and reports.
+- No scheduled cash reconciliation — the balance drifts until the owner records a recount (that's the intended correction path).
+- Till-vs-safe split not modelled — v1 tracks one combined number (D17).
+
+**Owner action items:**
+1. Run `npm run build` + `npm run type-check`; send back any errors.
+2. Commit + push (commands provided in chat).
+3. Re-test the dashboard cash card + the take-cash-out / recount actions.
+
+**Next session goals:**
+1. Fix anything the build surfaces.
+2. A "count the cash" reconciliation flow / cadence so the balance can't silently drift.
+3. Clean up the superseded `cash_float_*` / `over_short` columns and the now-misleading `missing_float` sidebar badge.
+4. Still pending: inventory-approval surface; v2 OCR calibration; migration-naming reconciliation.

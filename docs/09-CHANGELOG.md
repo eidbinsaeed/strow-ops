@@ -4,6 +4,22 @@
 
 ---
 
+## v0.0.12 — 2026-05-15 (Session 9)
+**Cash modelled as a running position; surfaced on the dashboard.**
+
+- Migration `0004`: `cash_events` table (`count` / `withdrawal` events) + `v_cash_position` view (running cash-on-hand = latest count + cash sales − cash expenses − withdrawals since).
+- Opening cash balance seeded at AED 165.50.
+- `owner/cash/actions.ts` — `recordCashWithdrawal` + `recordCashCount` server actions (audited).
+- `CashControls` dashboard card — cash-on-hand balance + today's in/out, with inline "Take cash out" and "Recount / set balance" (enter 0 to zero out) forms.
+- Removed the misleading `over_short`-based "cash discrepancy" alert from the dashboard — the per-shift float model never fit Qave's workflow (D17). The `cash_float_*` / `over_short` columns remain but are superseded.
+- 8 new bilingual i18n keys.
+
+## v0.0.11 — 2026-05-15 (Session 9)
+**Barista photo-upload fix.**
+
+- New `src/lib/image.ts` — `compressImage()` downscales phone photos to ≤1600px JPEG (~250 KB) before upload, converting iOS HEIC to JPEG along the way.
+- `CloseFlow.tsx` + `ExpenseFlow.tsx` compress before posting to the extract API, fixing an immediate upload failure on full-resolution photos (seen as "The string did not match the expected pattern" on iOS Safari). Hardened error handling — non-JSON responses and image-read failures now show plain-language messages.
+
 ## v0.0.10 — 2026-05-15 (Session 8)
 **Dashboard, badges, cash-float UI, and v2 AI extraction wired against the new views.**
 

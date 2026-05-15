@@ -139,18 +139,35 @@ Real table, currently **empty** (no rows seeded). Populated later as the owner a
 - `is_active` boolean — `NOT NULL DEFAULT true`
 - `created_at` / `updated_at` timestamptz
 
+### `cash_events` *(migration `0004`, Session 9)*
+Manual cash-control events. Cash sales (`closings.cash_total`) and cash expenses (`expenses` where `payment_method='cash'`) are **not** stored here — they are derived. See D17.
+- `id` uuid pk
+- `location_id` fk → `locations`
+- `event_date` date — `NOT NULL DEFAULT current_date`
+- `kind` text — `NOT NULL`, `CHECK (kind IN ('count','withdrawal'))`. `count` sets the running-balance baseline (opening balance, physical recount, or "zero out" = a count of 0); `withdrawal` deducts cash taken out of the system (e.g. moved to the bank).
+- `amount` numeric — `NOT NULL CHECK (amount >= 0)`. For `count`: the counted total. For `withdrawal`: the amount removed.
+- `notes` text
+- `created_at` timestamptz
+- RLS: `owners_full_access_cash_events` (`is_owner()`). Index on `(location_id, event_date)`.
+
 ---
 
-## Database views (migration `0003`, Session 7)
+## Database views
 
-All four are tz-aware to `Asia/Dubai` where dates matter. Read-only, cheap, no params.
+Tz-aware to `Asia/Dubai` where dates matter. Read-only, cheap, no params.
+
+**Migration `0003` (Session 7):**
 
 - **`v_sidebar_badges`** — single row: `pending_count`, `uncategorized_count`, `open_liabilities_count`, `missing_float_count`, `missing_trn_count`. Feeds the owner sidebar badges and the dashboard alerts panel.
 - **`v_dashboard_kpis`** — one row per active location: revenue / variable / VAT (collected, paid, net) MTD, `fixed_monthly`, `avg_revenue_7d`, `latest_day_revenue`, `trend_vs_avg_pct`, projected revenue / variable / net, `days_closed_mtd`, `days_in_month`, dates. Feeds the dashboard hero.
 - **`v_daily_flow_30d`** — one row per day per location, last 30 days: `revenue`, `cash`/`card`/`online`, `expenses`, `is_weekend` (Fri/Sat). Feeds the 7-day flow chart.
 - **`v_expense_breakdown_mtd`** — MTD expense splits by supplier and by category, filterable on `breakdown_kind = 'supplier' | 'category'`. Built for a donut + top-vendors list (not yet consumed by the app).
 
-> Note: applied to production via the Supabase MCP (timestamped migration versions) AND committed as `supabase/migrations/0003_dashboard_views_and_cash_float.sql` — see the migration-naming mismatch in `07-KNOWN_ISSUES.md`.
+**Migration `0004` (Session 9):**
+
+- **`v_cash_position`** — running cash-on-hand per location. `cash_on_hand` = the most recent `count` event's amount + cash sales − cash expenses − withdrawals, all dated *after* that count. Also returns `anchor_date`, `anchor_amount`, `needs_opening_count`, and today's `cash_in_today` / `cash_out_today` / `cash_withdrawn_today`. Feeds the dashboard "Cash on hand" card.
+
+> Note: views were applied to production via the Supabase MCP (timestamped migration versions) and also committed as `supabase/migrations/0003_*.sql` and `0004_*.sql` — see the migration-naming mismatch in `07-KNOWN_ISSUES.md`.
 
 ---
 

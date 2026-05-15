@@ -5,6 +5,7 @@ import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import type { Locale } from "@/lib/i18n/dict";
 import { StatusPill } from "@/components/owner/StatusPill";
+import { CashControls } from "@/components/owner/CashControls";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -94,7 +95,7 @@ export default async function OwnerDashboard() {
     kpisRes,
     dailyFlowRes,
     badgesRes,
-    cashDiscRes,
+    cashPosRes,
   ] = await Promise.all([
     supabase.from("locations").select("*", { count: "exact", head: true }),
     supabase
@@ -150,16 +151,8 @@ export default async function OwnerDashboard() {
       .order("date", { ascending: true }),
     // Sidebar/alert counts — single cheap row
     supabase.from("v_sidebar_badges").select("*").maybeSingle(),
-    // Real cash-drawer discrepancies (over_short is GENERATED, NULL when no float captured)
-    supabase
-      .from("closings")
-      .select(
-        "id, closing_date, over_short, cash_float_start, cash_float_end, cash_total",
-      )
-      .not("over_short", "is", null)
-      .neq("over_short", 0)
-      .order("closing_date", { ascending: false })
-      .limit(10),
+    // Running cash-on-hand position (one row per active location)
+    supabase.from("v_cash_position").select("*"),
   ]);
 
   const salesToday = (todaySalesRes.data ?? []).reduce(
@@ -271,16 +264,17 @@ export default async function OwnerDashboard() {
     missing_trn_count: 0,
   };
 
-  // --- Real cash-drawer discrepancies (over_short <> 0) ------------------
-  type CashDiscRow = {
-    id: string;
-    closing_date: string;
-    over_short: number;
-    cash_float_start: number | null;
-    cash_float_end: number | null;
-    cash_total: number;
+  // --- Running cash-on-hand position (from v_cash_position) -------------
+  type CashPositionRow = {
+    cash_on_hand: number;
+    cash_in_today: number;
+    cash_out_today: number;
+    cash_withdrawn_today: number;
+    anchor_date: string | null;
+    needs_opening_count: boolean;
   };
-  const cashDiscrepancies = (cashDiscRes.data ?? []) as unknown as CashDiscRow[];
+  const cashPos =
+    ((cashPosRes.data ?? []) as unknown as CashPositionRow[])[0] ?? null;
 
   type Alert = {
     key: string;
@@ -298,19 +292,6 @@ export default async function OwnerDashboard() {
       text: tr("dash.alerts.pending", locale),
       tone: "warn",
     });
-  for (const d of cashDiscrepancies) {
-    const amount = Number(d.over_short);
-    alerts.push({
-      key: `cash-${d.id}`,
-      href: "/owner/closings",
-      text:
-        (amount < 0
-          ? tr("dash.alerts.cash_short", locale)
-          : tr("dash.alerts.cash_over", locale)) +
-        ` ${d.closing_date} — ${aed(Math.abs(amount))}`,
-      tone: "warn",
-    });
-  }
   if (badges.uncategorized_count > 0)
     alerts.push({
       key: "uncategorized",
@@ -402,6 +383,21 @@ export default async function OwnerDashboard() {
               value={aed(Number(kpis.vat_net_mtd))}
             />
           </div>
+        </section>
+      )}
+
+      {/* Cash on hand — running balance + manual controls */}
+      {cashPos && (
+        <section className="mb-8">
+          <CashControls
+            cashOnHand={Number(cashPos.cash_on_hand)}
+            cashInToday={Number(cashPos.cash_in_today)}
+            cashOutToday={Number(cashPos.cash_out_today)}
+            cashWithdrawnToday={Number(cashPos.cash_withdrawn_today)}
+            anchorDate={cashPos.anchor_date}
+            needsOpeningCount={cashPos.needs_opening_count}
+            locale={locale}
+          />
         </section>
       )}
 

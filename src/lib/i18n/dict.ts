@@ -187,3 +187,13 @@ DICT["dash.alerts.cash_over"] = { en: "Cash over on", ar: "فائض نقدي ب�
 DICT["dash.chart.title"] = { en: "Last 7 days", ar: "آخر ٧ أيام" };
 DICT["dash.chart.no_data"] = { en: "No confirmed closings in the last 7 days.", ar: "لا توجد إقفالات معتمدة في آخر ٧ أيام." };
 DICT["dash.chart.caption"] = { en: "Daily revenue (AED). Faded bars are weekends (Fri/Sat).", ar: "الإيراد اليومي (درهم). الأعمدة الباهتة هي عطلة نهاية الأسبوع (الجمعة/السبت)." };
+
+// Cash-on-hand card (Session 9)
+DICT["cash.title"] = { en: "Cash on hand", ar: "النقد المتوفر" };
+DICT["cash.subtitle"] = { en: "Till + safe combined", ar: "الدرج + الخزنة معاً" };
+DICT["cash.in_today"] = { en: "in today", ar: "وارد اليوم" };
+DICT["cash.out_today"] = { en: "out today", ar: "صادر اليوم" };
+DICT["cash.take_out"] = { en: "Take cash out", ar: "سحب نقد" };
+DICT["cash.recount"] = { en: "Recount / set balance", ar: "إعادة العدّ / ضبط الرصيد" };
+DICT["cash.last_counted"] = { en: "counted", ar: "عُدّ في" };
+DICT["cash.needs_opening"] = { en: "No starting balance set yet — use Recount / set balance to set one.", ar: "لم يتم تعيين رصيد ابتدائي — استخدم إعادة العدّ / ضبط الرصيد لتعيينه." };

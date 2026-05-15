@@ -66,7 +66,7 @@
 - [x] Fixed costs (recurring, with frequency + due day)
 - [x] Liabilities/IOU tracker
 - [x] Staff roster
-- [x] Cash float over/short tracking *(nullable + NULL-safe `over_short` generated column; barista UI captures floats; discrepancies surface on the dashboard alerts panel)*
+- [x] Cash tracking *(reworked Session 9 — the per-shift float model didn't fit Qave's safe + daily-draw workflow. Replaced with a running cash-on-hand position: `cash_events` table + `v_cash_position` view + dashboard card with take-out / recount controls. See D17. The `cash_float_*` / `over_short` columns are superseded but not yet removed.)*
 - [~] Duplicate-invoice detection *(v2 extraction flags `duplicate_invoice_suspected` as an anomaly; no hard `(supplier_id, invoice_number)` uniqueness check yet)*
 - [~] VAT 5% auto-split *(handled in the extraction prompt; uncalibrated against real receipts)*
 - [~] Date-format normalization *(handled in the extraction prompt; uncalibrated)*
