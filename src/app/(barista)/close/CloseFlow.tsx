@@ -74,6 +74,8 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
   const [cashTotal, setCashTotal] = useState("");
   const [cardTotal, setCardTotal] = useState("");
   const [onlineTotal, setOnlineTotal] = useState("");
+  const [cashFloatStart, setCashFloatStart] = useState("");
+  const [cashFloatEnd, setCashFloatEnd] = useState("");
 
   async function handleFile(file: File) {
     setErrorMsg(null);
@@ -106,6 +108,8 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
       setCashTotal(fmtNum(ext.cash_total));
       setCardTotal(fmtNum(ext.card_total));
       setOnlineTotal(fmtNum(ext.online_total));
+      setCashFloatStart(fmtNum(ext.cash_float_start));
+      setCashFloatEnd(fmtNum(ext.cash_float_end));
       setStage("review");
     } catch (e) {
       setErrorMsg(
@@ -145,6 +149,8 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
     setCashTotal("");
     setCardTotal("");
     setOnlineTotal("");
+    setCashFloatStart("");
+    setCashFloatEnd("");
     setErrorMsg(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -297,6 +303,8 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
           required
         />
 
+        <input type="hidden" name="cash_float_start" value={cashFloatStart} />
+        <input type="hidden" name="cash_float_end" value={cashFloatEnd} />
         <ControlledField
           label="Cash total (AED)"
           name="cash_total"
