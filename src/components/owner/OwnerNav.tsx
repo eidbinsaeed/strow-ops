@@ -10,9 +10,11 @@ import type { Locale } from "@/lib/i18n/dict";
 export function OwnerNavContent({
   signedIn,
   locale,
+  badges,
 }: {
   signedIn: boolean;
   locale: Locale;
+  badges?: { pending_count: number; uncategorized_count: number; missing_float_count: number; missing_trn_count: number };
 }) {
   return (
     <>
@@ -20,16 +22,16 @@ export function OwnerNavContent({
         <NavGroup label={tr("nav.group.operations", locale)}>
           <OwnerNavLink href="/owner">{tr("nav.dashboard", locale)}</OwnerNavLink>
           <OwnerNavLink href="/owner/review">
-            {tr("nav.pending", locale)}
+            {tr("nav.pending", locale) + (badges?.pending_count ? " (" + badges.pending_count + ")" : "")}
           </OwnerNavLink>
         </NavGroup>
 
         <NavGroup label={tr("nav.group.books", locale)}>
           <OwnerNavLink href="/owner/closings">
-            {tr("nav.sales", locale)}
+            {tr("nav.sales", locale) + (badges?.missing_float_count ? " (" + badges.missing_float_count + ")" : "")}
           </OwnerNavLink>
           <OwnerNavLink href="/owner/expenses">
-            {tr("nav.purchases", locale)}
+            {tr("nav.purchases", locale) + (badges?.uncategorized_count ? " (" + badges.uncategorized_count + ")" : "")}
           </OwnerNavLink>
           <OwnerNavLink href="/owner/fixed-costs">
             {tr("nav.recurring", locale)}
@@ -41,7 +43,7 @@ export function OwnerNavContent({
 
         <NavGroup label={tr("nav.group.setup", locale)}>
           <OwnerNavLink href="/owner/suppliers">
-            {tr("nav.vendors", locale)}
+            {tr("nav.vendors", locale) + (badges?.missing_trn_count ? " (" + badges.missing_trn_count + ")" : "")}
           </OwnerNavLink>
           <OwnerNavLink href="/owner/categories">
             {tr("nav.coa", locale)}
