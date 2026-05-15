@@ -8,6 +8,12 @@ import { enqueueSubmission } from "@/lib/offline/queue";
 
 type Confidence = "high" | "medium" | "low";
 
+type Anomalies = {
+  has_anomaly: boolean;
+  flags: string[];
+  explanation: string | null;
+};
+
 type Extracted = {
   closing_date: string | null;
   cash_total: number | null;
@@ -24,6 +30,7 @@ type Extracted = {
     online_total?: Confidence;
     grand_total?: Confidence;
   };
+  anomalies?: Anomalies | null;
 };
 
 type Stage = "capture" | "processing" | "review";
@@ -285,6 +292,11 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
         <input type="hidden" name="ai_confidence" value={JSON.stringify(c)} />
         <input
           type="hidden"
+          name="ai_anomalies"
+          value={JSON.stringify(extracted?.anomalies ?? null)}
+        />
+        <input
+          type="hidden"
           name="photo_data_url"
           value={imageDataUrl ?? ""}
         />
@@ -303,8 +315,6 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
           required
         />
 
-        <input type="hidden" name="cash_float_start" value={cashFloatStart} />
-        <input type="hidden" name="cash_float_end" value={cashFloatEnd} />
         <ControlledField
           label="Cash total (AED)"
           name="cash_total"
@@ -358,22 +368,23 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
             Cash float (optional)
           </summary>
           <div className="space-y-3 p-3">
-            <Field
+            <p className="text-xs text-neutral-400">
+              The AI fills these in if your close sheet shows them. Correct
+              them here if they look wrong — leave blank if your sheet has no
+              float line.
+            </p>
+            <ControlledField
               label="Float at start (AED)"
               name="cash_float_start"
-              type="number"
-              step="0.01"
-              min="0"
-              defaultValue={fmtNum(extracted?.cash_float_start)}
+              value={cashFloatStart}
+              onChange={setCashFloatStart}
               confidence="medium"
             />
-            <Field
+            <ControlledField
               label="Float at end (AED)"
               name="cash_float_end"
-              type="number"
-              step="0.01"
-              min="0"
-              defaultValue={fmtNum(extracted?.cash_float_end)}
+              value={cashFloatEnd}
+              onChange={setCashFloatEnd}
               confidence="medium"
             />
           </div>

@@ -2,7 +2,7 @@
 
 This folder is the **single source of truth** for project state. Every meaningful decision, change, and conversation note lives here. When a new Claude chat starts on this project, it reads these files first.
 
-**Last updated:** 2026-05-08
+**Last updated:** 2026-05-15
 
 ## Files
 

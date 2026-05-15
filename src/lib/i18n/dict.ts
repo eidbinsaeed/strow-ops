@@ -165,3 +165,25 @@ DICT["dash.no_submissions"] = { en: "No submissions yet today.", ar: "لا تو�
 DICT["dash.manage_staff"] = { en: "Manage staff", ar: "إدارة الموظفين" };
 DICT["dash.manage_staff_hint"] = { en: "Add staff, set 4-digit PINs, toggle on-shift status", ar: "إضافة موظفين، تعيين رموز PIN، تبديل حالة الدوام" };
 DICT["dash.pending_hint"] = { en: "Items the AI was not sure about", ar: "سجلات لم يتأكد منها الذكاء الاصطناعي" };
+
+// Dashboard hero + alerts + 7-day flow chart (Session 8)
+DICT["dash.hero.projected_net"] = { en: "Projected net this month", ar: "صافي الربح المتوقع هذا الشهر" };
+DICT["dash.hero.basis"] = { en: "Projected from days closed so far", ar: "متوقع بناءً على الأيام المُقفلة حتى الآن" };
+DICT["dash.hero.days_closed"] = { en: "days closed", ar: "يوم مُقفل" };
+DICT["dash.hero.revenue_mtd"] = { en: "Revenue so far", ar: "الإيرادات حتى الآن" };
+DICT["dash.hero.variable_mtd"] = { en: "Variable expenses", ar: "المصاريف المتغيرة" };
+DICT["dash.hero.fixed_monthly"] = { en: "Fixed monthly", ar: "المصاريف الثابتة الشهرية" };
+DICT["dash.hero.vat_net"] = { en: "Net VAT owed", ar: "صافي ضريبة القيمة المضافة المستحقة" };
+DICT["dash.trend.vs_avg"] = { en: "vs 7-day avg", ar: "مقارنةً بمتوسط ٧ أيام" };
+DICT["dash.alerts.title"] = { en: "Needs your eyes", ar: "يحتاج إلى انتباهك" };
+DICT["dash.alerts.all_clear"] = { en: "All clear — nothing waiting on you.", ar: "كل شيء على ما يرام — لا شيء بانتظارك." };
+DICT["dash.alerts.pending"] = { en: "submissions waiting for approval", ar: "سجلات بانتظار الاعتماد" };
+DICT["dash.alerts.uncategorized"] = { en: "purchases with no category", ar: "مشتريات بدون فئة" };
+DICT["dash.alerts.missing_float"] = { en: "closings missing a cash float", ar: "إقفالات بدون رصيد نقدي ابتدائي" };
+DICT["dash.alerts.missing_trn"] = { en: "vendors missing a tax number (TRN)", ar: "موردون بدون رقم تسجيل ضريبي" };
+DICT["dash.alerts.open_liabilities"] = { en: "open liabilities (money owed or held)", ar: "التزامات مفتوحة (مبالغ مستحقة أو محتجزة)" };
+DICT["dash.alerts.cash_short"] = { en: "Cash short on", ar: "عجز نقدي بتاريخ" };
+DICT["dash.alerts.cash_over"] = { en: "Cash over on", ar: "فائض نقدي بتاريخ" };
+DICT["dash.chart.title"] = { en: "Last 7 days", ar: "آخر ٧ أيام" };
+DICT["dash.chart.no_data"] = { en: "No confirmed closings in the last 7 days.", ar: "لا توجد إقفالات معتمدة في آخر ٧ أيام." };
+DICT["dash.chart.caption"] = { en: "Daily revenue (AED). Faded bars are weekends (Fri/Sat).", ar: "الإيراد اليومي (درهم). الأعمدة الباهتة هي عطلة نهاية الأسبوع (الجمعة/السبت)." };

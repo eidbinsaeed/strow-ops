@@ -1,7 +1,7 @@
 # Strow Ops — Data Model
 
-**Last updated:** 2026-05-08
-**Status:** v0 sketch — not yet implemented
+**Last updated:** 2026-05-15
+**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
 
 Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). All transactional tables include `location_id` FK. RLS enabled on every table.
 
@@ -37,46 +37,50 @@ Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). 
 - `location_id` fk
 - `closing_date` date
 - `barista_id` fk
-- `cash_total` numeric
-- `card_total` numeric
-- `online_total` numeric
-- `grand_total` numeric — computed; reconciliation check
-- `cash_float_start` numeric
-- `cash_float_end` numeric
-- `over_short` numeric — computed
+- `cash_total` / `card_total` / `online_total` numeric — `NOT NULL DEFAULT 0`
+- `grand_total` numeric — **GENERATED ALWAYS** = `cash_total + card_total + online_total`. Never insert/update.
+- `cash_float_start` / `cash_float_end` numeric **nullable** — NULL = barista did not capture a float (migration `0003` dropped the old `NOT NULL DEFAULT 0`).
+- `over_short` numeric — **GENERATED ALWAYS**, NULL-safe: NULL when either float is missing, else `(cash_float_end - cash_float_start) - cash_total`. Never insert/update.
 - `liabilities_held` numeric — e.g. customer money kept overnight
-- `photo_drive_id` text — Drive file ID (stable primary key for the file)
+- `photo_drive_url` text — Drive view URL *(implemented as `photo_drive_url`, not the sketch's `photo_drive_id`)*
 - `photo_drive_path` text — human-readable path at upload time (display only)
-- `ai_confidence` jsonb — per-field scores returned by extraction prompt
-- `status` enum (`pending_review`, `confirmed`, `flagged`, `rejected`)
+- `raw_date_string` text — date exactly as printed on the sheet (forward hook; not yet populated)
+- `ai_confidence` jsonb — per-field confidence scores from the extraction prompt
+- `ai_anomalies` jsonb — v2 extraction anomalies object (`has_anomaly`, `flags[]`, `explanation`); a truthy `has_anomaly` routes the closing to `pending_review`
+- `status` enum `submission_status` (`pending_review`, `confirmed`, `flagged`, `rejected`)
 - `notes` text
+- `pos_external_id` / `bank_settlement_id` / `shift_id` — forward hooks (unused)
 
 ### `expenses`
 - `id` uuid pk
 - `location_id` fk
 - `barista_id` fk
 - `expense_date` date
-- `supplier_id` fk → `suppliers`
-- `category_id` fk → `categories`
-- `invoice_number` text — unique per `(supplier_id, invoice_number)` for duplicate detection
-- `subtotal` numeric
-- `vat_amount` numeric
-- `total` numeric
-- `payment_method` enum (`cash`, `card`, `bank_transfer`, `credit`)
-- `photo_drive_id` text — Drive file ID
+- `supplier_id` fk → `suppliers` (nullable)
+- `category_id` fk → `categories` (nullable — NULL = uncategorized, counted by `v_sidebar_badges`)
+- `invoice_number` text — intended unique per `(supplier_id, invoice_number)` for duplicate detection *(no hard uniqueness constraint yet — v2 extraction flags `duplicate_invoice_suspected` as an anomaly instead)*
+- `subtotal` / `vat_amount` / `total` numeric — `NOT NULL DEFAULT 0`
+- `payment_method` enum `payment_method` (`cash`, `card`, `bank_transfer`, `credit`)
+- `photo_drive_url` text — Drive view URL *(implemented as `photo_drive_url`, not the sketch's `photo_drive_id`)*
 - `photo_drive_path` text — human-readable path at upload time
+- `raw_date_string` text — date exactly as printed (forward hook; not yet populated)
 - `ai_confidence` jsonb
-- `status` enum
+- `ai_anomalies` jsonb — v2 extraction anomalies object, plus an `unmatched_inventory` array of `{description, suggested_item_name}` for line items the AI couldn't match (see D15)
+- `status` enum `submission_status`
 - `notes` text
+- `bank_settlement_id` / `shift_id` — forward hooks (unused)
 
 ### `expense_line_items`
 - `id` uuid pk
 - `expense_id` fk → `expenses`
-- `description` text
-- `quantity` numeric
-- `unit_price` numeric
-- `line_total` numeric
-- `inventory_item_id` fk nullable — **forward hook for Phase 2 COGS**
+- `description` text — `NOT NULL`
+- `quantity` numeric — `NOT NULL DEFAULT 1`
+- `unit_price` numeric — `NOT NULL DEFAULT 0`
+- `line_total` numeric — `NOT NULL DEFAULT 0`
+- `inventory_item_id` fk → `inventory_items` nullable — set when v2 extraction confidently matches the line; otherwise NULL and a suggestion lands in the parent's `ai_anomalies.unmatched_inventory`
+- `position` int — `NOT NULL DEFAULT 0`, line order on the receipt
+- `created_at` timestamptz
+- **Written by `submitExpense`** (Session 8) — best-effort insert after the parent `expenses` row; a failure here does not undo the expense.
 
 ### `suppliers`
 - `id` uuid pk
@@ -126,15 +130,35 @@ Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). 
 - `after` jsonb nullable
 - `created_at` timestamptz
 
-### `inventory_items` *(stub — Phase 2)*
-Empty placeholder so v1 schema can FK to it without breaking later.
+### `inventory_items`
+Real table, currently **empty** (no rows seeded). Populated later as the owner approves AI line-item suggestions (see Q9 / D15).
+- `id` uuid pk
+- `location_id` fk → `locations`
+- `name` text — `NOT NULL`, canonical item name
+- `unit` text nullable — e.g. "1L", "kg", "pack of 8"
+- `is_active` boolean — `NOT NULL DEFAULT true`
+- `created_at` / `updated_at` timestamptz
+
+---
+
+## Database views (migration `0003`, Session 7)
+
+All four are tz-aware to `Asia/Dubai` where dates matter. Read-only, cheap, no params.
+
+- **`v_sidebar_badges`** — single row: `pending_count`, `uncategorized_count`, `open_liabilities_count`, `missing_float_count`, `missing_trn_count`. Feeds the owner sidebar badges and the dashboard alerts panel.
+- **`v_dashboard_kpis`** — one row per active location: revenue / variable / VAT (collected, paid, net) MTD, `fixed_monthly`, `avg_revenue_7d`, `latest_day_revenue`, `trend_vs_avg_pct`, projected revenue / variable / net, `days_closed_mtd`, `days_in_month`, dates. Feeds the dashboard hero.
+- **`v_daily_flow_30d`** — one row per day per location, last 30 days: `revenue`, `cash`/`card`/`online`, `expenses`, `is_weekend` (Fri/Sat). Feeds the 7-day flow chart.
+- **`v_expense_breakdown_mtd`** — MTD expense splits by supplier and by category, filterable on `breakdown_kind = 'supplier' | 'category'`. Built for a donut + top-vendors list (not yet consumed by the app).
+
+> Note: applied to production via the Supabase MCP (timestamped migration versions) AND committed as `supabase/migrations/0003_dashboard_views_and_cash_float.sql` — see the migration-naming mismatch in `07-KNOWN_ISSUES.md`.
 
 ---
 
 ## Forward hooks (intentionally unused in v1)
 
 These columns/tables exist so future features don't require a migration:
-- `inventory_item_id` on `expense_line_items` → recipe-level COGS
+- `inventory_item_id` on `expense_line_items` → recipe-level COGS *(now actively written when v2 extraction matches a line)*
+- `raw_date_string` on `closings` and `expenses` → preserve the as-printed date for normalization debugging
 - `pos_external_id` on `closings` → Foodics/POS integration
 - `bank_settlement_id` on `closings` and `expenses` → bank reconciliation
 - `shift_id` on `closings` and `expenses` → staff time tracking

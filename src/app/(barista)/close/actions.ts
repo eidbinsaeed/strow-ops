@@ -17,6 +17,14 @@ type ConfidenceMap = {
   grand_total?: Confidence;
 };
 
+// AI anomaly object (v2 extraction). Stored as-is in closings.ai_anomalies
+// and used to auto-route a closing to the review queue.
+type Anomalies = {
+  has_anomaly?: boolean;
+  flags?: string[];
+  explanation?: string | null;
+} | null;
+
 function parseNumberOrNull(raw: string | null): number | null {
   if (raw == null) return null;
   const trimmed = raw.trim();
@@ -25,9 +33,24 @@ function parseNumberOrNull(raw: string | null): number | null {
   return isNaN(n) ? null : n;
 }
 
+function parseAnomalies(raw: string | null): Anomalies {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as Anomalies;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function deriveStatus(
   confidence: ConfidenceMap,
+  anomalies: Anomalies,
 ): "confirmed" | "pending_review" {
+  // Any AI-detected anomaly pauses the closing for owner review.
+  if (anomalies?.has_anomaly) return "pending_review";
+
   const fields: (keyof ConfidenceMap)[] = [
     "closing_date",
     "cash_total",
@@ -73,6 +96,10 @@ export async function submitClosing(formData: FormData) {
     // ignore
   }
 
+  const anomalies = parseAnomalies(
+    formData.get("ai_anomalies") as string | null,
+  );
+
   if (!closing_date) return { error: "Closing date is required" };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(closing_date)) {
     return { error: "Closing date must be in YYYY-MM-DD format" };
@@ -84,7 +111,7 @@ export async function submitClosing(formData: FormData) {
     return { error: "Totals cannot be negative" };
   }
 
-  const status = deriveStatus(confidence);
+  const status = deriveStatus(confidence, anomalies);
   const supabase = createServiceClient();
 
   // grand_total and over_short are GENERATED columns - never insert.
@@ -101,6 +128,7 @@ export async function submitClosing(formData: FormData) {
       cash_float_end,
       notes,
       ai_confidence: confidence,
+      ai_anomalies: anomalies,
       status,
     })
     .select("id, location_id")

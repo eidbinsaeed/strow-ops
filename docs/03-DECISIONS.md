@@ -1,6 +1,6 @@
 # Strow Ops — Decision Log
 
-**Last updated:** 2026-05-08
+**Last updated:** 2026-05-15
 
 Each entry: date, decision, rationale, alternatives considered, who decided.
 
@@ -87,4 +87,25 @@ Each entry: date, decision, rationale, alternatives considered, who decided.
 - **Date:** 2026-05-08
 - **Rationale:** Most idiomatic location in a Next.js repo. The whole repo is the Strow Ops project, so prefixing with "strow" is redundant.
 - **Alternatives:** `/strow-project-memory/`, `/.strow/`, `/project-memory/`
+- **Decided by:** Claude (owner delegated)
+
+### D14 — AI anomalies auto-route to the review queue; unmatched inventory items do not
+- **Date:** 2026-05-15
+- **Decision:** The v2 extraction prompts return an `anomalies` object (`has_anomaly`, `flags[]`, `explanation`) stored in `closings.ai_anomalies` / `expenses.ai_anomalies`. If `has_anomaly` is true, the submission is forced to `pending_review`. Line items the AI could not confidently match to an `inventory_items` row do **not** on their own change the status — they are recorded as suggestions and left for a separate review.
+- **Rationale:** Consistent with D5 (gate only what the AI is unsure about). A genuine anomaly — math that doesn't reconcile, a future date, a cash discrepancy — is exactly what the review queue is for. But an unmatched grocery line is normal and routine; routing every such expense to review would defeat D5 and make the owner a bottleneck again.
+- **Alternatives:** route everything with unmatched items to review (clogs the queue); ignore anomalies entirely (loses the safety net).
+- **Decided by:** Claude (owner delegated — "surprise me" with defensible defaults)
+
+### D15 — Inventory-match suggestions stored in `ai_anomalies.unmatched_inventory`; no approval UI yet
+- **Date:** 2026-05-15
+- **Decision:** When the AI extracts a line item it can't match to an existing `inventory_items` row, it returns a `suggested_item_name`. Those suggestions are written into the parent expense's `ai_anomalies` jsonb under `unmatched_inventory` (`[{description, suggested_item_name}]`). No migration, no new table. The actual "weekly owner approval" surface — a UI to turn suggestions into real `inventory_items` rows — is **not built this session**; it is scoped as a follow-up (Q9).
+- **Rationale:** The brief said "no migration needed," and `expense_line_items` has no column for a suggested name. `ai_anomalies` is the only no-migration home. Building the approval UI well is its own piece of work and shouldn't be rushed into a multi-task session that can't be compile-checked here.
+- **Alternatives:** add a `suggested_name` column or a `pending_inventory` table (rejected — migration); force unmatched items into the review queue (rejected — see D14).
+- **Decided by:** Claude (owner delegated)
+
+### D16 — Dashboard rebuilt additively; lightweight CSS chart, no chart library
+- **Date:** 2026-05-15
+- **Decision:** The new dashboard sections (MTD hero, "Needs your eyes" alerts, 7-day flow chart) were **added on top** of `owner/page.tsx`; the existing recent-activity feed and the today's-flows / setup stat-card sections were kept. The 7-day chart is hand-rolled CSS bars — no charting library was added to `package.json`.
+- **Rationale:** The brief said "add on top" and explicitly "keep the recent-activity feed." Keeping the existing sections is the lowest-risk change. A chart library is a heavy dependency for one 7-bar sparkline, and the owner reads on a phone — CSS bars render instantly and need no client JS.
+- **Alternatives:** replace the today-only stat cards with the MTD hero (more disruptive, not asked for); add Recharts/Chart.js (dependency weight for marginal gain).
 - **Decided by:** Claude (owner delegated)

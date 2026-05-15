@@ -19,12 +19,72 @@ type ConfidenceMap = {
   payment_method?: Confidence;
 };
 
+// AI anomaly object (v2 extraction). Merged with unmatched-inventory
+// suggestions and stored in expenses.ai_anomalies. A model-detected anomaly
+// auto-routes the expense to the owner review queue.
+type Anomalies = {
+  has_anomaly?: boolean;
+  flags?: string[];
+  explanation?: string | null;
+} | null;
+
+// A receipt line as extracted by v2. Persisted to expense_line_items.
+type LineItem = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  inventory_item_id: string | null;
+  suggested_item_name: string | null;
+};
+
 function parseNumberOrNull(raw: string | null): number | null {
   if (raw == null) return null;
   const trimmed = raw.trim();
   if (trimmed === "") return null;
   const n = parseFloat(trimmed);
   return isNaN(n) ? null : n;
+}
+
+function parseAnomalies(raw: string | null): Anomalies {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as Anomalies;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseLineItems(raw: string | null): LineItem[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (li): li is Record<string, unknown> =>
+          li != null && typeof li === "object",
+      )
+      .map((li) => ({
+        description: String(li.description ?? "").trim(),
+        quantity: Number(li.quantity) || 0,
+        unit_price: Number(li.unit_price) || 0,
+        line_total: Number(li.line_total) || 0,
+        inventory_item_id:
+          typeof li.inventory_item_id === "string" && li.inventory_item_id
+            ? li.inventory_item_id
+            : null,
+        suggested_item_name:
+          typeof li.suggested_item_name === "string" &&
+          li.suggested_item_name
+            ? li.suggested_item_name
+            : null,
+      }));
+  } catch {
+    return [];
+  }
 }
 
 const VALID_PAYMENT_METHODS = [
@@ -41,8 +101,12 @@ function deriveStatus(args: {
   subtotal: number | null;
   vat: number | null;
   total: number;
+  anomalies: Anomalies;
 }): "confirmed" | "pending_review" {
-  const { confidence, subtotal, vat, total } = args;
+  const { confidence, subtotal, vat, total, anomalies } = args;
+
+  // Any AI-detected anomaly pauses the expense for owner review.
+  if (anomalies?.has_anomaly) return "pending_review";
 
   if (subtotal != null && vat != null) {
     const sum = subtotal + vat;
@@ -147,11 +211,34 @@ export async function submitExpense(formData: FormData) {
     // ignore
   }
 
+  const anomalies = parseAnomalies(
+    formData.get("ai_anomalies") as string | null,
+  );
+  const lineItems = parseLineItems(
+    formData.get("line_items") as string | null,
+  );
+
+  // Line items the AI couldn't confidently match to an inventory item are
+  // recorded in ai_anomalies as suggestions for the owner's weekly inventory
+  // review. They do NOT on their own pause the expense — only a model-level
+  // anomaly does that (see deriveStatus).
+  const unmatchedSuggestions = lineItems
+    .filter((li) => !li.inventory_item_id && li.suggested_item_name)
+    .map((li) => ({
+      description: li.description,
+      suggested_item_name: li.suggested_item_name,
+    }));
+  const finalAnomalies =
+    anomalies || unmatchedSuggestions.length > 0
+      ? { ...(anomalies ?? {}), unmatched_inventory: unmatchedSuggestions }
+      : null;
+
   const status = deriveStatus({
     confidence,
     subtotal,
     vat: vat_amount,
     total,
+    anomalies,
   });
 
   const { data: inserted, error } = await supabase
@@ -169,6 +256,7 @@ export async function submitExpense(formData: FormData) {
       payment_method,
       notes,
       ai_confidence: confidence,
+      ai_anomalies: finalAnomalies,
       status,
     })
     .select("id, location_id")
@@ -178,6 +266,44 @@ export async function submitExpense(formData: FormData) {
     return {
       error: `Could not save expense: ${error?.message ?? "unknown error"}`,
     };
+  }
+
+  // Best-effort: persist extracted line items. A failure here must NOT undo
+  // the expense — the expense row is the source of truth.
+  if (lineItems.length > 0) {
+    // Validate inventory_item_id against the location's real inventory so a
+    // hallucinated id can't break the insert on the FK constraint.
+    const { data: invRows } = await supabase
+      .from("inventory_items")
+      .select("id")
+      .eq("location_id", inserted.location_id);
+    const validInvIds = new Set(
+      ((invRows ?? []) as { id: string }[]).map((r) => r.id),
+    );
+
+    const rows = lineItems.map((li, index) => ({
+      expense_id: inserted.id,
+      description: li.description || "(no description)",
+      quantity: li.quantity || 1,
+      unit_price: li.unit_price || 0,
+      line_total: li.line_total || 0,
+      inventory_item_id:
+        li.inventory_item_id && validInvIds.has(li.inventory_item_id)
+          ? li.inventory_item_id
+          : null,
+      position: index,
+    }));
+
+    const { error: lineError } = await supabase
+      .from("expense_line_items")
+      .insert(rows);
+    if (lineError) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[submitExpense] line items insert failed:",
+        lineError.message,
+      );
+    }
   }
 
   // Best-effort Drive upload + row patch.
@@ -221,6 +347,7 @@ export async function submitExpense(formData: FormData) {
       total,
       payment_method,
       status,
+      line_item_count: lineItems.length,
     },
   });
 

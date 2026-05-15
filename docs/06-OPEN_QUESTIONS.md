@@ -1,14 +1,15 @@
 # Strow Ops — Open Questions
 
-**Last updated:** 2026-05-08
+**Last updated:** 2026-05-15
 
 Format: question, status (waiting / answered / withdrawn), date asked.
 
 ---
 
 ### Q1 — Cash float handover protocol
-- **Asked:** 2026-05-08 · **Status:** Waiting
-- When a shift starts, does the barista enter the float they received from the previous shift, or is it set by the owner once and assumed constant? Affects `cash_float_start` defaulting on closings.
+- **Asked:** 2026-05-08 · **Status:** Waiting (UI now supports it; protocol still undecided)
+- When a shift starts, does the barista enter the float they received from the previous shift, or is it set by the owner once and assumed constant?
+- **Update 2026-05-15:** the close flow now has visible, editable cash-float fields and the columns are nullable + NULL-safe, so per-shift entry is fully supported. Still need the owner's call on the *operational* protocol — should baristas be required to enter the float every shift, or only when it changes?
 
 ### Q2 — POS receipt sample
 - **Asked:** 2026-05-08 · **Status:** Waiting
@@ -37,3 +38,8 @@ Format: question, status (waiting / answered / withdrawn), date asked.
 ### Q8 — Owner-paid-personally expenses
 - **Asked:** 2026-05-08 · **Status:** Waiting
 - When you pay for a café expense from personal funds rather than business, do we model it as an "owner reimbursement" liability + matching expense? Affects expense schema slightly.
+
+### Q9 — Inventory-suggestion approval workflow
+- **Asked:** 2026-05-15 · **Status:** Waiting
+- v2 AI extraction now reads each receipt's line items and, when it can't match one to an existing `inventory_items` row, returns a `suggested_item_name`. Those suggestions currently accumulate in `expenses.ai_anomalies.unmatched_inventory` (see D15). There is **no UI yet** for the owner to review them and promote good ones into real `inventory_items` rows.
+- Questions: where should this live — a tab under Purchases, a section in the review queue, or its own "Inventory" page? How often does the owner want to do this (the brief said "weekly")? Should approving a suggestion also back-fill `inventory_item_id` on the line items that suggested it?

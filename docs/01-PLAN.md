@@ -1,7 +1,7 @@
 # Strow Ops — Phasing Plan
 
-**Last updated:** 2026-05-09
-**Current phase:** Phase 0 ✅ · Phase 1 in progress · Phase 2 substantially done
+**Last updated:** 2026-05-15
+**Current phase:** Phases 0–2 ✅ · Phase 1.5 ✅ · Phase 3 mostly done · Phase 4 in progress
 
 ---
 
@@ -30,23 +30,23 @@
 - [x] End of Day Close: photo → AI extract → review → confirm → submit
 - [x] Log Expense: photo → AI extract → review → category → confirm → submit
 - [x] Today's submissions list (real DB, success banner on submit)
-- [ ] Photos to Google Drive primary *(deferred — photo currently held in browser memory only during OCR, then discarded)*
+- [x] Photos to Google Drive primary *(Drive sync shipped Session 6; needs `GOOGLE_DRIVE_REFRESH_TOKEN` in env to go live — see 07-KNOWN_ISSUES)*
 
 **Done when:** A barista can close the day from the phone in under 30 seconds. ✅ — pending real-world calibration with an actual Qave close sheet photo.
 
 ## Phase 1.5 — PWA + offline submit
-**Status:** Not started
+**Status:** ✅ Complete (Session 6)
 
-- Service worker
-- IndexedDB submit queue (replays when connection returns)
-- Installable on iOS/Android home screen
+- [x] Service worker (stale-while-revalidate for static assets; network-only for auth-sensitive routes)
+- [x] IndexedDB submit queue (replays when connection returns)
+- [x] Installable on iOS/Android home screen (manifest + icons)
 
 ## Phase 2 — Owner basics, responsive
-**Status:** Substantially done. Auth gate remaining.
+**Status:** ✅ Complete
 
-- [ ] Owner login (Supabase Auth — placeholder UI shipped, real flow next session)
-- [x] Responsive shell (desktop sidebar / mobile top bar)
-- [x] Dashboard with live DB counts
+- [x] Owner login (PIN-based — `OWNER_PIN` env + separate JWT cookie; the Supabase magic-link approach was dropped)
+- [x] Responsive shell (desktop sidebar / mobile top bar + hamburger drawer)
+- [x] Dashboard with live DB counts *(Session 8 added the MTD hero, alerts panel, and 7-day flow chart)*
 - [x] Daily Sales table (read-only, ready for data)
 - [x] Expenses table (read-only, ready for data)
 - [x] Suppliers CRUD (add + delete)
@@ -61,24 +61,24 @@
 **Done when:** Owner can review yesterday's activity from a phone in bed → mostly done. Just needs real auth + real submission data flowing.
 
 ## Phase 3 — Operational depth
-**Status:** Schema in place, UI wired. Some logic remaining.
+**Status:** Mostly done. Duplicate-invoice hard check + date normalization remain.
 
 - [x] Fixed costs (recurring, with frequency + due day)
 - [x] Liabilities/IOU tracker
 - [x] Staff roster
-- [ ] Cash float over/short tracking *(needs close flow)*
-- [ ] Duplicate-invoice detection *(needs expense flow + uniqueness check)*
-- [ ] VAT 5% auto-split *(in extraction prompt)*
-- [ ] Date-format normalization *(in extraction prompt)*
+- [x] Cash float over/short tracking *(nullable + NULL-safe `over_short` generated column; barista UI captures floats; discrepancies surface on the dashboard alerts panel)*
+- [~] Duplicate-invoice detection *(v2 extraction flags `duplicate_invoice_suspected` as an anomaly; no hard `(supplier_id, invoice_number)` uniqueness check yet)*
+- [~] VAT 5% auto-split *(handled in the extraction prompt; uncalibrated against real receipts)*
+- [~] Date-format normalization *(handled in the extraction prompt; uncalibrated)*
 
 ## Phase 4 — Reporting + dogfood
-**Status:** Not started
+**Status:** In progress
 
-- Monthly P&L
-- Cross-data search/filter
-- Export (PDF/Excel — format TBD)
-- Confidence/anomaly tuning from real photos
-- Owner uses it as sole system for one full week
+- [x] Monthly P&L (+ category breakdown + VAT reports) — shipped Session 6
+- [x] Cross-data search/filter (owner table filters) — shipped Session 6
+- [x] Export — CSV + print-to-PDF shipped Session 6 *(Q3 still open on whether Excel is also wanted)*
+- [~] Confidence/anomaly tuning from real photos — v2 prompts return per-field confidence + an anomalies object; tuning still blocked on real Qave photos (Q2)
+- [ ] Owner uses it as sole system for one full week
 
 ## Phase 5+ — Deferred (post-v1)
 - WhatsApp staff notifications via Whapi (first thing post-v1)

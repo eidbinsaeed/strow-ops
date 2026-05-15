@@ -5,18 +5,33 @@ import { getBaristaSession } from "@/lib/auth/session";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// v2 extraction prompt — adds an anomalies object so closings that don't
+// reconcile (grand-total mismatch, future date, unaccounted cash float) can
+// be auto-routed to the owner review queue.
 const SYSTEM_PROMPT = `You extract structured data from photos of end-of-day close sheets for Qave Cafe in Al Ain, UAE.
 
 The photo is the daily reconciliation summary printed (or written) at the end of a barista's shift. It will look like a Z-report from a POS, a handwritten cash-up sheet, or a screenshot from POS software (often Qave or similar).
 
-CRITICAL RULES:
+== EXTRACTION RULES ==
 - The photo may be in English, Arabic, or a mix. Numbers may be in Western digits (0-9) OR Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩). Always normalize to Western digits in the output.
 - Currency is AED. Strip currency symbols and commas; output bare numbers (e.g. 1234.50 not "AED 1,234.50").
 - Dates: UAE convention is DD/MM/YYYY or DD-MM-YYYY. Be careful — 03/04/2026 is 3 April, not 4 March. Output ISO format YYYY-MM-DD.
+- cash_float_start / cash_float_end: the cash in the drawer at the start and end of the shift. Many sheets do not record these — return null if not present, do NOT guess.
 - If a field is not visible or you cannot read it, return null. Do NOT guess.
-- Self-rate confidence per field: "high" = clearly visible and unambiguous, "medium" = visible but partially unclear or requires interpretation, "low" = guessed from context or barely visible.
 
-Return ONLY valid JSON matching this schema, no markdown fences, no commentary, no explanation:
+== CONFIDENCE ==
+Self-rate confidence per field: "high" = clearly visible and unambiguous, "medium" = visible but partially unclear or requires interpretation, "low" = guessed from context or barely visible.
+
+== ANOMALIES ==
+Populate "anomalies" to flag anything that should pause this closing for owner review. Possible flags:
+- "grand_total_mismatch": the grand_total written on the sheet does not equal cash_total + card_total + online_total.
+- "future_date": closing_date is after today's date (given below).
+- "negative_value": any total is negative.
+- "cash_float_discrepancy": cash_float_start and cash_float_end are both present, and (cash_float_end - cash_float_start) - cash_total is materially non-zero — i.e. the drawer cash does not reconcile and money is missing or unaccounted for.
+- "unreadable": one or more key fields could not be read with confidence.
+Set has_anomaly to true if any flag fires. Put a one-line, plain-English explanation in "explanation" (or null if no anomaly).
+
+Return ONLY valid JSON matching this schema, no markdown fences, no commentary, no explanation outside the JSON:
 
 {
   "closing_date": "YYYY-MM-DD" | null,
@@ -33,10 +48,15 @@ Return ONLY valid JSON matching this schema, no markdown fences, no commentary, 
     "card_total": "high" | "medium" | "low",
     "online_total": "high" | "medium" | "low",
     "grand_total": "high" | "medium" | "low"
+  },
+  "anomalies": {
+    "has_anomaly": boolean,
+    "flags": string[],
+    "explanation": string | null
   }
 }
 
-If the image is clearly NOT a close sheet (e.g. random photo, blurry beyond recognition), return all fields as null with confidence "low" and put a brief explanation in "notes".`;
+If the image is clearly NOT a close sheet (e.g. random photo, blurry beyond recognition), return all data fields as null, every confidence "low", and anomalies with has_anomaly true, flags ["unreadable"], and a brief explanation in "notes".`;
 
 const VALID_MEDIA_TYPES = [
   "image/jpeg",
@@ -89,10 +109,14 @@ export async function POST(request: Request) {
 
   const client = new Anthropic({ apiKey });
 
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Dubai",
+  });
+
   try {
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1024,
+      max_tokens: 1536,
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -108,7 +132,7 @@ export async function POST(request: Request) {
             },
             {
               type: "text",
-              text: "Extract the close sheet data from this photo. Return JSON only.",
+              text: `Extract the close sheet data from this photo. Judge anomalies against today's date: ${today}. Return JSON only.`,
             },
           ],
         },

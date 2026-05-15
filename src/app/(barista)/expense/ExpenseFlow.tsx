@@ -8,6 +8,22 @@ import { enqueueSubmission } from "@/lib/offline/queue";
 
 type Confidence = "high" | "medium" | "low";
 
+type LineItem = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  inventory_item_id: string | null;
+  suggested_item_name: string | null;
+  match_confidence?: Confidence;
+};
+
+type Anomalies = {
+  has_anomaly: boolean;
+  flags: string[];
+  explanation: string | null;
+};
+
 type Extracted = {
   supplier_name: string | null;
   expense_date: string | null;
@@ -18,6 +34,7 @@ type Extracted = {
   payment_method: "cash" | "card" | "bank_transfer" | "credit" | null;
   category_hint: string | null;
   notes: string | null;
+  line_items?: LineItem[] | null;
   confidence?: {
     supplier_name?: Confidence;
     expense_date?: Confidence;
@@ -27,6 +44,7 @@ type Extracted = {
     total?: Confidence;
     payment_method?: Confidence;
   };
+  anomalies?: Anomalies | null;
 };
 
 type Stage = "capture" | "processing" | "review";
@@ -292,6 +310,16 @@ export function ExpenseFlow({
           type="hidden"
           name="ai_confidence"
           value={JSON.stringify(c)}
+        />
+        <input
+          type="hidden"
+          name="line_items"
+          value={JSON.stringify(extracted?.line_items ?? [])}
+        />
+        <input
+          type="hidden"
+          name="ai_anomalies"
+          value={JSON.stringify(extracted?.anomalies ?? null)}
         />
         <input
           type="hidden"
