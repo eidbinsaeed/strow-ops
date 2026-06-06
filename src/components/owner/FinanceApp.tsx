@@ -41,10 +41,13 @@ export function FinanceApp({ initial }: { initial: Initial }) {
 
   const cafe = initial.cafe;
   const cafeProfit = cafe.income - cafe.expenses - cafe.recurring;
+  const cafeSentinel = initial.budget.find((b) => b.section === "income" && b.label === "__cafe_included__");
+  const [cafeChecked, setCafeChecked] = useState<boolean>(cafeSentinel ? cafeSentinel.checked : false);
+  const cafeContribution = cafeChecked ? cafeProfit : 0;
 
   const [budget, setBudget] = useState<BudgetRow[]>(
     initial.budget.length
-      ? initial.budget.map((b) => ({ ...b }))
+      ? initial.budget.filter((b) => !(b.section === "income" && b.label === "__cafe_included__")).map((b) => ({ ...b }))
       : [
           { section: "income", label: "الراتب", amount: 0, checked: true, note: "" },
           { section: "expense", label: "إيجار الشقة", amount: 0, checked: false, note: "" },
@@ -60,8 +63,8 @@ export function FinanceApp({ initial }: { initial: Initial }) {
   const wife = budget.filter((b) => b.section === "wife");
   const sumAmt = (rows: BudgetRow[]) => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const wifeTotal = sumAmt(wife);
-  const incomeTotal = sumAmt(income) + cafeProfit;
-  const incomeChecked = income.filter((r) => r.checked).reduce((s, r) => s + (Number(r.amount) || 0), 0) + cafeProfit;
+  const incomeTotal = sumAmt(income) + cafeContribution;
+  const incomeChecked = income.filter((r) => r.checked).reduce((s, r) => s + (Number(r.amount) || 0), 0) + cafeContribution;
   const expenseTotal = sumAmt(expense) + wifeTotal;
   const expenseChecked = expense.filter((r) => r.checked).reduce((s, r) => s + (Number(r.amount) || 0), 0) + wifeTotal;
   const net = incomeTotal - expenseTotal;
@@ -92,6 +95,7 @@ export function FinanceApp({ initial }: { initial: Initial }) {
 
   function doSaveBudget() {
     const lines: BudgetLineInput[] = budget.map((b) => ({ section: b.section, label: b.label, amount: Number(b.amount) || 0, checked: b.checked, note: b.note }));
+    lines.push({ section: "income", label: "__cafe_included__", amount: 0, checked: cafeChecked, note: null });
     startTransition(async () => { const r = await saveBudget(initial.month, lines); if (r.error) flash("خطأ: " + r.error); else { flash("تم حفظ الميزانية ✓"); router.refresh(); } });
   }
   function doSavePeople() {
@@ -144,7 +148,7 @@ export function FinanceApp({ initial }: { initial: Initial }) {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <Card t="إجمالي الدخل الشهري" n={fmt(incomeTotal)} cls="text-emerald-700" />
             <Card t="إجمالي المصاريف" n={fmt(expenseTotal)} cls="text-red-700" />
-            <Card t="☕ ربح كافيه Qave" n={fmt(cafeProfit)} m="يُسحب من بيانات الكافيه" />
+            <Card t="☕ ربح/خسارة كافيه Qave" n={fmt(cafeProfit)} cls={cafeProfit < 0 ? "text-red-700" : "text-emerald-700"} m={cafeChecked ? "محتسب في الصافي" : "غير محتسب — فعّله من جدول الدخل"} />
             <Bars t="الأقساط — المدفوع / الإجمالي" n={`${fmt(instPaid, 2)} / ${fmt(instTotal, 2)}`} pct={instTotal > 0 ? (instPaid / instTotal) * 100 : 0} color="#15803d" />
             <Bars t="الديون — المتبقّي علينا" n={fmt(debtRem)} pct={debtOrig > 0 ? (debtPaid / debtOrig) * 100 : 0} color="#6f4e37" m={`مدفوع ${fmt(debtPaid)} من ${fmt(debtOrig)}`} />
             <Card t="القسط الشهري الإجمالي" n={fmt(instMonthly, 2)} m="إجمالي ما يخرج للأقساط شهريًا" />
@@ -161,14 +165,14 @@ export function FinanceApp({ initial }: { initial: Initial }) {
               <span>دخل الكافيه: <b className="tabular-nums">{fmt(cafe.income)}</b></span>
               <span>− مصاريف: <b className="tabular-nums">{fmt(cafe.expenses)}</b></span>
               <span>− تكاليف ثابتة: <b className="tabular-nums">{fmt(cafe.recurring)}</b></span>
-              <span>= الربح: <b className="tabular-nums text-emerald-700">{fmt(cafeProfit)}</b></span>
+              <span>= {cafeProfit < 0 ? "الخسارة" : "الربح"}: <b className={"tabular-nums " + (cafeProfit < 0 ? "text-red-700" : "text-emerald-700")}>{fmt(cafeProfit)}</b></span>
             </div>
             <p className="mt-1 text-[11px] text-neutral-400">يظهر تلقائيًا كبند «Qave Cafe» في الدخل لشهر {monthLabel(initial.month)}.</p>
           </div>
 
           <BudgetTable title="الدخل" color="bg-teal-700" rows={income} section="income"
             setRow={setRow} addRow={addRow} delRow={delRow}
-            extraTop={{ label: "Qave Cafe (ربح الكافيه)", amount: cafeProfit }}
+            extraTop={{ label: "Qave Cafe (ربح/خسارة الكافيه)", amount: cafeProfit, checked: cafeChecked, onToggle: setCafeChecked }}
             totals={[["مجموع الدخل (الكل)", incomeTotal], ["المؤكد ✓", incomeChecked], ["غير المؤكد", incomeTotal - incomeChecked]]} />
 
           <BudgetTable title="المصاريف" color="bg-rose-900" rows={expense} section="expense"
@@ -307,7 +311,7 @@ function BudgetTable({ title, color, rows, section, setRow, addRow, delRow, tota
   title: string; color: string; rows: BudgetRow[]; section: Section;
   setRow: (s: Section, i: number, p: Partial<BudgetRow>) => void;
   addRow: (s: Section) => void; delRow: (s: Section, i: number) => void;
-  totals: [string, number][]; extraTop?: { label: string; amount: number }; extraBottom?: { label: string; amount: number };
+  totals: [string, number][]; extraTop?: { label: string; amount: number; checked?: boolean; onToggle?: (v: boolean) => void }; extraBottom?: { label: string; amount: number };
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
@@ -317,9 +321,9 @@ function BudgetTable({ title, color, rows, section, setRow, addRow, delRow, tota
         <tbody>
           {extraTop && (
             <tr className="border-t border-neutral-100 bg-emerald-50/40">
-              <td className="p-2 font-medium">{extraTop.label}</td>
-              <td className="p-2 tabular-nums">{fmt(extraTop.amount)}</td>
-              <td className="p-2 text-emerald-700">تلقائي</td><td></td>
+              <td className="p-2 font-medium">{extraTop.label} <span className="text-[10px] text-neutral-400">(تلقائي)</span></td>
+              <td className={"p-2 tabular-nums " + (extraTop.amount < 0 ? "text-red-700" : "")}>{fmt(extraTop.amount)}</td>
+              <td className="p-2">{extraTop.onToggle ? <input type="checkbox" checked={!!extraTop.checked} onChange={(e) => extraTop.onToggle!(e.target.checked)} title="احتسبه في الصافي" /> : <span className="text-emerald-700">تلقائي</span>}</td><td></td>
             </tr>
           )}
           {rows.map((r, i) => (
