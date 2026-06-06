@@ -193,3 +193,123 @@ export async function saveExpenseLines(
   revalidateItems();
   return { ok: true };
 }
+
+export type SplitPart = {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number | null;
+  inventory_item_id: string | null; // existing item id, or null
+  new_item_name: string | null; // if set, create (or reuse) an item with this name
+};
+
+/**
+ * Replace one receipt line with one or more lines (split a combo).
+ * Each part can point at an existing item, create a new one, or be unmapped.
+ * With a single part this is just an edit.
+ */
+export async function splitLineItem(
+  originalLineId: string,
+  parts: SplitPart[],
+): Promise<{ ok?: boolean; error?: string }> {
+  if (!originalLineId) return { error: "Missing line id" };
+  if (!parts || parts.length === 0) return { error: "Add at least one item" };
+
+  const supabase = createServiceClient();
+  const { data: orig } = await supabase
+    .from("expense_line_items")
+    .select("expense_id, description, quantity, unit_price, line_total, inventory_item_id, position")
+    .eq("id", originalLineId)
+    .maybeSingle();
+  if (!orig) return { error: "Line not found" };
+
+  const { data: exp } = await supabase
+    .from("expenses")
+    .select("location_id")
+    .eq("id", orig.expense_id)
+    .maybeSingle();
+  const locationId = (exp?.location_id as string | null) ?? null;
+
+  const resolved: Array<{
+    itemId: string | null;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }> = [];
+
+  for (const p of parts) {
+    let itemId = p.inventory_item_id || null;
+    const newName = (p.new_item_name || "").trim();
+    if (!itemId && newName && locationId) {
+      const { data: existing } = await supabase
+        .from("inventory_items")
+        .select("id")
+        .eq("location_id", locationId)
+        .ilike("name", newName)
+        .maybeSingle();
+      if (existing?.id) {
+        itemId = existing.id as string;
+      } else {
+        const { data: created, error: ce } = await supabase
+          .from("inventory_items")
+          .insert({ location_id: locationId, name: newName, kind: "other", is_active: true })
+          .select("id")
+          .maybeSingle();
+        if (ce) return { error: ce.message };
+        itemId = (created?.id as string) ?? null;
+      }
+    }
+    const q = Number(p.quantity) || 0;
+    const up = Number(p.unit_price) || 0;
+    const lt =
+      p.line_total != null && !isNaN(Number(p.line_total))
+        ? Number(p.line_total)
+        : Math.round(q * up * 100) / 100;
+    resolved.push({ itemId, description: (p.description || "").trim() || "(item)", quantity: q, unit_price: up, line_total: lt });
+  }
+
+  const first = resolved[0];
+  const { error: upErr } = await supabase
+    .from("expense_line_items")
+    .update({
+      description: first.description,
+      quantity: first.quantity,
+      unit_price: first.unit_price,
+      line_total: first.line_total,
+      inventory_item_id: first.itemId,
+    })
+    .eq("id", originalLineId);
+  if (upErr) return { error: upErr.message };
+  await learnAlias(supabase, locationId, first.itemId, first.description);
+
+  let pos = Number(orig.position) || 0;
+  for (let i = 1; i < resolved.length; i++) {
+    pos += 1;
+    const r = resolved[i];
+    await supabase.from("expense_line_items").insert({
+      expense_id: orig.expense_id,
+      description: r.description,
+      quantity: r.quantity,
+      unit_price: r.unit_price,
+      line_total: r.line_total,
+      inventory_item_id: r.itemId,
+      position: pos,
+    });
+    await learnAlias(supabase, locationId, r.itemId, r.description);
+  }
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: resolved.length > 1 ? "split" : "edited",
+    entity_type: "expense_line_item",
+    entity_id: originalLineId,
+    before_state: orig as Record<string, unknown>,
+    after_state: { parts: resolved.length },
+  });
+
+  revalidateItems();
+  return { ok: true };
+}
