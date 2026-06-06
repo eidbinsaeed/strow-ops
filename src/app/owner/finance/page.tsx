@@ -64,9 +64,28 @@ export default async function FinancePage({
   type Pay = { id: string; person_id: string; amount: number; paid_on: string };
   const payments = (payRes.data ?? []) as unknown as Pay[];
 
+  // Aggregate every SAVED month (not the template) for the trend chart.
+  const { data: allBudget } = await supabase
+    .from("finance_budget_lines")
+    .select("month, section, label, amount")
+    .neq("month", "__template__");
+  const magg = new Map<string, { income: number; expense: number }>();
+  for (const r of allBudget ?? []) {
+    if ((r.label as string) === "__cafe_included__") continue;
+    const k = r.month as string;
+    const cur = magg.get(k) ?? { income: 0, expense: 0 };
+    if (r.section === "income") cur.income += Number(r.amount) || 0;
+    else cur.expense += Number(r.amount) || 0;
+    magg.set(k, cur);
+  }
+  const monthly = [...magg.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([m, v]) => ({ month: m, income: v.income, expense: v.expense, net: v.income - v.expense }));
+
   const initial = {
     month,
     fromTemplate,
+    monthly,
     budget: budgetData.map((b) => ({
       id: b.id as string,
       section: b.section as "income" | "expense" | "wife",

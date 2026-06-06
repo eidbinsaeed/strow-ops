@@ -15,6 +15,7 @@ type InstRow = { name: string; group_name: string; total: number; installments_c
 type Initial = {
   month: string;
   fromTemplate?: boolean;
+  monthly?: { month: string; income: number; expense: number; net: number }[];
   budget: { section: Section; label: string; amount: number; checked: boolean; note: string }[];
   people: { name: string; original_amount: number; note: string; payments: { amount: number; paid_on: string }[] }[];
   installments: { name: string; group_name: string; total: number; installments_count: number; start_month: string; paid_count: number }[];
@@ -26,6 +27,7 @@ const AR_MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "ما
 const MONTH_KEYS: string[] = [];
 for (const y of [2026, 2027]) for (let m = 1; m <= 12; m++) MONTH_KEYS.push(`${y}-${String(m).padStart(2, "0")}`);
 const monthLabel = (k: string) => { const [y, m] = k.split("-").map(Number); return `${AR_MONTHS[m - 1]} ${y}`; };
+const shortMonth = (k: string) => AR_MONTHS[Number(k.split("-")[1]) - 1] ?? k;
 
 const fmt = (n: number, dec = 0) =>
   (n < 0 ? "-" : "") + "د.إ " + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -92,6 +94,17 @@ export function FinanceApp({ initial }: { initial: Initial }) {
   const instMonthly = instCalc.reduce((s, c) => s + c.monthly, 0);
   const instPaid = instCalc.reduce((s, c) => s + c.paid, 0);
 
+  // Expense breakdown for the current month (live).
+  const breakdown = useMemo(() => {
+    const items = expense.map((r) => ({ label: r.label || "—", amount: Number(r.amount) || 0 }));
+    if (wifeTotal > 0) items.push({ label: "تحويل الزوجة", amount: wifeTotal });
+    const tot = items.reduce((s, i) => s + i.amount, 0);
+    return items.filter((i) => i.amount > 0).sort((a, b) => b.amount - a.amount)
+      .map((i) => ({ ...i, pct: tot > 0 ? (i.amount / tot) * 100 : 0 }));
+  }, [expense, wifeTotal]);
+  const trend = initial.monthly ?? [];
+  const trendMax = Math.max(1, ...trend.map((m) => Math.abs(m.net)), ...trend.map((m) => m.income));
+
   function flash(t: string) { setMsg(t); setTimeout(() => setMsg(null), 2500); }
 
   function doSaveBudget() {
@@ -154,6 +167,41 @@ export function FinanceApp({ initial }: { initial: Initial }) {
             <Bars t="الديون — المتبقّي علينا" n={fmt(debtRem)} pct={debtOrig > 0 ? (debtPaid / debtOrig) * 100 : 0} color="#6f4e37" m={`مدفوع ${fmt(debtPaid)} من ${fmt(debtOrig)}`} />
             <Card t="القسط الشهري الإجمالي" n={fmt(instMonthly, 2)} m="إجمالي ما يخرج للأقساط شهريًا" />
           </div>
+
+          {/* Expense breakdown */}
+          <div className="mt-4 rounded-2xl border border-neutral-200 bg-white p-4">
+            <h3 className="mb-3 text-sm font-semibold">أين تذهب مصاريفك — {monthLabel(initial.month)}</h3>
+            {breakdown.length === 0 ? (
+              <p className="text-xs text-neutral-400">لا مصاريف لهذا الشهر بعد.</p>
+            ) : (
+              breakdown.map((b) => (
+                <div key={b.label} className="mb-2">
+                  <div className="flex justify-between text-xs"><span>{b.label}</span><span className="tabular-nums text-neutral-500">{fmt(b.amount)} · {b.pct.toFixed(0)}%</span></div>
+                  <div className="mt-1 h-2 overflow-hidden rounded bg-neutral-100"><div className="h-full rounded bg-rose-700" style={{ width: b.pct.toFixed(0) + "%" }} /></div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Monthly net trend */}
+          {trend.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-neutral-200 bg-white p-4">
+              <h3 className="mb-3 text-sm font-semibold">اتجاه الصافي الشهري</h3>
+              <div className="flex h-44 items-end gap-2">
+                {trend.map((m) => {
+                  const h = Math.round((Math.abs(m.net) / trendMax) * 100);
+                  return (
+                    <div key={m.month} className="flex flex-1 flex-col items-center justify-end gap-1">
+                      <div className="text-[10px] tabular-nums text-neutral-500">{(m.net / 1000).toFixed(1)}k</div>
+                      <div className={"w-full rounded-t " + (m.net < 0 ? "bg-red-500" : "bg-emerald-600")} style={{ height: Math.max(h, 2) + "%" }} title={fmt(m.net)} />
+                      <div className="text-[10px] text-neutral-400">{shortMonth(m.month)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-neutral-400">يظهر الأشهر المحفوظة فقط. أخضر = ادخار، أحمر = عجز.</p>
+            </div>
+          )}
         </div>
       )}
 
