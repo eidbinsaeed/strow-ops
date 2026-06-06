@@ -219,3 +219,5 @@ DICT["items.range"] = { en: "range", ar: "النطاق" };
 DICT["items.supplier"] = { en: "supplier", ar: "مورّد" };
 DICT["items.suppliers"] = { en: "suppliers", ar: "موردون" };
 DICT["items.price_each"] = { en: "price each", ar: "السعر للوحدة" };
+
+DICT["action.items"] = { en: "Items", ar: "الأصناف" };

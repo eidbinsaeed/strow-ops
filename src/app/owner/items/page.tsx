@@ -2,11 +2,13 @@ import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
+import { LineFixer } from "@/components/owner/LineFixer";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type LineRow = {
+  id: string;
   quantity: number;
   unit_price: number;
   line_total: number;
@@ -17,6 +19,8 @@ type LineRow = {
 };
 
 type Line = {
+  id: string;
+  itemId: string | null;
   qty: number;
   price: number;
   total: number;
@@ -24,6 +28,14 @@ type Line = {
   date: string;
   supplier: string;
   flags: string[];
+};
+
+type SupplierStat = {
+  name: string;
+  buys: number;
+  qty: number;
+  spend: number;
+  avgPrice: number;
 };
 
 type Item = {
@@ -43,14 +55,6 @@ type Item = {
   lastBuy: string;
   intervalDays: number | null;
   flagCount: number;
-};
-
-type SupplierStat = {
-  name: string;
-  buys: number;
-  qty: number;
-  spend: number;
-  avgPrice: number;
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -118,13 +122,19 @@ export default async function OwnerItemsPage() {
   const { data, error } = await supabase
     .from("expense_line_items")
     .select(
-      "quantity, unit_price, line_total, description, inventory_item_id, inventory_items(name, kind, unit), expenses(expense_date, suppliers(name))",
+      "id, quantity, unit_price, line_total, description, inventory_item_id, inventory_items(name, kind, unit), expenses(expense_date, suppliers(name))",
     )
     .limit(2000);
 
   const rows = (data ?? []) as unknown as LineRow[];
 
-  // Split mapped vs unmapped
+  const { data: itemRows } = await supabase
+    .from("inventory_items")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+  const itemOptions = (itemRows ?? []) as { id: string; name: string }[];
+
   const byItem = new Map<string, Item>();
   const unmapped: Line[] = [];
 
@@ -132,6 +142,8 @@ export default async function OwnerItemsPage() {
     const date = r.expenses?.expense_date ?? "";
     const supplier = r.expenses?.suppliers?.name ?? "Unknown";
     const line: Line = {
+      id: r.id,
+      itemId: r.inventory_item_id ?? null,
       qty: Number(r.quantity) || 0,
       price: Number(r.unit_price) || 0,
       total: Number(r.line_total) || 0,
@@ -161,7 +173,6 @@ export default async function OwnerItemsPage() {
     it.lines.push(line);
   }
 
-  // Compute stats per item
   const items: Item[] = [];
   for (const it of byItem.values()) {
     const prices = it.lines.map((l) => l.price);
@@ -182,13 +193,11 @@ export default async function OwnerItemsPage() {
       it.intervalDays = span > 0 ? Math.round(span / (dates.length - 1)) : null;
     }
 
-    // flags
     for (const l of it.lines) {
       l.flags = detectFlags(l, med, it.lines.length);
       if (l.flags.length) it.flagCount += 1;
     }
 
-    // supplier breakdown
     const sup = new Map<string, SupplierStat>();
     for (const l of it.lines) {
       let s = sup.get(l.supplier);
@@ -210,7 +219,6 @@ export default async function OwnerItemsPage() {
   const flaggedItems = items.filter((i) => i.flagCount > 0);
   const totalFlags = items.reduce((s, i) => s + i.flagCount, 0);
 
-  // group by kind for display
   const groups = KIND_ORDER
     .map((k) => ({ kind: k, items: items.filter((i) => i.kind === k) }))
     .filter((g) => g.items.length > 0);
@@ -232,7 +240,6 @@ export default async function OwnerItemsPage() {
         </div>
       )}
 
-      {/* Review panel */}
       {(flaggedItems.length > 0 || unmapped.length > 0) && (
         <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <h2 className="text-sm font-semibold text-amber-800">
@@ -243,21 +250,29 @@ export default async function OwnerItemsPage() {
               <p className="text-xs font-medium uppercase tracking-wide text-amber-700">
                 {totalFlags} {tr("items.suspicious_lines", locale)}
               </p>
-              <ul className="mt-1 space-y-1">
+              <div className="mt-1 space-y-1.5">
                 {items.flatMap((it) =>
                   it.lines
                     .filter((l) => l.flags.length)
-                    .map((l, idx) => (
-                      <li key={it.name + idx} className="text-xs text-amber-900">
-                        <span className="font-medium">{it.name}</span> - {fmtDate(l.date)} - {l.qty} × {aed(l.price)} = {aed(l.total)} - {l.supplier}
-                        {" "}
-                        {l.flags.map((f) => (
-                          <span key={f} className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">{f}</span>
-                        ))}
-                      </li>
+                    .map((l) => (
+                      <LineFixer
+                        key={l.id}
+                        items={itemOptions}
+                        line={{
+                          id: l.id,
+                          desc: it.name,
+                          qty: l.qty,
+                          price: l.price,
+                          total: l.total,
+                          date: fmtDate(l.date),
+                          supplier: l.supplier,
+                          itemId: l.itemId,
+                          flags: l.flags,
+                        }}
+                      />
                     )),
                 )}
-              </ul>
+              </div>
             </div>
           )}
           {unmapped.length > 0 && (
@@ -266,19 +281,30 @@ export default async function OwnerItemsPage() {
                 {unmapped.length} {tr("items.unmapped_lines", locale)}
               </p>
               <p className="mt-1 text-[11px] text-amber-700">{tr("items.unmapped_note", locale)}</p>
-              <ul className="mt-1 space-y-1">
-                {unmapped.map((l, idx) => (
-                  <li key={idx} className="text-xs text-amber-900">
-                    <span className="italic">{l.desc}</span> - {fmtDate(l.date)} - {aed(l.total)} - {l.supplier}
-                  </li>
+              <div className="mt-1 space-y-1.5">
+                {unmapped.map((l) => (
+                  <LineFixer
+                    key={l.id}
+                    items={itemOptions}
+                    line={{
+                      id: l.id,
+                      desc: l.desc,
+                      qty: l.qty,
+                      price: l.price,
+                      total: l.total,
+                      date: fmtDate(l.date),
+                      supplier: l.supplier,
+                      itemId: null,
+                      flags: [],
+                    }}
+                  />
                 ))}
-              </ul>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Item groups */}
       {groups.map((g) => (
         <section key={g.kind} className="mb-8">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">
@@ -309,10 +335,9 @@ export default async function OwnerItemsPage() {
                   {it.buys} {tr("items.buys", locale)}
                   {it.intervalDays ? ` - ${tr("items.every", locale)} ~${it.intervalDays} ${tr("items.days", locale)}` : ""}
                   {` - ${tr("items.last", locale)} ${fmtDate(it.lastBuy)}`}
-                  {it.minPrice !== it.maxPrice ? ` - ${tr("items.range", locale)} ${aed(it.minPrice)}–${aed(it.maxPrice)}` : ""}
+                  {it.minPrice !== it.maxPrice ? ` - ${tr("items.range", locale)} ${aed(it.minPrice)}-${aed(it.maxPrice)}` : ""}
                 </p>
 
-                {/* supplier breakdown */}
                 <div className="mt-3 border-t border-neutral-100 pt-2">
                   <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
                     {it.suppliers.length} {it.suppliers.length === 1 ? tr("items.supplier", locale) : tr("items.suppliers", locale)} - {tr("items.price_each", locale)}
@@ -322,7 +347,7 @@ export default async function OwnerItemsPage() {
                       <div key={s.name} className="flex justify-between text-xs text-neutral-600">
                         <span>{s.name}</span>
                         <span className="tabular-nums">
-                          {aed(s.avgPrice)} <span className="text-neutral-400">× {s.qty} = {aed(s.spend)}</span>
+                          {aed(s.avgPrice)} <span className="text-neutral-400">x {s.qty} = {aed(s.spend)}</span>
                         </span>
                       </div>
                     ))}

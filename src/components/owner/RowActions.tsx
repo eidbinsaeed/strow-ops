@@ -12,6 +12,7 @@ import {
   editExpense,
   type ItemType,
 } from "@/app/owner/review/actions";
+import { BillItemsEditor } from "@/components/owner/BillItemsEditor";
 
 type ClosingFields = {
   closing_date: string;
@@ -59,6 +60,7 @@ export function RowActions(props: Props) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [viewing, setViewing] = useState(false);
+  const [editingItems, setEditingItems] = useState(false);
 
   const isPending =
     props.status === "pending_review" || props.status === "flagged";
@@ -104,6 +106,17 @@ export function RowActions(props: Props) {
       >
         {tr("action.edit", locale)}
       </button>
+
+      {props.type === "expense" && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => setEditingItems(true)}
+          className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition active:scale-95 disabled:opacity-50"
+        >
+          {tr("action.items", locale)}
+        </button>
+      )}
 
       {isConfirmed && (
         <button
@@ -157,6 +170,10 @@ export function RowActions(props: Props) {
       </button>
 
       {error && <span className="ml-2 text-xs text-red-700">{error}</span>}
+
+      {editingItems && props.type === "expense" && (
+        <BillItemsEditor expenseId={props.id} onClose={() => setEditingItems(false)} />
+      )}
 
       {viewing && driveFileId && (
         <ViewBillModal
