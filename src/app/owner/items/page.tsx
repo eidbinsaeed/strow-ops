@@ -15,12 +15,13 @@ type LineRow = {
   description: string;
   inventory_item_id: string | null;
   inventory_items: { name: string; kind: string | null; unit: string | null } | null;
-  expenses: { expense_date: string; suppliers: { name: string } | null } | null;
+  expenses: { expense_date: string; photo_drive_url: string | null; suppliers: { name: string } | null } | null;
 };
 
 type Line = {
   id: string;
   itemId: string | null;
+  photoUrl: string | null;
   qty: number;
   price: number;
   total: number;
@@ -122,7 +123,7 @@ export default async function OwnerItemsPage() {
   const { data, error } = await supabase
     .from("expense_line_items")
     .select(
-      "id, quantity, unit_price, line_total, description, inventory_item_id, inventory_items(name, kind, unit), expenses(expense_date, suppliers(name))",
+      "id, quantity, unit_price, line_total, description, inventory_item_id, inventory_items(name, kind, unit), expenses(expense_date, photo_drive_url, suppliers(name))",
     )
     .limit(2000);
 
@@ -144,6 +145,7 @@ export default async function OwnerItemsPage() {
     const line: Line = {
       id: r.id,
       itemId: r.inventory_item_id ?? null,
+      photoUrl: r.expenses?.photo_drive_url ?? null,
       qty: Number(r.quantity) || 0,
       price: Number(r.unit_price) || 0,
       total: Number(r.line_total) || 0,
@@ -267,6 +269,7 @@ export default async function OwnerItemsPage() {
                           date: fmtDate(l.date),
                           supplier: l.supplier,
                           itemId: l.itemId,
+                          photoUrl: l.photoUrl,
                           flags: l.flags,
                         }}
                       />
@@ -295,6 +298,7 @@ export default async function OwnerItemsPage() {
                       date: fmtDate(l.date),
                       supplier: l.supplier,
                       itemId: null,
+                      photoUrl: l.photoUrl,
                       flags: [],
                     }}
                   />

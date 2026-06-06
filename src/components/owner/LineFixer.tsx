@@ -12,6 +12,7 @@ export type FixerLine = {
   date: string;
   supplier: string;
   itemId: string | null;
+  photoUrl: string | null;
   flags: string[];
 };
 
@@ -32,8 +33,15 @@ function aed(n: number) {
   return `AED ${Number(n).toLocaleString("en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function driveFileId(url: string | null): string | null {
+  if (!url) return null;
+  const m = url.match(/\/file\/d\/([^/]+)/);
+  return m?.[1] ?? null;
+}
+
 export function LineFixer({ line, items }: { line: FixerLine; items: ItemOption[] }) {
   const [open, setOpen] = useState(false);
+  const [viewing, setViewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -48,6 +56,8 @@ export function LineFixer({ line, items }: { line: FixerLine; items: ItemOption[
       newName: "",
     },
   ]);
+
+  const fileId = driveFileId(line.photoUrl);
 
   function update(i: number, patch: Partial<Part>) {
     setParts((ps) => ps.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
@@ -108,22 +118,44 @@ export function LineFixer({ line, items }: { line: FixerLine; items: ItemOption[
             </span>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition active:scale-95"
-        >
-          {open ? "Close" : "Fix"}
-        </button>
+        <div className="flex items-center gap-2">
+          {fileId && (
+            <button
+              type="button"
+              onClick={() => setViewing(true)}
+              className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition active:scale-95"
+            >
+              View bill
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 transition active:scale-95"
+          >
+            {open ? "Close" : "Fix"}
+          </button>
+        </div>
       </div>
 
       {open && (
         <div className="mt-3 space-y-3">
-          {parts.length > 1 && (
-            <p className="text-[11px] text-neutral-500">
-              Splitting into {parts.length} items. Set the quantity and price of each.
-            </p>
-          )}
+          <div className="flex items-center justify-between">
+            {parts.length > 1 ? (
+              <p className="text-[11px] text-neutral-500">
+                Splitting into {parts.length} items. Set the quantity and price of each.
+              </p>
+            ) : <span />}
+            {fileId && (
+              <button
+                type="button"
+                onClick={() => setViewing(true)}
+                className="text-[11px] font-medium text-strow-ink underline"
+              >
+                View bill photo
+              </button>
+            )}
+          </div>
 
           {parts.map((p, i) => (
             <div key={i} className="rounded-lg bg-neutral-50 p-2">
@@ -183,6 +215,25 @@ export function LineFixer({ line, items }: { line: FixerLine; items: ItemOption[
               {pending ? "Saving…" : "Save"}
             </button>
             {error && <span className="text-xs text-red-700">{error}</span>}
+          </div>
+        </div>
+      )}
+
+      {viewing && fileId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setViewing(false)}>
+          <div className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
+              <h2 className="text-sm font-medium">Bill — {line.supplier}, {line.date}</h2>
+              <div className="flex items-center gap-3 text-xs">
+                <a href={line.photoUrl ?? ""} target="_blank" rel="noopener noreferrer" className="text-neutral-500 underline hover:text-strow-ink">
+                  Open in Drive
+                </a>
+                <button type="button" onClick={() => setViewing(false)} className="rounded-md px-2 py-1 text-neutral-500 hover:bg-neutral-100">
+                  Close
+                </button>
+              </div>
+            </div>
+            <iframe src={`https://drive.google.com/file/d/${fileId}/preview`} className="flex-1 w-full" allow="autoplay" title="Bill photo" />
           </div>
         </div>
       )}
