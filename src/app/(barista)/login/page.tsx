@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Numpad } from "@/components/Numpad";
 
 export default function BaristaLoginPage() {
@@ -41,6 +42,12 @@ export default function BaristaLoginPage() {
         <p className="text-sm text-neutral-500">Enter your PIN</p>
       </div>
       <Numpad onComplete={handlePinComplete} shake={shake} />
+      <Link
+        href="/owner"
+        className="mt-12 rounded-full border border-neutral-300 px-6 py-2 text-sm text-neutral-600 transition-colors hover:bg-neutral-100 active:bg-neutral-200"
+      >
+        Owner login
+      </Link>
     </main>
   );
 }
