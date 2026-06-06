@@ -33,6 +33,9 @@ export function OwnerNavContent({
           <OwnerNavLink href="/owner/expenses">
             {tr("nav.purchases", locale) + (badges?.uncategorized_count ? " (" + badges.uncategorized_count + ")" : "")}
           </OwnerNavLink>
+          <OwnerNavLink href="/owner/items">
+            {tr("nav.items", locale)}
+          </OwnerNavLink>
           <OwnerNavLink href="/owner/fixed-costs">
             {tr("nav.recurring", locale)}
           </OwnerNavLink>

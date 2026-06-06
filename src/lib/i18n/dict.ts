@@ -197,3 +197,25 @@ DICT["cash.take_out"] = { en: "Take cash out", ar: "سحب نقد" };
 DICT["cash.recount"] = { en: "Recount / set balance", ar: "إعادة العدّ / ضبط الرصيد" };
 DICT["cash.last_counted"] = { en: "counted", ar: "عُدّ في" };
 DICT["cash.needs_opening"] = { en: "No starting balance set yet — use Recount / set balance to set one.", ar: "لم يتم تعيين رصيد ابتدائي — استخدم إعادة العدّ / ضبط الرصيد لتعيينه." };
+
+// Items / purchase tracking (Session 10)
+DICT["nav.items"] = { en: "Items", ar: "الأصناف" };
+DICT["page.items"] = { en: "Items", ar: "الأصناف" };
+DICT["items.tracked"] = { en: "items tracked", ar: "صنف متتبَّع" };
+DICT["items.total_spend"] = { en: "total spend", ar: "إجمالي الإنفاق" };
+DICT["items.review"] = { en: "Needs your review", ar: "يحتاج إلى مراجعتك" };
+DICT["items.suspicious_lines"] = { en: "suspicious lines (review, then fix in Purchases)", ar: "سطور مشبوهة (راجعها ثم صححها في المشتريات)" };
+DICT["items.unmapped_lines"] = { en: "lines not yet matched to an item", ar: "سطور لم تُطابق بصنف بعد" };
+DICT["items.unmapped_note"] = { en: "These are mixed/combo orders or unclear text — money is still counted, but can't be split per item.", ar: "هذه طلبات مختلطة أو نص غير واضح — المبلغ محسوب لكنه لا يمكن تقسيمه لكل صنف." };
+DICT["items.flag"] = { en: "to review", ar: "للمراجعة" };
+DICT["items.qty"] = { en: "Qty bought", ar: "الكمية" };
+DICT["items.spend"] = { en: "Total spend", ar: "الإنفاق" };
+DICT["items.typical_price"] = { en: "Typical price", ar: "السعر المعتاد" };
+DICT["items.buys"] = { en: "purchases", ar: "عملية شراء" };
+DICT["items.every"] = { en: "every", ar: "كل" };
+DICT["items.days"] = { en: "days", ar: "يوم" };
+DICT["items.last"] = { en: "last", ar: "آخر شراء" };
+DICT["items.range"] = { en: "range", ar: "النطاق" };
+DICT["items.supplier"] = { en: "supplier", ar: "مورّد" };
+DICT["items.suppliers"] = { en: "suppliers", ar: "موردون" };
+DICT["items.price_each"] = { en: "price each", ar: "السعر للوحدة" };
