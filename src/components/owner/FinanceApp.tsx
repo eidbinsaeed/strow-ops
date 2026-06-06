@@ -14,6 +14,7 @@ type PersonRow = { name: string; original_amount: number; note: string; payments
 type InstRow = { name: string; group_name: string; total: number; installments_count: number; start_month: string; paid_count: number };
 type Initial = {
   month: string;
+  fromTemplate?: boolean;
   budget: { section: Section; label: string; amount: number; checked: boolean; note: string }[];
   people: { name: string; original_amount: number; note: string; payments: { amount: number; paid_on: string }[] }[];
   installments: { name: string; group_name: string; total: number; installments_count: number; start_month: string; paid_count: number }[];
@@ -159,6 +160,11 @@ export function FinanceApp({ initial }: { initial: Initial }) {
       {/* BUDGET */}
       {tab === "budget" && (
         <div className="space-y-4">
+          {initial.fromTemplate && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+              قيم قياسية محمّلة من القالب لهذا الشهر — عدّل ما يلزم ثم اضغط «حفظ الميزانية» لتثبيت أرقام هذا الشهر.
+            </div>
+          )}
           <div className="rounded-2xl border border-emerald-200 bg-white p-4">
             <h2 className="mb-2 text-sm font-semibold">☕ ربح كافيه Qave (يُسحب تلقائيًا)</h2>
             <div className="flex flex-wrap gap-4 text-sm">

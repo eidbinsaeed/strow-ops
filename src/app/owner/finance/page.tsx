@@ -35,6 +35,21 @@ export default async function FinancePage({
     supabase.from("finance_installments").select("*").order("position", { ascending: true }),
   ]);
 
+  // If this month has no saved budget yet, start it from the standard template.
+  let budgetData = budgetRes.data ?? [];
+  let fromTemplate = false;
+  if (budgetData.length === 0) {
+    const tpl = await supabase
+      .from("finance_budget_lines")
+      .select("*")
+      .eq("month", "__template__")
+      .order("position", { ascending: true });
+    if ((tpl.data ?? []).length) {
+      budgetData = tpl.data ?? [];
+      fromTemplate = true;
+    }
+  }
+
   // Cafe profit for the month — pulled live from the cafe's own tables.
   const [cloRes, expRes, fcRes] = await Promise.all([
     supabase.from("closings").select("grand_total").eq("status", "confirmed").gte("closing_date", start).lte("closing_date", end),
@@ -51,7 +66,8 @@ export default async function FinancePage({
 
   const initial = {
     month,
-    budget: (budgetRes.data ?? []).map((b) => ({
+    fromTemplate,
+    budget: budgetData.map((b) => ({
       id: b.id as string,
       section: b.section as "income" | "expense" | "wife",
       label: (b.label as string) ?? "",
