@@ -64,6 +64,11 @@ export function OwnerNavContent({
             {tr("nav.audit", locale)}
           </OwnerNavLink>
         </NavGroup>
+        <NavGroup label={tr("nav.group.personal", locale)}>
+          <OwnerNavLink href="/owner/finance">
+            {tr("nav.finance", locale)}
+          </OwnerNavLink>
+        </NavGroup>
       </nav>
 
       <div className="border-t border-neutral-200 py-4">

@@ -221,3 +221,6 @@ DICT["items.suppliers"] = { en: "suppliers", ar: "موردون" };
 DICT["items.price_each"] = { en: "price each", ar: "السعر للوحدة" };
 
 DICT["action.items"] = { en: "Items", ar: "الأصناف" };
+
+DICT["nav.group.personal"] = { en: "Personal", ar: "الشخصي" };
+DICT["nav.finance"] = { en: "Personal Finance", ar: "المالية الشخصية" };
