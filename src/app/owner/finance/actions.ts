@@ -21,7 +21,7 @@ const n = (v: unknown) => {
   const x = parseFloat(String(v ?? "")); return isNaN(x) ? 0 : x;
 };
 
-export type BudgetLineInput = { section: "income" | "expense" | "wife"; label: string; amount: number; checked: boolean; note?: string | null };
+export type BudgetLineInput = { section: "income" | "expense" | "wife" | "bills" | "installment" | "debt" | "personal" | "reserve"; label: string; amount: number; checked: boolean; note?: string | null };
 
 /** Replace all budget lines for a given month. */
 export async function saveBudget(month: string, lines: BudgetLineInput[]): Promise<Result> {
