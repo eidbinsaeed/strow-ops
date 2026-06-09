@@ -224,3 +224,46 @@ DICT["action.items"] = { en: "Items", ar: "الأصناف" };
 
 DICT["nav.group.personal"] = { en: "Personal", ar: "الشخصي" };
 DICT["nav.finance"] = { en: "Personal Finance", ar: "المالية الشخصية" };
+
+// Sales Insights page (analytics)
+DICT["nav.insights"] = { en: "Insights", ar: "التحليلات" };
+DICT["page.insights"] = { en: "Sales Insights", ar: "تحليلات المبيعات" };
+DICT["insights.subtitle"] = { en: "Understand your daily swings, best days, and where the next sales come from.", ar: "افهم تذبذب مبيعاتك اليومي، وأفضل أيامك، ومن أين تأتي المبيعات القادمة." };
+DICT["insights.empty"] = { en: "No confirmed sales yet to analyze.", ar: "لا توجد مبيعات معتمدة لتحليلها بعد." };
+
+DICT["insights.kpi.total"] = { en: "Total recorded", ar: "إجمالي المسجّل" };
+DICT["insights.kpi.days"] = { en: "days", ar: "يوم" };
+DICT["insights.kpi.avg"] = { en: "Average day", ar: "متوسط اليوم" };
+DICT["insights.kpi.avg_hint"] = { en: "your baseline", ar: "خط الأساس" };
+DICT["insights.kpi.best"] = { en: "Best single day", ar: "أفضل يوم" };
+DICT["insights.kpi.lowest"] = { en: "Lowest day", ar: "أدنى يوم" };
+
+DICT["insights.dow.title"] = { en: "Which days earn the most?", ar: "أي الأيام تحقق أكثر؟" };
+DICT["insights.dow.caption"] = { en: "Average sales by day of week. Dark = your strongest days, red = weakest.", ar: "متوسط المبيعات حسب يوم الأسبوع. الداكن = أقوى أيامك، الأحمر = الأضعف." };
+
+DICT["insights.pay.title"] = { en: "How customers pay", ar: "كيف يدفع العملاء" };
+DICT["insights.pay.card"] = { en: "Card", ar: "بطاقة" };
+DICT["insights.pay.online"] = { en: "Online", ar: "أونلاين" };
+DICT["insights.pay.cash"] = { en: "Cash", ar: "نقد" };
+DICT["insights.pay.caption"] = { en: "Share of total revenue by payment method.", ar: "نسبة كل وسيلة دفع من إجمالي الإيراد." };
+
+DICT["insights.trend.title"] = { en: "Last 14 days", ar: "آخر ١٤ يوماً" };
+DICT["insights.trend.caption"] = { en: "Daily revenue (AED), most recent on the right.", ar: "الإيراد اليومي (درهم)، الأحدث على اليمين." };
+
+DICT["insights.recs.title"] = { en: "What this means for your cafe", ar: "ماذا يعني هذا لمقهاك" };
+DICT["insights.rec.staffing.title"] = { en: "Best days & staffing", ar: "أفضل الأيام والتوظيف" };
+DICT["insights.rec.staffing.body"] = { en: "{best} ({bestAmt}) and {best2} ({best2Amt}) are your strongest days. Make sure these are fully staffed and stocked — never run out of your top sellers, and prep extra the night before.", ar: "{best} ({bestAmt}) و{best2} ({best2Amt}) هما أقوى أيامك. تأكد من توفّر العمالة والمخزون الكامل فيهما — لا تنفد أكثر أصنافك مبيعاً، وحضّر كميات إضافية في الليلة السابقة." };
+DICT["insights.rec.weakdays.title"] = { en: "Fix your weak days", ar: "عالج أيامك الضعيفة" };
+DICT["insights.rec.weakdays.body"] = { en: "{weak} ({weakAmt}) and {weak2} ({weak2Amt}) drag your average down. Run a standing offer on those days — a combo deal or happy-hour pricing — to pull traffic into the slow days instead of competing on the busy ones.", ar: "{weak} ({weakAmt}) و{weak2} ({weak2Amt}) يخفضان متوسطك. أطلق عرضاً ثابتاً في هذين اليومين — كومبو أو تسعير ساعة سعيدة — لجذب الزبائن إلى الأيام الهادئة بدل المنافسة في الأيام المزدحمة." };
+DICT["insights.rec.ticket.title"] = { en: "Grow the average ticket", ar: "ارفع متوسط الفاتورة" };
+DICT["insights.rec.ticket.body"] = { en: "Card is {cardPct}% of revenue — most customers pay by card and spend more freely. Train staff to suggest one add-on with every order (a pastry with coffee, an extra shot, a cold drink). Even +AED 5 per customer moves the daily total.", ar: "البطاقة تشكّل {cardPct}% من الإيراد — معظم العملاء يدفعون بالبطاقة وينفقون بسهولة أكبر. درّب الفريق على اقتراح إضافة واحدة مع كل طلب (حلوى مع القهوة، شوت إضافي، مشروب بارد). حتى +٥ دراهم لكل عميل تحرّك إجمالي اليوم." };
+DICT["insights.rec.customers.title"] = { en: "Bring in more customers", ar: "اجذب المزيد من العملاء" };
+DICT["insights.rec.customers.body"] = { en: "Online is only {onlPct}% of sales. Push delivery-app visibility and a simple loyalty card (buy 9, get 1 free) to turn one-time visits into repeats. Promote your slow days to delivery and social.", ar: "الأونلاين {onlPct}% فقط من المبيعات. عزّز ظهورك على تطبيقات التوصيل وأطلق بطاقة ولاء بسيطة (اشترِ ٩ واحصل على ١ مجاناً) لتحويل الزيارات العابرة إلى متكررة. روّج لأيامك الهادئة عبر التوصيل ووسائل التواصل." };
+
+DICT["insights.day.0"] = { en: "Sun", ar: "أحد" };
+DICT["insights.day.1"] = { en: "Mon", ar: "إثنين" };
+DICT["insights.day.2"] = { en: "Tue", ar: "ثلاثاء" };
+DICT["insights.day.3"] = { en: "Wed", ar: "أربعاء" };
+DICT["insights.day.4"] = { en: "Thu", ar: "خميس" };
+DICT["insights.day.5"] = { en: "Fri", ar: "جمعة" };
+DICT["insights.day.6"] = { en: "Sat", ar: "سبت" };
