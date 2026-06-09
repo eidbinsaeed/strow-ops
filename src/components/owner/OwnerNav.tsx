@@ -60,6 +60,9 @@ export function OwnerNavContent({
           <OwnerNavLink href="/owner/reports">
             {tr("nav.reports", locale)}
           </OwnerNavLink>
+          <OwnerNavLink href="/owner/insights">
+            {tr("nav.insights", locale)}
+          </OwnerNavLink>
           <OwnerNavLink href="/owner/audit">
             {tr("nav.audit", locale)}
           </OwnerNavLink>
