@@ -3,6 +3,9 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import type { Locale } from "@/lib/i18n/dict";
+import { Suspense } from "react";
+import { TableFilters } from "@/components/owner/TableFilters";
+import { parseFilters } from "@/lib/filters";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -59,16 +62,27 @@ function RecCard({ title, body }: { title: string; body: string }) {
   );
 }
 
-export default async function OwnerInsightsPage() {
+export default async function OwnerInsightsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const locale = await getLocale();
+  const params = await searchParams;
+  const filters = parseFilters(params);
   const supabase = createServiceClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("closings")
     .select("closing_date, cash_total, card_total, online_total, grand_total")
     .eq("status", "confirmed")
     .order("closing_date", { ascending: true })
     .limit(1000);
+
+  if (filters.from) query = query.gte("closing_date", filters.from);
+  if (filters.to) query = query.lte("closing_date", filters.to);
+
+  const { data, error } = await query;
 
   const rows = (data ?? []) as unknown as ClosingRow[];
 
@@ -151,6 +165,10 @@ export default async function OwnerInsightsPage() {
           {tr("insights.subtitle", locale)}
         </p>
       </header>
+
+      <Suspense fallback={null}>
+        <TableFilters showSearch={false} showStatus={false} showDates={true} />
+      </Suspense>
 
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
