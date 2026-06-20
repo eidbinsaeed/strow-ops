@@ -154,13 +154,13 @@ export function FinanceApp({ initial }: { initial: any }) {
         <div class="kpi out"><div class="l">📉 إجمالي الخارج</div><div class="v tabnum" style="color:var(--expense)">${fmt(mi.out)}</div></div>
         <div class="kpi net"><div class="l">💎 صافي الشهر</div><div class="v tabnum" style="color:${mi.net < 0 ? "var(--neg)" : "var(--pos)"}">${fmt(mi.net)}</div></div>
         <div class="kpi cafe"><div class="l">☕ ربح كافيه Qave</div><div class="v tabnum" style="color:${cf.profit < 0 ? "var(--neg)" : "var(--pos)"}">${fmt(cf.profit)}</div><div class="m">مرجعي — غير محتسب</div></div></div>
+      ${assistantHTML()}
       <div class="card"><h3>الدخل مقابل الخارج + الرصيد المتراكم (٢٤ شهر)</h3><div class="chartbox"><canvas id="cTrend"></canvas></div></div>
       <div class="grid k2" style="margin-top:14px"><div class="card" style="margin-top:0"><h3>أين يذهب المال — ${mLabel(st.cur)}</h3><div class="chartbox sm"><canvas id="cDonut"></canvas></div></div><div class="card" style="margin-top:0"><h3>نسبة الادخار شهريًا</h3><div class="chartbox sm"><canvas id="cSav"></canvas></div></div></div>
       ${yearSummaryHTML()}
       <div class="card"><h3>توزيع الخارج شهريًا حسب الباب</h3><div class="chartbox"><canvas id="cStack"></canvas></div></div>
       <div class="grid k2" style="margin-top:14px"><div class="card" style="margin-top:0"><h3>أكبر ٥ مصاريف — ${mLabel(st.cur)}</h3>${top5HTML()}</div><div class="card" style="margin-top:0"><h3>التزامات قادمة (٣ أشهر)</h3>${upcomingHTML()}</div></div>
       <div class="card"><h3>ملخص الأبواب خلال ٢٤ شهر</h3>${yearCatTableHTML()}</div>
-      ${assistantHTML()}
       <div class="card"><h3>جدول الـ٢٤ شهر</h3><div class="scrollx" style="max-height:340px;overflow-y:auto"><table class="tbl"><thead><tr><th>الشهر</th><th>الدخل</th><th>الخارج</th><th>صافي</th><th>المتراكم</th></tr></thead><tbody>
         ${series().map((s: any) => `<tr class="${s.m === st.cur ? "cur" : ""}"><td><button class="lnk" data-go="${s.m}">${mLabel(s.m)}</button></td><td class="tabnum" style="color:var(--income)">${fmt(s.income)}</td><td class="tabnum" style="color:var(--expense)">${fmt(s.out)}</td><td class="tabnum" style="color:${s.net < 0 ? "var(--neg)" : "inherit"}">${fmt(s.net)}</td><td class="tabnum" style="font-weight:800;color:${s.leftover < 0 ? "var(--neg)" : "var(--pos)"}">${fmt(s.leftover)}</td></tr>`).join("")}
       </tbody></table></div></div>`; };
