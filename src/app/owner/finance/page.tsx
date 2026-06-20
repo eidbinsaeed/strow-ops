@@ -1,114 +1,66 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getLocale } from "@/lib/i18n/locale";
 import { FinanceApp } from "@/components/owner/FinanceApp";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function monthKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-function monthRange(m: string) {
-  const [y, mo] = m.split("-").map(Number);
-  const last = new Date(y, mo, 0).getDate();
-  return { start: `${m}-01`, end: `${m}-${String(last).padStart(2, "0")}` };
-}
+const ALL: string[] = [];
+for (const y of [2026, 2027, 2028]) for (let m = 1; m <= 12; m++) ALL.push(`${y}-${String(m).padStart(2, "0")}`);
+const ORDER = ALL.filter((k) => k >= "2026-06" && k <= "2028-05");
+const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
-const OUT_SECTIONS = ["expense", "bills", "installment", "debt", "personal", "reserve"];
+type Row = { l: string; a: number; c: boolean };
+type Sections = { income: Row[]; expense: Row[]; wife: Row[]; bills: Row[]; debt: Row[]; personal: Row[]; reserve: Row[] };
 
-export default async function FinancePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | undefined>>;
-}) {
-  const sp = await searchParams;
-  const locale = await getLocale();
-  const month = sp.m && /^\d{4}-\d{2}$/.test(sp.m) ? sp.m : monthKey(new Date());
-  const { start, end } = monthRange(month);
+export default async function FinancePage() {
   const supabase = createServiceClient();
-
-  const [budgetRes, allRes, peopleRes, payRes, instRes] = await Promise.all([
-    supabase.from("finance_budget_lines").select("*").eq("month", month).order("position", { ascending: true }),
-    supabase.from("finance_budget_lines").select("month, section, amount, checked").neq("month", "__template__"),
-    supabase.from("finance_people").select("*").order("position", { ascending: true }),
-    supabase.from("finance_payments").select("*").order("paid_on", { ascending: false }),
+  const [linesRes, instRes, peopleRes, cloRes, expRes, fcRes, eliRes] = await Promise.all([
+    supabase.from("finance_budget_lines").select("month,section,label,amount,checked"),
     supabase.from("finance_installments").select("*").order("position", { ascending: true }),
-  ]);
-
-  // Cafe profit (reference only)
-  const [cloRes, expRes, fcRes] = await Promise.all([
-    supabase.from("closings").select("grand_total").eq("status", "confirmed").gte("closing_date", start).lte("closing_date", end),
-    supabase.from("expenses").select("total").eq("status", "confirmed").gte("expense_date", start).lte("expense_date", end),
+    supabase.from("finance_people").select("*").order("position", { ascending: true }),
+    supabase.from("closings").select("closing_date,grand_total").eq("status", "confirmed"),
+    supabase.from("expenses").select("expense_date,total").eq("status", "confirmed"),
     supabase.from("fixed_costs").select("amount").eq("is_active", true).eq("frequency", "monthly"),
+    supabase.from("expense_line_items").select("description,quantity,line_total"),
   ]);
-  const cafe = {
-    income: (cloRes.data ?? []).reduce((s, r) => s + Number(r.grand_total || 0), 0),
-    expenses: (expRes.data ?? []).reduce((s, r) => s + Number(r.total || 0), 0),
-    recurring: (fcRes.data ?? []).reduce((s, r) => s + Number(r.amount || 0), 0),
-  };
 
-  // Per-month aggregates: income = checked income; out = checked(expense/bills/installment/debt/personal/reserve) + ALL wife
-  const agg = new Map<string, { income: number; out: number }>();
-  for (const r of allRes.data ?? []) {
-    const m = r.month as string;
-    const a = agg.get(m) ?? { income: 0, out: 0 };
-    const amt = Number(r.amount) || 0;
-    if (r.section === "income") { if (r.checked) a.income += amt; }
-    else if (r.section === "wife") { a.out += amt; }
-    else if (OUT_SECTIONS.includes(r.section as string)) { if (r.checked) a.out += amt; }
-    agg.set(m, a);
+  const months: Record<string, Sections> = {};
+  for (const m of ORDER) months[m] = { income: [], expense: [], wife: [], bills: [], debt: [], personal: [], reserve: [] };
+  for (const r of (linesRes.data ?? []) as Array<{ month: string; section: string; label: string | null; amount: number; checked: boolean }>) {
+    const m = r.month;
+    if (!months[m]) continue;
+    if (r.section === "installment") continue;
+    const sec = months[m][r.section as keyof Sections];
+    if (sec) sec.push({ l: r.label ?? "", a: Number(r.amount) || 0, c: !!r.checked });
   }
-  // Chain leftover across months in order.
-  const chain = [...agg.entries()].sort((x, y) => x[0].localeCompare(y[0]));
-  let running = 0;
-  const monthly: { month: string; income: number; out: number; net: number; opening: number; leftover: number }[] = [];
-  for (const [m, a] of chain) {
-    const opening = running;
-    const net = a.income - a.out;
-    const leftover = opening + net;
-    running = leftover;
-    monthly.push({ month: m, income: a.income, out: a.out, net, opening, leftover });
+  const plans = ((instRes.data ?? []) as Array<Record<string, unknown>>).map((it) => ({
+    id: it.id as string, name: (it.name as string) ?? "", group: (it.group_name as string | null) ?? "أخرى",
+    total: Number(it.total) || 0, count: Math.max(Number(it.installments_count) || 1, 1),
+    start: (it.start_month as string | null) ?? "2026-06", paid: Math.max(Number(it.paid_count) || 0, 0),
+  }));
+  const people = ((peopleRes.data ?? []) as Array<Record<string, unknown>>).map((p) => ({
+    id: p.id as string, name: (p.name as string) ?? "", original: Number(p.original_amount) || 0,
+  }));
+  const incBy: Record<string, number> = {}, expBy: Record<string, number> = {};
+  for (const r of (cloRes.data ?? []) as Array<{ closing_date: string; grand_total: number }>) { const m = String(r.closing_date).slice(0, 7); incBy[m] = (incBy[m] || 0) + Number(r.grand_total || 0); }
+  for (const r of (expRes.data ?? []) as Array<{ expense_date: string; total: number }>) { const m = String(r.expense_date).slice(0, 7); expBy[m] = (expBy[m] || 0) + Number(r.total || 0); }
+  const recurring = ((fcRes.data ?? []) as Array<{ amount: number }>).reduce((s, r) => s + Number(r.amount || 0), 0);
+  const items: Record<string, { item: string; qty: number; spend: number; times: number }> = {};
+  for (const r of (eliRes.data ?? []) as Array<{ description: string | null; quantity: number; line_total: number }>) {
+    const k = (r.description || "").trim() || "(غير مسمى)";
+    const it = items[k] || (items[k] = { item: k, qty: 0, spend: 0, times: 0 });
+    it.qty += Number(r.quantity || 0); it.spend += Number(r.line_total || 0); it.times += 1;
   }
-  const sel = monthly.find((x) => x.month === month);
-  const opening = sel?.opening ?? 0;
-
-  type Pay = { id: string; person_id: string; amount: number; paid_on: string };
-  const payments = (payRes.data ?? []) as unknown as Pay[];
-
-  const initial = {
-    month,
-    opening,
-    monthly: monthly.map((x) => ({ month: x.month, income: x.income, out: x.out, net: x.net, leftover: x.leftover })),
-    budget: (budgetRes.data ?? []).map((b) => ({
-      section: b.section as string,
-      label: (b.label as string) ?? "",
-      amount: Number(b.amount) || 0,
-      checked: !!b.checked,
-      note: (b.note as string | null) ?? "",
-    })),
-    people: ((peopleRes.data ?? []) as Array<{ id: string; name: string; original_amount: number; note: string | null }>).map((p) => ({
-      id: p.id, name: p.name ?? "", original_amount: Number(p.original_amount) || 0, note: p.note ?? "",
-      payments: payments.filter((x) => x.person_id === p.id).map((x) => ({ amount: Number(x.amount) || 0, paid_on: x.paid_on })),
-    })),
-    installments: (instRes.data ?? []).map((it) => ({
-      id: it.id as string, name: (it.name as string) ?? "", group_name: (it.group_name as string | null) ?? "أخرى",
-      total: Number(it.total) || 0, installments_count: Number(it.installments_count) || 1,
-      start_month: (it.start_month as string | null) ?? month, paid_count: Number(it.paid_count) || 0,
-    })),
-    cafe,
-  };
+  const top_items = Object.values(items).sort((a, b) => b.spend - a.spend).slice(0, 12);
+  const now = ym(new Date());
+  const current = now >= "2026-06" && now <= "2028-05" ? now : "2026-06";
+  const initial = { current, order: ORDER, months, plans, people, cafe: { income_by_month: incBy, expense_by_month: expBy, recurring, top_items } };
 
   return (
-    <div className="px-6 py-8 md:px-10" dir="rtl">
-      <header className="mb-2">
-        <h1 className="text-2xl font-light tracking-tight">المالية الشخصية</h1>
-        <p className="mt-1 text-sm text-neutral-500">٢٤ شهرًا مترابطة — رصيد كل شهر يُرحّل للشهر التالي. منفصلة تمامًا عن سجلّات الكافيه.</p>
-      </header>
+    <div className="px-4 py-6 md:px-8" dir="rtl">
       <FinanceApp initial={initial} />
-      <p className="mt-6 text-xs text-neutral-400">
-        <Link href="/owner" className="underline hover:text-strow-ink">→ لوحة التحكم</Link>
-      </p>
+      <p className="mt-6 text-xs text-neutral-400"><Link href="/owner" className="underline hover:text-strow-ink">→ لوحة التحكم</Link></p>
     </div>
   );
 }
