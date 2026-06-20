@@ -232,20 +232,24 @@ export function FinanceApp({ initial }: { initial: any }) {
     const drawCafe = () => { const el = cv("cCafe"), C = CJS(); if (!el || !C) return; killC("c"); const ms = Object.keys(st.cafe.income_by_month).sort(); st.charts.c = new C(el, { type: "bar", data: { labels: ms.map(mLabel), datasets: [{ label: "دخل", data: ms.map((m: string) => st.cafe.income_by_month[m] || 0), backgroundColor: "#2f8f83", borderRadius: 4 }, { label: "مصاريف", data: ms.map((m: string) => st.cafe.expense_by_month[m] || 0), backgroundColor: "#c0556a", borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { font: { size: 10, family: "Tahoma" } } } }, scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } } } }); };
 
     const rebuildMsgs = () => { const box = root.querySelector("#sfMsgs"); if (box) { box.innerHTML = st.msgs.map((m: any) => `<div class="msg ${m.who === "me" ? "me" : "bot"}">${m.t}</div>`).join(""); box.scrollTop = box.scrollHeight; } };
-    const pickNum = (s: string) => { const m = s.replace(/,/g, "").match(/-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : null; };
-    const findPlan = (text: string) => { const q = norm(text); return st.plans.find((p: any) => { const n = norm(p.name); return q.split(/\s+/).some((w) => w.length > 2 && n.includes(w)); }); };
-    const ask = (text: string) => { if (!text || !text.trim()) return; st.msgs.push({ who: "me", t: text }); const q = norm(text), n = pickNum(text);
-      const person = st.people.find((p: any) => p.name.trim() !== "" && q.includes(norm(p.name).slice(0, 3)));
-      if (n && person && /(سدد|سداد|دفعت ل|دين)/.test(q)) { rowsOf(st.cur, "debt").push({ l: person.name, a: n, c: true }); persistMonth(st.cur); st.msgs.push({ who: "bot", t: `✅ سجّلت دفعة ${fmt(n)} لـ${person.name} في ${mLabel(st.cur)}.\nمتبقّي له ${fmt((+person.original || 0) - paidPerson(person.name))} · صافي الشهر ${fmt(monthInfo(st.cur).net)}.` }); render(); return; }
-      if (/(صرفت|دفعت|اشتريت|اضف|اضيف|سجل)/.test(q) && n) { let sec = "expense"; if (/(كهرب|فاتور|انترنت|اتصالات|du|etisalat|ماء|مويه)/.test(q)) sec = "bills"; else if (/(شخصي|قهوه|مطعم|بنزين|وقود)/.test(q)) sec = "personal"; let label = text.replace(/(صرفت|دفعت|اشتريت|اضف|اضيف|سجل)/g, "").replace(/[\d,]+(\.\d+)?/, "").replace(/(درهم|د\.?إ|aed|على|لـ|في|بـ)/gi, " ").trim() || "مصروف جديد"; rowsOf(st.cur, sec).push({ l: label, a: n, c: true }); persistMonth(st.cur); st.msgs.push({ who: "bot", t: `✅ أضفت «${label}» بمبلغ ${fmt(n)} في ${mLabel(st.cur)} وفعّلته.\nصافي الشهر ${fmt(monthInfo(st.cur).net)} · المتبقّي ${fmt(monthInfo(st.cur).leftover)}.` }); render(); return; }
-      if (/(قسط|اقساط|تابي|تمار|tajer|bateen|nomod)/.test(q) && /(متى|ينتهي|نهاي|باقي|كم)/.test(q) && !/كل/.test(q)) { const p = findPlan(text); if (p) { const c = planCalc(p); st.msgs.push({ who: "bot", t: `💳 «${p.name}»: شهري ${fmt2(c.monthly)} · مدفوع ${c.paidCount}/${c.count} · ينتهي ${c.end} · المتبقّي ${fmt(c.remaining)}.` }); } else st.msgs.push({ who: "bot", t: "ما حصلت القسط. عندك: " + st.plans.map((p: any) => p.name).join("، ") }); rebuildMsgs(); return; }
-      if (/كل/.test(q) && /(قسط|اقساط)/.test(q)) { const ir = st.plans.reduce((a: number, p: any) => a + planCalc(p).remaining, 0), mi = monthInfo(st.cur); st.msgs.push({ who: "bot", t: `📉 المتبقّي على كل الأقساط = ${fmt(ir)}.\nلو دفعتها من رصيد ${mLabel(st.cur)} (${fmt(mi.leftover)}) → يتبقّى ${fmt(mi.leftover - ir)}.` }); rebuildMsgs(); return; }
-      if (/(دين|باقي|متبقي|كم)/.test(q) && person) { st.msgs.push({ who: "bot", t: `🤝 ${person.name}: الأصلي ${fmt(person.original)} · مدفوع ${fmt(paidPerson(person.name))} · المتبقّي ${fmt((+person.original || 0) - paidPerson(person.name))}.` }); rebuildMsgs(); return; }
-      if (/(اكثر|اعلى).*(صنف|شراء|منتج|بيع)|most/.test(q)) { const items = st.cafe.top_items; if (items.length) { const byT = items.slice().sort((a: any, b: any) => b.times - a.times)[0], byS = items.slice().sort((a: any, b: any) => b.spend - a.spend)[0]; st.msgs.push({ who: "bot", t: `☕ الأكثر تكرارًا: «${byT.item}» (${byT.times}).\nالأعلى صرفًا: «${byS.item}» (${fmt(byS.spend)}).` }); } else st.msgs.push({ who: "bot", t: "لا بيانات أصناف بعد." }); rebuildMsgs(); return; }
-      if (/(دخلي|الدخل|كم دخل)/.test(q)) { st.msgs.push({ who: "bot", t: `دخل ${mLabel(st.cur)} = ${fmt(incomeOf(st.cur))}.` }); rebuildMsgs(); return; }
-      if (/(مصاريفي|الخارج|كم صرفت|مصروف)/.test(q)) { st.msgs.push({ who: "bot", t: `إجمالي الخارج في ${mLabel(st.cur)} = ${fmt(outOf(st.cur))}.` }); rebuildMsgs(); return; }
-      if (/(رصيد|متبقي|كم باقي)/.test(q)) { st.msgs.push({ who: "bot", t: `الرصيد المتبقّي بنهاية ${mLabel(st.cur)} = ${fmt(monthInfo(st.cur).leftover)}.` }); rebuildMsgs(); return; }
-      st.msgs.push({ who: "bot", t: "أقدر: إضافة مصروف، تسجيل سداد دين، نهاية قسط، «كم يتبقّى لو دفعت كل الأقساط»، أكثر صنف، دخل/مصاريف الشهر." }); rebuildMsgs();
+    const applyAction = (a: any) => {
+      if (!a) return false;
+      if (a.type === "add_line") { const arr = st.months[a.month] && st.months[a.month][a.section]; if (!arr) return false; arr.push({ l: String(a.label || "بند"), a: +a.amount || 0, c: true }); persistMonth(a.month); return true; }
+      if (a.type === "installment_paid") { const p = st.plans.find((pp: any) => { const x = norm(pp.name), y = norm(a.plan || ""); return x && y && (x.includes(y.slice(0, 3)) || y.includes(x.slice(0, 3))); }); if (!p) return false; const k = ORDER.indexOf(a.month) - ORDER.indexOf(p.start); if (k < 0) return false; setPaid(p, k, a.paid !== false); persistPlans(); return true; }
+      return false;
+    };
+    const ask = async (text: string) => {
+      if (!text || !text.trim()) return;
+      st.msgs.push({ who: "me", t: text }); st.msgs.push({ who: "bot", t: "…" }); rebuildMsgs();
+      try {
+        const r = await fetch("/api/finance/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text, month: st.cur }) });
+        const j = await r.json();
+        st.msgs.pop();
+        st.msgs.push({ who: "bot", t: j.reply || "تم." });
+        if (applyAction(j.action)) render(); else rebuildMsgs();
+      } catch {
+        st.msgs.pop(); st.msgs.push({ who: "bot", t: "تعذّر الاتصال بالمساعد، حاول لاحقًا." }); rebuildMsgs();
+      }
     };
 
     const render = () => {
