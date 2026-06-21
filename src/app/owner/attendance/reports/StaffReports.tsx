@@ -13,6 +13,7 @@ type Report = {
   detail: string | null;
   severity: string | null;
   occurred_on: string;
+  acknowledged_at: string | null;
 };
 
 const KINDS = ["warning", "incident", "note", "commendation"];
@@ -156,6 +157,16 @@ export function StaffReports({
                     </div>
                   )}
                   <div className="mt-1 text-xs text-neutral-400">{r.occurred_on}</div>
+                  {(r.kind === "warning" || r.kind === "incident") &&
+                    (r.acknowledged_at ? (
+                      <div className="mt-1 text-xs font-medium text-emerald-700">
+                        ✓ {tr("rep.ack.done", locale)} · {r.acknowledged_at.slice(0, 10)}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-xs text-amber-600">
+                        ⏳ {tr("rep.ack.pending", locale)}
+                      </div>
+                    ))}
                 </div>
                 <div className="flex flex-shrink-0 flex-col gap-1">
                   {(r.kind === "warning" || r.kind === "incident") && (

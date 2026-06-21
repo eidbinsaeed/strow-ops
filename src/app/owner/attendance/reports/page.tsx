@@ -22,6 +22,7 @@ type Report = {
   detail: string | null;
   severity: string | null;
   occurred_on: string;
+  acknowledged_at: string | null;
 };
 
 function Kpi({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
@@ -144,7 +145,7 @@ export default async function StaffReportsPage({
       .eq("barista_id", selectedId),
     supabase
       .from("staff_reports")
-      .select("id, kind, title, detail, severity, occurred_on")
+      .select("id, kind, title, detail, severity, occurred_on, acknowledged_at")
       .eq("barista_id", selectedId)
       .order("occurred_on", { ascending: false }),
   ]);

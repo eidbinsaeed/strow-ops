@@ -14,13 +14,18 @@ export default async function BaristaHomePage() {
   const firstName = session.name.split(" ")[0];
 
   const supabase = createServiceClient();
-  const { data } = await supabase
-    .from("baristas")
-    .select("role")
-    .eq("id", session.bid)
-    .maybeSingle();
-  const role = ((data as { role?: string } | null)?.role ?? "barista").toLowerCase();
+  const [{ data: meRow }, { data: notifs }] = await Promise.all([
+    supabase.from("baristas").select("role").eq("id", session.bid).maybeSingle(),
+    supabase
+      .from("staff_reports")
+      .select("id")
+      .eq("barista_id", session.bid)
+      .in("kind", ["warning", "incident"])
+      .is("acknowledged_at", null),
+  ]);
+  const role = ((meRow as { role?: string } | null)?.role ?? "barista").toLowerCase();
   const canOperate = role !== "waiter";
+  const notifCount = (notifs ?? []).length;
 
   return (
     <main className="flex min-h-dvh flex-col px-6 py-6">
@@ -72,6 +77,21 @@ export default async function BaristaHomePage() {
             </Link>
           </>
         )}
+
+        <Link
+          href={"/me/record" as Route}
+          className="relative block rounded-2xl border border-neutral-300 bg-white px-6 py-7 text-center text-lg font-medium text-strow-ink shadow-sm transition active:scale-[0.98]"
+        >
+          {notifCount > 0 && (
+            <span className="absolute right-4 top-4 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold text-white">
+              {notifCount}
+            </span>
+          )}
+          My Record
+          <span className="mt-1 block text-xs font-normal text-neutral-500">
+            Attendance, warnings &amp; notifications
+          </span>
+        </Link>
 
         <Link
           href={"/me" as Route}
