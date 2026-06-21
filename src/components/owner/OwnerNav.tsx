@@ -57,6 +57,9 @@ export function OwnerNavContent({
           <OwnerNavLink href="/owner/attendance">
             {tr("nav.attendance", locale)}
           </OwnerNavLink>
+          <OwnerNavLink href="/owner/attendance/log">
+            {tr("nav.attendance_log", locale)}
+          </OwnerNavLink>
         </NavGroup>
 
         <NavGroup label={tr("nav.group.reporting", locale)}>

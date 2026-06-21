@@ -300,3 +300,20 @@ DICT["att.in"] = { en: "in", ar: "دخول" };
 DICT["att.out"] = { en: "out", ar: "خروج" };
 DICT["att.date"] = { en: "When", ar: "الوقت" };
 DICT["att.dir"] = { en: "Direction", ar: "النوع" };
+
+// Attendance log (editable corrections)
+DICT["nav.attendance_log"] = { en: "Attendance log", ar: "سجل الحضور" };
+DICT["att.log.title"] = { en: "Attendance log", ar: "سجل الحضور" };
+DICT["att.log.subtitle"] = { en: "Correct any record — sick leave, day off, or undo. Payroll updates instantly.", ar: "صحّح أي سجل — إجازة مرضية أو يوم إجازة أو تراجع. يُحدَّث الراتب فوراً." };
+DICT["att.log.banner"] = { en: "Sick and Off are paid (no deduction). Absent is unpaid. Present removes the record.", ar: "المرضي والإجازة مدفوعان (بدون خصم). الغياب غير مدفوع. حاضر يحذف السجل." };
+DICT["att.log.empty"] = { en: "No records this month — everyone is present by default. Use “Add record” to log a sick day or day off.", ar: "لا سجلات هذا الشهر — الجميع حاضر افتراضياً. استخدم «إضافة سجل» لتسجيل يوم مرضي أو إجازة." };
+DICT["att.add.title"] = { en: "Add / set a record", ar: "إضافة / ضبط سجل" };
+DICT["att.add.add"] = { en: "Add", ar: "إضافة" };
+DICT["att.back"] = { en: "← Attendance", ar: "→ الحضور" };
+DICT["att.col.date"] = { en: "Date", ar: "التاريخ" };
+DICT["att.col.status"] = { en: "Status", ar: "الحالة" };
+DICT["att.st.present"] = { en: "Present", ar: "حاضر" };
+DICT["att.st.late"] = { en: "Late", ar: "متأخر" };
+DICT["att.st.absent"] = { en: "Absent", ar: "غائب" };
+DICT["att.st.sick"] = { en: "Sick", ar: "مرضي" };
+DICT["att.st.off"] = { en: "Off / day off", ar: "إجازة" };
