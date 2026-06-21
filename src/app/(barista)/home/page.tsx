@@ -13,7 +13,6 @@ export default async function BaristaHomePage() {
 
   const firstName = session.name.split(" ")[0];
 
-  // Operational cards (close / expense) are for till staff, not waiters.
   const supabase = createServiceClient();
   const { data } = await supabase
     .from("baristas")
@@ -61,6 +60,16 @@ export default async function BaristaHomePage() {
                 Photograph a receipt or invoice
               </span>
             </Link>
+
+            <Link
+              href={"/report-absence" as Route}
+              className="block rounded-2xl border border-neutral-300 bg-white px-6 py-7 text-center text-lg font-medium text-strow-ink shadow-sm transition active:scale-[0.98]"
+            >
+              Report Absence
+              <span className="mt-1 block text-xs font-normal text-neutral-500">
+                Mark a waiter absent for a day
+              </span>
+            </Link>
           </>
         )}
 
@@ -70,7 +79,7 @@ export default async function BaristaHomePage() {
         >
           My Account
           <span className="mt-1 block text-xs font-normal text-neutral-500">
-            Photo, phone &amp; PIN
+            Photo, phone &amp; password
           </span>
         </Link>
       </div>

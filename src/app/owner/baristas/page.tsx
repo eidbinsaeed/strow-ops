@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
+import { signedStaffPhotoUrl } from "@/lib/storage/staff-photo";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { AddBaristaForm } from "./AddBaristaForm";
 import { BaristaRowActions } from "./BaristaRowActions";
+import { IdCardButton } from "./IdCardButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,6 +17,7 @@ type BaristaRow = {
   employee_code: string | null;
   phone: string | null;
   salary: number | string | null;
+  photo_url: string | null;
   is_active: boolean;
   is_on_shift: boolean;
   created_at: string;
@@ -34,13 +37,16 @@ export default async function OwnerBaristasPage() {
   const { data, error } = await supabase
     .from("baristas")
     .select(
-      "id, name, role, employee_code, phone, salary, is_active, is_on_shift, created_at, locations(name, slug)",
+      "id, name, role, employee_code, phone, salary, photo_url, is_active, is_on_shift, created_at, locations(name, slug)",
     )
     .order("is_active", { ascending: false })
     .order("created_at", { ascending: true });
 
   const baristas = (data ?? []) as unknown as BaristaRow[];
   const activeCount = baristas.filter((b) => b.is_active).length;
+  const photoUrls = await Promise.all(
+    baristas.map((b) => signedStaffPhotoUrl(b.photo_url)),
+  );
 
   return (
     <div className="px-6 py-8 md:px-10">
@@ -72,13 +78,13 @@ export default async function OwnerBaristasPage() {
                 <th className="px-5 py-3 font-medium">ID code</th>
                 <th className="px-5 py-3 font-medium">Role</th>
                 <th className="px-5 py-3 font-medium">Phone</th>
-                <th className="px-5 py-3 font-medium text-right">Salary</th>
+                <th className="px-5 py-3 text-right font-medium">Salary</th>
                 <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium text-right">Actions</th>
+                <th className="px-5 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              {baristas.map((b) => (
+              {baristas.map((b, i) => (
                 <tr key={b.id} className="text-sm">
                   <td className="px-5 py-4">
                     <div className="font-medium">{b.name}</div>
@@ -113,13 +119,22 @@ export default async function OwnerBaristasPage() {
                     )}
                   </td>
                   <td className="px-5 py-4">
-                    <BaristaRowActions
-                      id={b.id}
-                      isActive={b.is_active}
-                      isOnShift={b.is_on_shift}
-                      name={b.name}
-                      salary={b.salary == null ? null : Number(b.salary)}
-                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <IdCardButton
+                        name={b.name}
+                        code={b.employee_code}
+                        role={b.role}
+                        photoUrl={photoUrls[i]}
+                        cafe={b.locations?.name ?? "Qavè Cafe"}
+                      />
+                      <BaristaRowActions
+                        id={b.id}
+                        isActive={b.is_active}
+                        isOnShift={b.is_on_shift}
+                        name={b.name}
+                        salary={b.salary == null ? null : Number(b.salary)}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
