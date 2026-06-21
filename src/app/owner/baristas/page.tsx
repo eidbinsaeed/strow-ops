@@ -12,18 +12,30 @@ type BaristaRow = {
   id: string;
   name: string;
   role: string;
+  employee_code: string | null;
+  phone: string | null;
+  salary: number | string | null;
   is_active: boolean;
   is_on_shift: boolean;
   created_at: string;
   locations: { name: string; slug: string } | null;
 };
 
+function fmtSalary(v: number | string | null): string {
+  if (v == null) return "—";
+  const n = Number(v);
+  if (Number.isNaN(n)) return "—";
+  return n.toLocaleString("en-AE");
+}
+
 export default async function OwnerBaristasPage() {
   const locale = await getLocale();
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("baristas")
-    .select("id, name, role, is_active, is_on_shift, created_at, locations(name, slug)")
+    .select(
+      "id, name, role, employee_code, phone, salary, is_active, is_on_shift, created_at, locations(name, slug)",
+    )
     .order("is_active", { ascending: false })
     .order("created_at", { ascending: true });
 
@@ -43,12 +55,12 @@ export default async function OwnerBaristasPage() {
 
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-          Could not load baristas: {error.message}
+          Could not load staff: {error.message}
         </div>
       ) : baristas.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
           <p className="text-sm text-neutral-500">
-            No baristas yet. Use the form above to add the first one.
+            No staff yet. Use the form above to add the first one.
           </p>
         </div>
       ) : (
@@ -57,7 +69,10 @@ export default async function OwnerBaristasPage() {
             <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500">
               <tr>
                 <th className="px-5 py-3 font-medium">Name</th>
+                <th className="px-5 py-3 font-medium">ID code</th>
                 <th className="px-5 py-3 font-medium">Role</th>
+                <th className="px-5 py-3 font-medium">Phone</th>
+                <th className="px-5 py-3 font-medium text-right">Salary</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium text-right">Actions</th>
               </tr>
@@ -71,8 +86,13 @@ export default async function OwnerBaristasPage() {
                       {b.locations?.name ?? "—"}
                     </div>
                   </td>
-                  <td className="px-5 py-4 capitalize text-neutral-600">
-                    {b.role}
+                  <td className="px-5 py-4 font-mono text-neutral-600">
+                    {b.employee_code ?? "—"}
+                  </td>
+                  <td className="px-5 py-4 capitalize text-neutral-600">{b.role}</td>
+                  <td className="px-5 py-4 text-neutral-600">{b.phone ?? "—"}</td>
+                  <td className="px-5 py-4 text-right tabular-nums text-neutral-700">
+                    {fmtSalary(b.salary)}
                   </td>
                   <td className="px-5 py-4">
                     {!b.is_active ? (
@@ -98,6 +118,7 @@ export default async function OwnerBaristasPage() {
                       isActive={b.is_active}
                       isOnShift={b.is_on_shift}
                       name={b.name}
+                      salary={b.salary == null ? null : Number(b.salary)}
                     />
                   </td>
                 </tr>

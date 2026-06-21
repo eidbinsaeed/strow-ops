@@ -1,13 +1,27 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import type { Route } from "next";
 import { getBaristaSession } from "@/lib/auth/session";
+import { createServiceClient } from "@/lib/supabase/server";
 import { LogoutButton } from "@/components/LogoutButton";
+
+export const dynamic = "force-dynamic";
 
 export default async function BaristaHomePage() {
   const session = await getBaristaSession();
   if (!session) redirect("/login");
 
   const firstName = session.name.split(" ")[0];
+
+  // Operational cards (close / expense) are for till staff, not waiters.
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("baristas")
+    .select("role")
+    .eq("id", session.bid)
+    .maybeSingle();
+  const role = ((data as { role?: string } | null)?.role ?? "barista").toLowerCase();
+  const canOperate = role !== "waiter";
 
   return (
     <main className="flex min-h-dvh flex-col px-6 py-6">
@@ -26,23 +40,37 @@ export default async function BaristaHomePage() {
           Hello, {firstName} 👋
         </p>
 
-        <Link
-          href="/close"
-          className="block rounded-2xl bg-strow-ink px-6 py-7 text-center text-lg font-medium text-white shadow-sm transition active:scale-[0.98]"
-        >
-          End of Day Close
-          <span className="mt-1 block text-xs font-normal opacity-70">
-            Photograph the closing sheet
-          </span>
-        </Link>
+        {canOperate && (
+          <>
+            <Link
+              href="/close"
+              className="block rounded-2xl bg-strow-ink px-6 py-7 text-center text-lg font-medium text-white shadow-sm transition active:scale-[0.98]"
+            >
+              End of Day Close
+              <span className="mt-1 block text-xs font-normal opacity-70">
+                Photograph the closing sheet
+              </span>
+            </Link>
+
+            <Link
+              href="/expense"
+              className="block rounded-2xl border border-neutral-300 bg-white px-6 py-7 text-center text-lg font-medium text-strow-ink shadow-sm transition active:scale-[0.98]"
+            >
+              Log Expense
+              <span className="mt-1 block text-xs font-normal text-neutral-500">
+                Photograph a receipt or invoice
+              </span>
+            </Link>
+          </>
+        )}
 
         <Link
-          href="/expense"
+          href={"/me" as Route}
           className="block rounded-2xl border border-neutral-300 bg-white px-6 py-7 text-center text-lg font-medium text-strow-ink shadow-sm transition active:scale-[0.98]"
         >
-          Log Expense
+          My Account
           <span className="mt-1 block text-xs font-normal text-neutral-500">
-            Photograph a receipt or invoice
+            Photo, phone &amp; PIN
           </span>
         </Link>
       </div>

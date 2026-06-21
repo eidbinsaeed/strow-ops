@@ -6,6 +6,7 @@ import {
   rotateBaristaPin,
   deactivateBarista,
   reactivateBarista,
+  setBaristaSalary,
 } from "./actions";
 
 type BaristaRowActionsProps = {
@@ -13,6 +14,7 @@ type BaristaRowActionsProps = {
   isActive: boolean;
   isOnShift: boolean;
   name: string;
+  salary: number | null;
 };
 
 export function BaristaRowActions({
@@ -20,6 +22,7 @@ export function BaristaRowActions({
   isActive,
   isOnShift,
   name,
+  salary,
 }: BaristaRowActionsProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +47,19 @@ export function BaristaRowActions({
       const result = await rotateBaristaPin(id, newPin);
       if (result?.error) setError(result.error);
       else alert(`PIN updated for ${name}`);
+    });
+  }
+
+  function handleSetSalary() {
+    setError(null);
+    const value = window.prompt(
+      `Monthly salary (AED) for ${name}:`,
+      salary != null ? String(salary) : "",
+    );
+    if (value === null) return;
+    startTransition(async () => {
+      const result = await setBaristaSalary(id, value);
+      if (result?.error) setError(result.error);
     });
   }
 
@@ -76,6 +92,14 @@ export function BaristaRowActions({
             className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
           >
             {isOnShift ? "End shift" : "Start shift"}
+          </button>
+          <button
+            type="button"
+            onClick={handleSetSalary}
+            disabled={isPending}
+            className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+          >
+            Salary
           </button>
           <button
             type="button"

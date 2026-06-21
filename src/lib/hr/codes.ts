@@ -2,7 +2,7 @@
  * Structured employee ID codes for staff.
  *
  * Format: "1" (branch) + role digit + 2-digit serial.
- *   role digit: barista=1, waiter=2, manager=9, other=8
+ *   role digit: barista=1, waiter=2, lead=3, manager=9, other=8
  *   serial:     next available within that role
  *
  * Examples: first barista -> 1101, third waiter -> 1203.
@@ -16,6 +16,8 @@ export function roleDigit(role: string): string {
       return "1";
     case "waiter":
       return "2";
+    case "lead":
+      return "3";
     case "manager":
       return "9";
     default:
