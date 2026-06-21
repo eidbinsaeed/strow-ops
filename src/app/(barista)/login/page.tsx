@@ -58,7 +58,6 @@ export default function BaristaLoginPage() {
             autoComplete="username"
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-            placeholder="e.g. 1101"
             className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-center text-lg tracking-widest tabular-nums outline-none focus:border-strow-ink"
           />
         </div>
