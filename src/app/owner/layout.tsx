@@ -33,6 +33,18 @@ export default async function OwnerLayout({
   const locale = await getLocale();
   const dir = dirFor(locale);
 
+  // Not signed in (e.g. /owner/login): render a bare page with NO sidebar,
+  // so staff can't see the list of owner pages before authenticating.
+  if (!signedIn) {
+    return (
+      <LocaleProvider locale={locale}>
+        <div lang={locale} dir={dir} className="min-h-dvh">
+          <main className="overflow-x-hidden">{children}</main>
+        </div>
+      </LocaleProvider>
+    );
+  }
+
   // One query feeds both the desktop sidebar and the mobile drawer nav.
   const supabase = createServiceClient();
   const { data: badgeRow } = await supabase
