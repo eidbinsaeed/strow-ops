@@ -1,11 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { OwnerLoginForm } from "./OwnerLoginForm";
+import { getOwnerSession } from "@/lib/auth/owner-session";
 import { getLocale, dirFor } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 
 export const dynamic = "force-dynamic";
 
 export default async function OwnerLoginPage() {
+  // Already signed in? Skip the PIN pad and go straight to the dashboard.
+  if (await getOwnerSession()) redirect("/owner");
   const locale = await getLocale();
   const dir = dirFor(locale);
   return (
