@@ -44,13 +44,15 @@ export async function updateMyProfile(formData: FormData) {
   return { ok: true };
 }
 
-export async function changeMyPin(formData: FormData) {
+export async function changeMyPassword(formData: FormData) {
   const session = await getBaristaSession();
   if (!session) return { error: "Not signed in" };
 
-  const current = String(formData.get("current_pin") ?? "").trim();
-  const next = String(formData.get("new_pin") ?? "").trim();
-  if (!/^\d{4}$/.test(next)) return { error: "New PIN must be 4 digits" };
+  const current = String(formData.get("current_password") ?? "");
+  const next = String(formData.get("new_password") ?? "");
+  if (next.length < 4 || next.length > 72) {
+    return { error: "New password must be at least 4 characters" };
+  }
 
   const supabase = createServiceClient();
   const { data } = await supabase
@@ -62,7 +64,7 @@ export async function changeMyPin(formData: FormData) {
   if (!row) return { error: "Account not found" };
 
   const ok = await bcrypt.compare(current, row.pin_hash);
-  if (!ok) return { error: "Current PIN is incorrect" };
+  if (!ok) return { error: "Current password is incorrect" };
 
   const pin_hash = await bcrypt.hash(next, 10);
   const { error } = await supabase
@@ -74,7 +76,7 @@ export async function changeMyPin(formData: FormData) {
   await writeAudit({
     actor_id: session.bid,
     actor_type: "barista",
-    action: "pin_changed",
+    action: "password_changed",
     entity_type: "barista",
     entity_id: session.bid,
   });

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import {
   toggleOnShift,
-  rotateBaristaPin,
+  resetBaristaPassword,
   deactivateBarista,
   reactivateBarista,
   setBaristaSalary,
@@ -35,18 +35,18 @@ export function BaristaRowActions({
     });
   }
 
-  function handleRotatePin() {
+  function handleResetPassword() {
     setError(null);
-    const newPin = window.prompt(`New 4-digit PIN for ${name}:`);
-    if (!newPin) return;
-    if (!/^\d{4}$/.test(newPin)) {
-      setError("PIN must be 4 digits");
+    const newPassword = window.prompt(`New password for ${name}:`);
+    if (!newPassword) return;
+    if (newPassword.length < 4) {
+      setError("Password must be at least 4 characters");
       return;
     }
     startTransition(async () => {
-      const result = await rotateBaristaPin(id, newPin);
+      const result = await resetBaristaPassword(id, newPassword);
       if (result?.error) setError(result.error);
-      else alert(`PIN updated for ${name}`);
+      else alert(`Password updated for ${name}`);
     });
   }
 
@@ -103,11 +103,11 @@ export function BaristaRowActions({
           </button>
           <button
             type="button"
-            onClick={handleRotatePin}
+            onClick={handleResetPassword}
             disabled={isPending}
             className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
           >
-            Rotate PIN
+            Reset password
           </button>
           <button
             type="button"

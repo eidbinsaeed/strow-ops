@@ -30,7 +30,7 @@ export function AddBaristaForm() {
       className="mb-6 rounded-2xl border border-neutral-200 bg-white p-4"
     >
       <p className="mb-3 text-sm font-medium">Add a staff member</p>
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_130px_120px_110px_auto]">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_130px_140px_110px_auto]">
         <input
           name="name"
           placeholder="Full name"
@@ -50,11 +50,9 @@ export function AddBaristaForm() {
           <option value="manager">Manager</option>
         </select>
         <input
-          name="pin"
-          placeholder="4-digit PIN"
-          inputMode="numeric"
-          pattern="\d{4}"
-          maxLength={4}
+          name="password"
+          type="password"
+          placeholder="Password"
           required
           disabled={isPending}
           className="rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-strow-ink focus:outline-none"

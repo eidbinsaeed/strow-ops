@@ -6,24 +6,24 @@ import { signBaristaSession, SESSION_COOKIE_NAME } from "@/lib/auth/jwt";
 export const runtime = "nodejs";
 
 /**
- * Staff sign-in: ID code + PIN.
+ * Staff sign-in: ID code + password.
  *
- * The employee's structured ID code (e.g. 1101) identifies the person; the
- * 4-digit PIN is the secret. We never reveal which of the two was wrong.
+ * The ID code identifies the person; the password is the secret (stored as a
+ * bcrypt hash in baristas.pin_hash). We never reveal which of the two was wrong.
  */
 export async function POST(request: Request) {
   let code: string;
-  let pin: string;
+  let password: string;
   try {
     const body = await request.json();
     code = String(body?.code ?? "").trim();
-    pin = String(body?.pin ?? "");
+    password = String(body?.password ?? "");
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  // Codes are numeric (4 digits today); PIN is exactly 4 digits.
-  if (!/^\d{3,6}$/.test(code) || !/^\d{4}$/.test(pin)) {
+  // ID code is numeric; password is 4-72 chars (bcrypt limit).
+  if (!/^\d{3,6}$/.test(code) || password.length < 4 || password.length > 72) {
     return NextResponse.json({ error: "invalid_login" }, { status: 401 });
   }
 
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 
-  if (barista && (await bcrypt.compare(pin, barista.pin_hash))) {
+  if (barista && (await bcrypt.compare(password, barista.pin_hash))) {
     const token = await signBaristaSession({
       bid: barista.id,
       lid: barista.location_id,

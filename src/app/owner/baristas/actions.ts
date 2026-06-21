@@ -8,8 +8,6 @@ import { writeAudit } from "@/lib/audit/log";
 import { getOwnerActor } from "@/lib/auth/owner-session";
 import { nextEmployeeCode } from "@/lib/hr/codes";
 
-const PIN_REGEX = /^\d{4}$/;
-
 /**
  * Keep a barista's salary mirrored as a single active fixed_costs row
  * (kind='salary', linked_barista_id), so "Fixed monthly" (= sum of active
@@ -57,12 +55,14 @@ async function syncSalaryFixedCost(
 export async function createBarista(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const role = String(formData.get("role") ?? "barista").trim() || "barista";
-  const pin = String(formData.get("pin") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
   const salaryRaw = String(formData.get("salary") ?? "").trim();
   const salary = salaryRaw === "" ? null : parseFloat(salaryRaw);
 
   if (!name) return { error: "Name is required" };
-  if (!PIN_REGEX.test(pin)) return { error: "PIN must be exactly 4 digits" };
+  if (password.length < 4 || password.length > 72) {
+    return { error: "Password must be at least 4 characters" };
+  }
   if (salary !== null && (Number.isNaN(salary) || salary < 0)) {
     return { error: "Invalid salary" };
   }
@@ -76,7 +76,7 @@ export async function createBarista(formData: FormData) {
     .single();
   if (!location) return { error: "Default location not found" };
 
-  const pin_hash = await bcrypt.hash(pin, 10);
+  const pin_hash = await bcrypt.hash(password, 10);
   const employee_code = await nextEmployeeCode(supabase, role);
 
   const { data: inserted, error } = await supabase
@@ -182,12 +182,12 @@ export async function toggleOnShift(id: string, currentlyOn: boolean) {
   return { ok: true };
 }
 
-export async function rotateBaristaPin(id: string, newPin: string) {
-  if (!PIN_REGEX.test(newPin)) {
-    return { error: "PIN must be exactly 4 digits" };
+export async function resetBaristaPassword(id: string, newPassword: string) {
+  if (newPassword.length < 4 || newPassword.length > 72) {
+    return { error: "Password must be at least 4 characters" };
   }
   const supabase = createServiceClient();
-  const pin_hash = await bcrypt.hash(newPin, 10);
+  const pin_hash = await bcrypt.hash(newPassword, 10);
   const { error } = await supabase.from("baristas").update({ pin_hash }).eq("id", id);
   if (error) return { error: error.message };
 
@@ -195,7 +195,7 @@ export async function rotateBaristaPin(id: string, newPin: string) {
   await writeAudit({
     actor_id: actor.id,
     actor_type: actor.type,
-    action: "pin_rotated",
+    action: "password_reset",
     entity_type: "barista",
     entity_id: id,
   });

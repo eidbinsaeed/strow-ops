@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition, type ChangeEvent } from "react";
 import { compressImage } from "@/lib/image";
-import { updateMyProfile, changeMyPin } from "./actions";
+import { updateMyProfile, changeMyPassword } from "./actions";
 
 export function MyAccountForm({
   phone,
@@ -38,11 +38,11 @@ export function MyAccountForm({
     });
   }
 
-  function savePin(formData: FormData) {
+  function savePassword(formData: FormData) {
     setMsg(null);
     start(async () => {
-      const r = await changeMyPin(formData);
-      setMsg(r?.error ? r.error : "PIN changed.");
+      const r = await changeMyPassword(formData);
+      setMsg(r?.error ? r.error : "Password changed.");
     });
   }
 
@@ -107,22 +107,22 @@ export function MyAccountForm({
       </form>
 
       <form
-        action={savePin}
+        action={savePassword}
         className="rounded-2xl border border-neutral-200 bg-white p-5"
       >
-        <p className="mb-4 text-sm font-medium">Change PIN</p>
+        <p className="mb-4 text-sm font-medium">Change password</p>
         <input
-          name="current_pin"
-          inputMode="numeric"
-          maxLength={4}
-          placeholder="Current PIN"
+          name="current_password"
+          type="password"
+          autoComplete="current-password"
+          placeholder="Current password"
           className="mb-2 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
         <input
-          name="new_pin"
-          inputMode="numeric"
-          maxLength={4}
-          placeholder="New 4-digit PIN"
+          name="new_password"
+          type="password"
+          autoComplete="new-password"
+          placeholder="New password"
           className="mb-4 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
         <button
@@ -130,7 +130,7 @@ export function MyAccountForm({
           disabled={pending}
           className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
-          Update PIN
+          Update password
         </button>
       </form>
 
