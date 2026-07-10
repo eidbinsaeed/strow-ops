@@ -49,6 +49,39 @@ function formatDate(d: string | null) {
   });
 }
 
+function addDaysUTC(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Days with no sales closing, from when regular recording began up to
+// yesterday. A rolling window keeps a stray old entry from flagging long
+// dormant periods (e.g. a lone test day a year before daily tracking started).
+function computeMissingDays(recorded: string[], todayIso: string, windowDays = 120): string[] {
+  const set = new Set(recorded);
+  const windowStart = addDaysUTC(todayIso, -windowDays);
+  const inWindow = recorded.filter((d) => d >= windowStart).sort();
+  if (inWindow.length === 0) return [];
+  const yesterday = addDaysUTC(todayIso, -1);
+  const missing: string[] = [];
+  for (let d = inWindow[0]; d <= yesterday; d = addDaysUTC(d, 1)) {
+    if (!set.has(d)) missing.push(d);
+  }
+  return missing;
+}
+
+// Collapse consecutive dates into ranges for compact display.
+function groupRanges(dates: string[]): Array<{ start: string; end: string }> {
+  const out: Array<{ start: string; end: string }> = [];
+  for (const d of dates) {
+    const last = out[out.length - 1];
+    if (last && addDaysUTC(last.end, 1) === d) last.end = d;
+    else out.push({ start: d, end: d });
+  }
+  return out;
+}
+
 export default async function OwnerSalesPage({
   searchParams,
 }: {
@@ -89,6 +122,18 @@ export default async function OwnerSalesPage({
     0,
   );
 
+  // Missing-day alarm — runs over ALL closings (ignores the current filter).
+  const { data: allDates } = await supabase
+    .from("closings")
+    .select("closing_date")
+    .order("closing_date", { ascending: true });
+  const recordedDates = Array.from(
+    new Set(((allDates ?? []) as { closing_date: string }[]).map((r) => r.closing_date)),
+  );
+  const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+  const missingDays = computeMissingDays(recordedDates, todayIso);
+  const missingRanges = groupRanges(missingDays);
+
   return (
     <div className="px-6 py-8 md:px-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
@@ -99,6 +144,27 @@ export default async function OwnerSalesPage({
           </p>
         </div>
       </header>
+
+      {missingDays.length > 0 && (
+        <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-5">
+          <p className="text-sm font-semibold text-amber-800">
+            {missingDays.length} {missingDays.length === 1 ? "day is" : "days are"} missing a sales closing
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {missingRanges.map((r) => (
+              <span
+                key={r.start}
+                className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-800"
+              >
+                {r.start === r.end ? formatDate(r.start) : `${formatDate(r.start)} – ${formatDate(r.end)}`}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-amber-700">
+            Days between your first recorded closing and yesterday with nothing entered. Add them, or ignore any day the café was genuinely closed.
+          </p>
+        </div>
+      )}
 
       <Suspense fallback={null}><TableFilters searchPlaceholder={tr("filter.search.barista_or_note", locale)} /></Suspense>
 
