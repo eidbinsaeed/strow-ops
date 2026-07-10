@@ -28,7 +28,7 @@ The photo is an expense receipt — a printed VAT invoice, a handwritten cash re
 Extract every purchased line on the receipt into "line_items". For each line:
 - description: the item text as printed, normalized to Western digits.
 - quantity / unit_price / line_total: numbers. If only a line total is visible, set quantity 1 and unit_price = line_total.
-- inventory_item_id: if the line clearly matches one of the KNOWN INVENTORY ITEMS listed below — same product, allowing for spelling, translation, or brand variants — return that item's exact id. Otherwise null.
+- inventory_item_id: if the line clearly matches one of the KNOWN INVENTORY ITEMS listed below — same product, allowing for spelling, translation, or brand variants — return that item's exact id. Also consult KNOWN ALIASES below: if the line text equals or closely matches an alias's raw text, return that alias's item id. Otherwise null.
 - suggested_item_name: when inventory_item_id is null, give a short canonical English name for the item (e.g. "Whole milk 1L", "Vanilla syrup", "Paper cups 8oz"). When you DID match an inventory item, return null.
 - match_confidence: "high" | "medium" | "low" — your confidence in the inventory match, or in the quality of the suggested name.
 If the receipt shows only a total with no itemized lines, return an empty array.
@@ -102,6 +102,10 @@ type ValidMediaType = (typeof VALID_MEDIA_TYPES)[number];
 type CategoryRow = { id: string; name: string };
 type SupplierRow = { id: string; name: string; trn: string | null };
 type InventoryRow = { id: string; name: string; unit: string | null };
+type AliasRow = {
+  raw_text: string;
+  inventory_items: { id: string; name: string } | null;
+};
 type RecentExpenseRow = {
   supplier_id: string | null;
   total: number;
@@ -120,8 +124,9 @@ function buildContextBlock(args: {
   suppliers: SupplierRow[];
   inventory: InventoryRow[];
   recentExpenses: RecentExpenseRow[];
+  aliases: AliasRow[];
 }): string {
-  const { today, categories, suppliers, inventory, recentExpenses } = args;
+  const { today, categories, suppliers, inventory, recentExpenses, aliases } = args;
 
   const categoryList =
     categories.length > 0
@@ -147,6 +152,19 @@ function buildContextBlock(args: {
           )
           .join("\n")
       : "- (none yet — return inventory_item_id null for every line and always provide suggested_item_name)";
+
+  // Owner-taught raw-text -> item mappings. Lets the model reuse past
+  // corrections and match variant spellings it would otherwise miss.
+  const aliasList =
+    aliases.length > 0
+      ? aliases
+          .filter((a) => a.inventory_items?.id)
+          .map(
+            (a) =>
+              `- "${a.raw_text}" -> id=${a.inventory_items!.id} (${a.inventory_items!.name})`,
+          )
+          .join("\n")
+      : "- (none yet)";
 
   // Aggregate last-30-day spend per supplier for outlier detection.
   const spendBySupplier = new Map<
@@ -183,6 +201,9 @@ ${supplierList}
 
 == KNOWN INVENTORY ITEMS (match line_items to these by id) ==
 ${inventoryList}
+
+== KNOWN ALIASES (raw receipt text already matched before -> item id; reuse when a line's text is the same or a close variant) ==
+${aliasList}
 
 == RECENT SUPPLIER SPEND (last 30 days — use to judge spend_outlier) ==
 ${spendList}`;
@@ -236,7 +257,7 @@ export async function POST(request: Request) {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     .toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
 
-  const [categoriesRes, suppliersRes, inventoryRes, recentExpensesRes] =
+  const [categoriesRes, suppliersRes, inventoryRes, recentExpensesRes, aliasesRes] =
     await Promise.all([
       supabase.from("categories").select("id, name").eq("is_active", true),
       supabase
@@ -254,6 +275,10 @@ export async function POST(request: Request) {
         .select("supplier_id, total, suppliers(name)")
         .eq("location_id", session.lid)
         .gte("expense_date", thirtyDaysAgo),
+      supabase
+        .from("item_aliases")
+        .select("raw_text, inventory_items(id, name)")
+        .eq("location_id", session.lid),
     ]);
 
   const contextBlock = buildContextBlock({
@@ -262,6 +287,7 @@ export async function POST(request: Request) {
     suppliers: (suppliersRes.data ?? []) as unknown as SupplierRow[],
     inventory: (inventoryRes.data ?? []) as unknown as InventoryRow[],
     recentExpenses: (recentExpensesRes.data ?? []) as unknown as RecentExpenseRow[],
+    aliases: (aliasesRes.data ?? []) as unknown as AliasRow[],
   });
 
   const client = new Anthropic({ apiKey });

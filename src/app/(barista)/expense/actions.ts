@@ -6,6 +6,7 @@ import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
 import { uploadReceiptPhoto } from "@/lib/drive/upload";
+import { normalizeItemText, looksLikeRealItem } from "@/lib/inventory-match";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -36,6 +37,7 @@ type LineItem = {
   line_total: number;
   inventory_item_id: string | null;
   suggested_item_name: string | null;
+  match_confidence: Confidence | null;
 };
 
 function parseNumberOrNull(raw: string | null): number | null {
@@ -80,6 +82,12 @@ function parseLineItems(raw: string | null): LineItem[] {
           typeof li.suggested_item_name === "string" &&
           li.suggested_item_name
             ? li.suggested_item_name
+            : null,
+        match_confidence:
+          li.match_confidence === "high" ||
+          li.match_confidence === "medium" ||
+          li.match_confidence === "low"
+            ? (li.match_confidence as Confidence)
             : null,
       }));
   } catch {
@@ -275,11 +283,83 @@ export async function submitExpense(formData: FormData) {
     // hallucinated id can't break the insert on the FK constraint.
     const { data: invRows } = await supabase
       .from("inventory_items")
-      .select("id")
-      .eq("location_id", inserted.location_id);
+      .select("id, name")
+      .eq("location_id", inserted.location_id)
+      .eq("is_active", true);
     const validInvIds = new Set(
-      ((invRows ?? []) as { id: string }[]).map((r) => r.id),
+      ((invRows ?? []) as { id: string; name: string }[]).map((r) => r.id),
     );
+    const idByNormName = new Map(
+      ((invRows ?? []) as { id: string; name: string }[]).map((r) => [
+        normalizeItemText(r.name),
+        r.id,
+      ]),
+    );
+
+    // Auto-create catalog items for lines the AI is highly confident about
+    // that don't yet exist, then remember the mapping. Deduped by normalized
+    // name and by taught alias; junk text ("unknown", handwritten…) is skipped.
+    // Never overwrites an existing match. Best-effort: any failure is swallowed
+    // so it can never undo the expense.
+    const createdThisBatch = new Map<string, string>();
+    for (const li of lineItems) {
+      if (li.inventory_item_id && validInvIds.has(li.inventory_item_id)) continue;
+      if (li.match_confidence !== "high") continue;
+      if (!looksLikeRealItem(li.suggested_item_name)) continue;
+
+      const name = li.suggested_item_name!.trim();
+      const nn = normalizeItemText(name);
+      let itemId = idByNormName.get(nn) ?? createdThisBatch.get(nn) ?? null;
+
+      if (!itemId) {
+        const ndesc = normalizeItemText(li.description);
+        const { data: aliasHit } = await supabase
+          .from("item_aliases")
+          .select("inventory_item_id")
+          .eq("location_id", inserted.location_id)
+          .eq("norm", ndesc)
+          .maybeSingle();
+        const aliasId = aliasHit?.inventory_item_id as string | undefined;
+        if (aliasId && validInvIds.has(aliasId)) itemId = aliasId;
+      }
+
+      if (!itemId) {
+        const { data: created, error: createErr } = await supabase
+          .from("inventory_items")
+          .insert({
+            location_id: inserted.location_id,
+            name,
+            kind: "other",
+            is_active: true,
+          })
+          .select("id")
+          .maybeSingle();
+        if (createErr || !created) continue;
+        itemId = created.id as string;
+        validInvIds.add(itemId);
+        idByNormName.set(nn, itemId);
+        createdThisBatch.set(nn, itemId);
+        await writeAudit({
+          actor_id: session.bid,
+          actor_type: "barista",
+          action: "auto_created",
+          entity_type: "inventory_item",
+          entity_id: itemId,
+          after_state: { name, from_description: li.description },
+        });
+      }
+
+      li.inventory_item_id = itemId;
+      await supabase.from("item_aliases").upsert(
+        {
+          location_id: inserted.location_id,
+          inventory_item_id: itemId,
+          raw_text: li.description,
+          norm: normalizeItemText(li.description),
+        },
+        { onConflict: "location_id,norm" },
+      );
+    }
 
     const rows = lineItems.map((li, index) => ({
       expense_id: inserted.id,
