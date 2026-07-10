@@ -12,6 +12,8 @@ type LineRow = {
   quantity: number;
   unit_price: number;
   line_total: number;
+  vat_amount: number;
+  discount: number;
   description: string;
   inventory_item_id: string | null;
   inventory_items: { name: string; kind: string | null; unit: string | null } | null;
@@ -25,6 +27,9 @@ type Line = {
   qty: number;
   price: number;
   total: number;
+  vat: number;
+  discount: number;
+  paid: number;
   desc: string;
   date: string;
   supplier: string;
@@ -103,11 +108,14 @@ function median(xs: number[]) {
 }
 
 // Per-line anomaly detection. VAT-aware so VAT-inclusive totals are not flagged.
-function detectFlags(line: { qty: number; price: number; total: number; date: string }, med: number, n: number): string[] {
+function detectFlags(line: { qty: number; price: number; total: number; paid: number; date: string }, med: number, n: number): string[] {
   const flags: string[] = [];
   const today = new Date().toISOString().slice(0, 10);
+  // Outlier compares the VAT-inclusive effective unit price against the item median.
+  const effPrice = line.qty > 0 ? line.paid / line.qty : line.paid;
   if (line.date < "2025-01-01" || line.date > today) flags.push("Date looks wrong");
-  else if (n >= 3 && med > 0 && (line.price < 0.5 * med || line.price > 2 * med)) flags.push("Price outlier");
+  else if (n >= 3 && med > 0 && (effPrice < 0.5 * med || effPrice > 2 * med)) flags.push("Price outlier");
+  // Mismatch checks the pre-VAT arithmetic (qty x unit price should equal the net line total).
   const calc = line.qty * line.price;
   if (calc > 0 && line.total > 0) {
     const ratio = line.total / calc;
@@ -123,7 +131,7 @@ export default async function OwnerItemsPage() {
   const { data, error } = await supabase
     .from("expense_line_items")
     .select(
-      "id, quantity, unit_price, line_total, description, inventory_item_id, inventory_items(name, kind, unit), expenses(expense_date, photo_drive_url, suppliers(name))",
+      "id, quantity, unit_price, line_total, vat_amount, discount, description, inventory_item_id, inventory_items(name, kind, unit), expenses(expense_date, photo_drive_url, suppliers(name))",
     )
     .limit(2000);
 
@@ -149,6 +157,9 @@ export default async function OwnerItemsPage() {
       qty: Number(r.quantity) || 0,
       price: Number(r.unit_price) || 0,
       total: Number(r.line_total) || 0,
+      vat: Number(r.vat_amount) || 0,
+      discount: Number(r.discount) || 0,
+      paid: (Number(r.line_total) || 0) + (Number(r.vat_amount) || 0),
       desc: r.description,
       date,
       supplier,
@@ -177,12 +188,12 @@ export default async function OwnerItemsPage() {
 
   const items: Item[] = [];
   for (const it of byItem.values()) {
-    const prices = it.lines.map((l) => l.price);
+    const prices = it.lines.map((l) => (l.qty > 0 ? l.paid / l.qty : l.paid));
     const med = median(prices);
     it.medianPrice = med;
     it.buys = it.lines.length;
     it.totalQty = it.lines.reduce((s, l) => s + l.qty, 0);
-    it.totalSpend = it.lines.reduce((s, l) => s + l.total, 0);
+    it.totalSpend = it.lines.reduce((s, l) => s + l.paid, 0);
     it.avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
     it.minPrice = Math.min(...prices);
     it.maxPrice = Math.max(...prices);
@@ -204,7 +215,7 @@ export default async function OwnerItemsPage() {
     for (const l of it.lines) {
       let s = sup.get(l.supplier);
       if (!s) { s = { name: l.supplier, buys: 0, qty: 0, spend: 0, avgPrice: 0 }; sup.set(l.supplier, s); }
-      s.buys += 1; s.qty += l.qty; s.spend += l.total;
+      s.buys += 1; s.qty += l.qty; s.spend += l.paid;
     }
     it.suppliers = [...sup.values()].map((s) => ({
       ...s,
@@ -217,7 +228,7 @@ export default async function OwnerItemsPage() {
   items.sort((a, b) => b.totalSpend - a.totalSpend);
 
   const grandSpend = items.reduce((s, i) => s + i.totalSpend, 0)
-    + unmapped.reduce((s, l) => s + l.total, 0);
+    + unmapped.reduce((s, l) => s + l.paid, 0);
   const flaggedItems = items.filter((i) => i.flagCount > 0);
   const totalFlags = items.reduce((s, i) => s + i.flagCount, 0);
 
@@ -266,6 +277,8 @@ export default async function OwnerItemsPage() {
                           qty: l.qty,
                           price: l.price,
                           total: l.total,
+                          vat: l.vat,
+                          discount: l.discount,
                           date: fmtDate(l.date),
                           supplier: l.supplier,
                           itemId: l.itemId,
@@ -295,6 +308,8 @@ export default async function OwnerItemsPage() {
                       qty: l.qty,
                       price: l.price,
                       total: l.total,
+                      vat: l.vat,
+                      discount: l.discount,
                       date: fmtDate(l.date),
                       supplier: l.supplier,
                       itemId: null,

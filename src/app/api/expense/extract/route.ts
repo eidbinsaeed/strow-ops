@@ -27,7 +27,9 @@ The photo is an expense receipt — a printed VAT invoice, a handwritten cash re
 == LINE ITEMS ==
 Extract every purchased line on the receipt into "line_items". For each line:
 - description: the item text as printed, normalized to Western digits.
-- quantity / unit_price / line_total: numbers. If only a line total is visible, set quantity 1 and unit_price = line_total.
+- quantity / unit_price / line_total: numbers. If only a line total is visible, set quantity 1 and unit_price = line_total. When the receipt separates discount and/or VAT (columns like ListVal, Disc, NetVal, VAT 5%), line_total is the NET amount — after discount and before VAT. Otherwise line_total is simply the amount shown for that line.
+- discount: the per-line discount amount if the receipt itemizes one (e.g. a "Disc" column), else 0.
+- vat_amount: the per-line VAT/tax amount if the receipt separates VAT per line, else 0. If VAT is shown only as a single total for the whole bill, keep per-line vat_amount 0 and report it in the top-level vat_amount instead.
 - inventory_item_id: if the line clearly matches one of the KNOWN INVENTORY ITEMS listed below — same product, allowing for spelling, translation, or brand variants — return that item's exact id. Also consult KNOWN ALIASES below: if the line text equals or closely matches an alias's raw text, return that alias's item id. Otherwise null.
 - suggested_item_name: when inventory_item_id is null, give a short canonical English name for the item (e.g. "Whole milk 1L", "Vanilla syrup", "Paper cups 8oz"). When you DID match an inventory item, return null.
 - match_confidence: "high" | "medium" | "low" — your confidence in the inventory match, or in the quality of the suggested name.
@@ -65,6 +67,8 @@ Return ONLY valid JSON matching this schema — no markdown fences, no commentar
       "quantity": number,
       "unit_price": number,
       "line_total": number,
+      "discount": number,
+      "vat_amount": number,
       "inventory_item_id": string | null,
       "suggested_item_name": string | null,
       "match_confidence": "high" | "medium" | "low"

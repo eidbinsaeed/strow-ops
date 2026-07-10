@@ -9,6 +9,8 @@ export type FixerLine = {
   qty: number;
   price: number;
   total: number;
+  vat?: number;
+  discount?: number;
   date: string;
   supplier: string;
   itemId: string | null;
@@ -111,7 +113,11 @@ export function LineFixer({ line, items }: { line: FixerLine; items: ItemOption[
         <div className="text-xs text-neutral-700">
           <span className="font-medium">{line.desc}</span>
           {" — "}
-          {line.date} — {line.qty} × {aed(line.price)} = {aed(line.total)} — {line.supplier}
+          {line.date} — {line.qty} × {aed(line.price)} = {aed(line.total)}
+          {(line.discount ?? 0) > 0 ? ` (after ${aed(line.discount ?? 0)} disc)` : ""}
+          {(line.vat ?? 0) > 0 ? ` + VAT ${aed(line.vat ?? 0)} = ${aed(line.total + (line.vat ?? 0))}` : ""}
+          {" — "}
+          {line.supplier}
           {line.flags.map((f) => (
             <span key={f} className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
               {f}

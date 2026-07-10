@@ -35,6 +35,8 @@ type LineItem = {
   quantity: number;
   unit_price: number;
   line_total: number;
+  discount: number;
+  vat_amount: number;
   inventory_item_id: string | null;
   suggested_item_name: string | null;
   match_confidence: Confidence | null;
@@ -74,6 +76,8 @@ function parseLineItems(raw: string | null): LineItem[] {
         quantity: Number(li.quantity) || 0,
         unit_price: Number(li.unit_price) || 0,
         line_total: Number(li.line_total) || 0,
+        discount: Number(li.discount) || 0,
+        vat_amount: Number(li.vat_amount) || 0,
         inventory_item_id:
           typeof li.inventory_item_id === "string" && li.inventory_item_id
             ? li.inventory_item_id
@@ -367,6 +371,8 @@ export async function submitExpense(formData: FormData) {
       quantity: li.quantity || 1,
       unit_price: li.unit_price || 0,
       line_total: li.line_total || 0,
+      discount: li.discount || 0,
+      vat_amount: li.vat_amount || 0,
       inventory_item_id:
         li.inventory_item_id && validInvIds.has(li.inventory_item_id)
           ? li.inventory_item_id
