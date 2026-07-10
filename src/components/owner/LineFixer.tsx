@@ -35,6 +35,25 @@ function aed(n: number) {
   return `AED ${Number(n).toLocaleString("en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Builds the price chain, adapting to what the bill actually had:
+//   plain:            qty × price = total
+//   with discount:    qty × list = gross − disc = net           (gross = net + discount)
+//   with VAT:         … + VAT vat = paid                        (paid  = net + vat)
+function priceLine(line: FixerLine): string {
+  const net = line.total;
+  const disc = line.discount ?? 0;
+  const vat = line.vat ?? 0;
+  const qty = line.qty;
+  const gross = net + disc;
+  const grossUnit = qty ? gross / qty : gross;
+  let s =
+    disc > 0
+      ? `${qty} × ${aed(grossUnit)} = ${aed(gross)} − ${aed(disc)} disc = ${aed(net)}`
+      : `${qty} × ${aed(line.price)} = ${aed(net)}`;
+  if (vat > 0) s += ` + VAT ${aed(vat)} = ${aed(net + vat)}`;
+  return s;
+}
+
 function driveFileId(url: string | null): string | null {
   if (!url) return null;
   const m = url.match(/\/file\/d\/([^/]+)/);
@@ -113,11 +132,7 @@ export function LineFixer({ line, items }: { line: FixerLine; items: ItemOption[
         <div className="text-xs text-neutral-700">
           <span className="font-medium">{line.desc}</span>
           {" — "}
-          {line.date} — {line.qty} × {aed(line.price)} = {aed(line.total)}
-          {(line.discount ?? 0) > 0 ? ` (after ${aed(line.discount ?? 0)} disc)` : ""}
-          {(line.vat ?? 0) > 0 ? ` + VAT ${aed(line.vat ?? 0)} = ${aed(line.total + (line.vat ?? 0))}` : ""}
-          {" — "}
-          {line.supplier}
+          {line.date} — {priceLine(line)} — {line.supplier}
           {line.flags.map((f) => (
             <span key={f} className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
               {f}
