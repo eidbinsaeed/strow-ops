@@ -260,7 +260,10 @@ export function FinanceApp({ initial }: { initial: any }) {
       bind();
       if (st.tab === "overview") { drawTrend(); drawDonut(); drawSav(); drawStack(); }
       if (st.tab === "analytics") { drawTop(); drawCafe(); }
-      const on = root.querySelector(".chip.on"); if (on) on.scrollIntoView({ inline: "center", block: "nearest" });
+      // Center the current month chip by scrolling ONLY the strip horizontally.
+      // (scrollIntoView also scrolled the page itself, yanking the user back to the top on every checkbox click.)
+      const on = root.querySelector(".chip.on");
+      if (strip && on) { const sr = strip.getBoundingClientRect(), or = on.getBoundingClientRect(); strip.scrollLeft += (or.left - sr.left) - (sr.width - or.width) / 2; }
     };
     const setPaid = (p: any, k: number, on: boolean) => { p.paid = on ? Math.max(+p.paid || 0, k + 1) : Math.min(+p.paid || 0, k); };
     const bind = () => {
