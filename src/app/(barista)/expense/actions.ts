@@ -6,6 +6,7 @@ import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
 import { uploadReceiptPhoto } from "@/lib/drive/upload";
+import { todayDubai } from "@/lib/dates";
 import { normalizeItemText, looksLikeRealItem } from "@/lib/inventory-match";
 
 type Confidence = "high" | "medium" | "low";
@@ -203,6 +204,9 @@ export async function submitExpense(formData: FormData) {
   if (!expense_date) return { error: "Expense date is required" };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expense_date)) {
     return { error: "Date must be in YYYY-MM-DD format" };
+  }
+  if (expense_date > todayDubai()) {
+    return { error: "That date is in the future. Pick today or an earlier day." };
   }
   if (total == null || total <= 0) {
     return { error: "Total must be a positive number" };

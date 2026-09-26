@@ -149,3 +149,31 @@ export async function uploadReceiptPhoto(
     return null;
   }
 }
+
+/**
+ * Download a Drive file's bytes server-side using the app's own OAuth
+ * credentials. Lets the owner/barista UI show bill photos without the
+ * viewer being signed into Google (the old iframe /preview approach
+ * failed on iOS Safari with "can't access your Google account").
+ */
+export async function downloadDriveFile(
+  fileId: string,
+): Promise<{ bytes: Buffer; mimeType: string } | null> {
+  if (!isDriveConfigured()) return null;
+  try {
+    const drive = getDriveClient();
+    const meta = await drive.files.get({ fileId, fields: "mimeType" });
+    const res = await drive.files.get(
+      { fileId, alt: "media" },
+      { responseType: "arraybuffer" },
+    );
+    return {
+      bytes: Buffer.from(res.data as ArrayBuffer),
+      mimeType: meta.data.mimeType || "image/jpeg",
+    };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[drive] download failed:", e);
+    return null;
+  }
+}

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { tr } from "@/lib/i18n/tr";
 import { useLocale } from "@/components/owner/LocaleProvider";
+import { BillPhotoModal } from "@/components/owner/BillPhotoModal";
 import {
   confirmReviewItem,
   rejectReviewItem,
@@ -222,42 +223,14 @@ function ViewBillModal({
   locale: import("@/lib/i18n/dict").Locale;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
-          <h2 className="text-sm font-medium">{tr("action.view_bill", locale)}</h2>
-          <div className="flex items-center gap-3 text-xs">
-            <a
-              href={driveUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-neutral-500 underline hover:text-strow-ink"
-            >
-              {tr("action.open_in_drive", locale)}
-            </a>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-2 py-1 text-neutral-500 hover:bg-neutral-100"
-            >
-              {tr("common.close", locale)}
-            </button>
-          </div>
-        </div>
-        <iframe
-          src={`https://drive.google.com/file/d/${fileId}/preview`}
-          className="flex-1 w-full"
-          allow="autoplay"
-          title={tr("action.view_bill", locale)}
-        />
-      </div>
-    </div>
+    <BillPhotoModal
+      fileId={fileId}
+      driveUrl={driveUrl || null}
+      title={tr("action.view_bill", locale)}
+      openInDriveLabel={tr("action.open_in_drive", locale)}
+      closeLabel={tr("common.close", locale)}
+      onClose={onClose}
+    />
   );
 }
 

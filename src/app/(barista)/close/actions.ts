@@ -6,6 +6,7 @@ import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
 import { uploadReceiptPhoto } from "@/lib/drive/upload";
+import { todayDubai } from "@/lib/dates";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -103,6 +104,9 @@ export async function submitClosing(formData: FormData) {
   if (!closing_date) return { error: "Closing date is required" };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(closing_date)) {
     return { error: "Closing date must be in YYYY-MM-DD format" };
+  }
+  if (closing_date > todayDubai()) {
+    return { error: "That date is in the future. Pick today or an earlier day." };
   }
   if (cash_total == null || card_total == null || online_total == null) {
     return { error: "Cash, card, and online totals are all required" };

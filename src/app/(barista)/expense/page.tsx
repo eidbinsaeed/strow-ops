@@ -1,12 +1,21 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getBaristaSession } from "@/lib/auth/session";
+import { validPastOrToday } from "@/lib/dates";
 import { createServiceClient } from "@/lib/supabase/server";
 import { ExpenseFlow } from "./ExpenseFlow";
 
 export const dynamic = "force-dynamic";
 
-export default async function ExpensePage() {
+export default async function ExpensePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
+  const { date } = await searchParams;
+  // ?date=YYYY-MM-DD lets other screens (e.g. "missing closings") deep-link
+  // straight to the right day.
+  const initialDate = validPastOrToday(date) ? date : undefined;
   const session = await getBaristaSession();
   if (!session) redirect("/login");
 
@@ -47,6 +56,7 @@ export default async function ExpensePage() {
 
       <ExpenseFlow
         baristaName={session.name}
+        initialDate={initialDate}
         suppliers={suppliers}
         categories={categories}
       />

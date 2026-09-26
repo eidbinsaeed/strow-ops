@@ -6,6 +6,8 @@ import Link from "next/link";
 import { submitClosing } from "./actions";
 import { enqueueSubmission } from "@/lib/offline/queue";
 import { compressImage } from "@/lib/image";
+import { DayPicker } from "@/components/barista/DayPicker";
+import { shortDay, todayDubai } from "@/lib/dates";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -60,9 +62,19 @@ function formatAed(n: number) {
   })}`;
 }
 
-export function CloseFlow({ baristaName }: { baristaName: string }) {
+export function CloseFlow({
+  baristaName,
+  initialDate,
+}: {
+  baristaName: string;
+  initialDate?: string;
+}) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("capture");
+  // The day this upload is for. Defaults to today (Dubai); barista only
+  // changes it when uploading an older sheet/bill.
+  const [pickedDate, setPickedDate] = useState<string>(initialDate ?? todayDubai());
+  const [formDate, setFormDate] = useState<string>(pickedDate);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageMediaType, setImageMediaType] = useState<string>("image/jpeg");
   const [extracted, setExtracted] = useState<Extracted | null>(null);
@@ -126,6 +138,7 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
 
       const ext = json.extracted as Extracted;
       setExtracted(ext);
+      setFormDate(pickedDate);
       setCashTotal(fmtNum(ext.cash_total));
       setCardTotal(fmtNum(ext.card_total));
       setOnlineTotal(fmtNum(ext.online_total));
@@ -191,9 +204,15 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
           </div>
         )}
 
+        <DayPicker
+          value={pickedDate}
+          onChange={setPickedDate}
+          label="Closing for"
+        />
+
         <label
           htmlFor="close-photo"
-          className="mt-8 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-neutral-300 bg-white p-10 text-center transition active:scale-[0.99]"
+          className="mt-4 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-neutral-300 bg-white p-10 text-center transition active:scale-[0.99]"
         >
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-strow-ink text-3xl text-white">
             📷
@@ -324,10 +343,22 @@ export function CloseFlow({ baristaName }: { baristaName: string }) {
           label="Closing date"
           name="closing_date"
           type="date"
-          defaultValue={extracted?.closing_date ?? ""}
+          key={formDate}
+          defaultValue={formDate}
           confidence={dateConf}
           required
         />
+        {extracted?.closing_date &&
+          extracted.closing_date !== formDate &&
+          extracted.closing_date <= todayDubai() && (
+            <button
+              type="button"
+              onClick={() => setFormDate(extracted.closing_date!)}
+              className="-mt-1 w-full rounded-xl bg-amber-50 px-3 py-2 text-left text-xs text-amber-800"
+            >
+              The sheet shows {shortDay(extracted.closing_date)}. Tap to use that date instead.
+            </button>
+          )}
 
         <ControlledField
           label="Cash total (AED)"

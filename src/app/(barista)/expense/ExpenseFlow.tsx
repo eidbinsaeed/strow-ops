@@ -6,6 +6,8 @@ import Link from "next/link";
 import { submitExpense } from "./actions";
 import { enqueueSubmission } from "@/lib/offline/queue";
 import { compressImage } from "@/lib/image";
+import { DayPicker } from "@/components/barista/DayPicker";
+import { shortDay, todayDubai } from "@/lib/dates";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -74,13 +76,19 @@ export function ExpenseFlow({
   baristaName,
   suppliers,
   categories,
+  initialDate,
 }: {
   baristaName: string;
   suppliers: Supplier[];
   categories: Category[];
+  initialDate?: string;
 }) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("capture");
+  // The day this upload is for. Defaults to today (Dubai); barista only
+  // changes it when uploading an older sheet/bill.
+  const [pickedDate, setPickedDate] = useState<string>(initialDate ?? todayDubai());
+  const [formDate, setFormDate] = useState<string>(pickedDate);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageMediaType, setImageMediaType] = useState<string>("image/jpeg");
   const [extracted, setExtracted] = useState<Extracted | null>(null);
@@ -141,6 +149,7 @@ export function ExpenseFlow({
 
       const ext = json.extracted as Extracted;
       setExtracted(ext);
+      setFormDate(pickedDate);
 
       if (ext.supplier_name) {
         const matched = suppliers.find(
@@ -205,9 +214,15 @@ export function ExpenseFlow({
           </div>
         )}
 
+        <DayPicker
+          value={pickedDate}
+          onChange={setPickedDate}
+          label="Bill date"
+        />
+
         <label
           htmlFor="expense-photo"
-          className="mt-8 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-neutral-300 bg-white p-10 text-center transition active:scale-[0.99]"
+          className="mt-4 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-neutral-300 bg-white p-10 text-center transition active:scale-[0.99]"
         >
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-strow-ink text-3xl text-white">
             🧾
@@ -442,10 +457,22 @@ export function ExpenseFlow({
           label="Date"
           name="expense_date"
           type="date"
-          defaultValue={extracted?.expense_date ?? ""}
+          key={formDate}
+          defaultValue={formDate}
           confidence={dateConf}
           required
         />
+        {extracted?.expense_date &&
+          extracted.expense_date !== formDate &&
+          extracted.expense_date <= todayDubai() && (
+            <button
+              type="button"
+              onClick={() => setFormDate(extracted.expense_date!)}
+              className="-mt-1 w-full rounded-xl bg-amber-50 px-3 py-2 text-left text-xs text-amber-800"
+            >
+              The bill shows {shortDay(extracted.expense_date)}. Tap to use that date instead.
+            </button>
+          )}
 
         <Field
           label="Invoice / Receipt #"

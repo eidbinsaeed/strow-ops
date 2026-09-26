@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { splitLineItem, type SplitPart } from "@/app/owner/items/actions";
+import { BillPhotoModal } from "@/components/owner/BillPhotoModal";
 
 export type FixerLine = {
   id: string;
@@ -241,22 +242,12 @@ export function LineFixer({ line, items }: { line: FixerLine; items: ItemOption[
       )}
 
       {viewing && fileId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setViewing(false)}>
-          <div className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
-              <h2 className="text-sm font-medium">Bill — {line.supplier}, {line.date}</h2>
-              <div className="flex items-center gap-3 text-xs">
-                <a href={line.photoUrl ?? ""} target="_blank" rel="noopener noreferrer" className="text-neutral-500 underline hover:text-strow-ink">
-                  Open in Drive
-                </a>
-                <button type="button" onClick={() => setViewing(false)} className="rounded-md px-2 py-1 text-neutral-500 hover:bg-neutral-100">
-                  Close
-                </button>
-              </div>
-            </div>
-            <iframe src={`https://drive.google.com/file/d/${fileId}/preview`} className="flex-1 w-full" allow="autoplay" title="Bill photo" />
-          </div>
-        </div>
+        <BillPhotoModal
+          fileId={fileId}
+          driveUrl={line.photoUrl}
+          title={`Bill — ${line.supplier}, ${line.date}`}
+          onClose={() => setViewing(false)}
+        />
       )}
     </div>
   );
