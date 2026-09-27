@@ -14,7 +14,7 @@ export function AiFab() {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
-  if (HIDE.some((p) => pathname.startsWith(p))) return null;
+  if (pathname === "/owner" || HIDE.some((p) => pathname.startsWith(p))) return null;
 
   return (
     <>
@@ -25,7 +25,7 @@ export function AiFab() {
             setMounted(true);
             setOpen(true);
           }}
-          className="ai-pop fixed bottom-6 end-6 z-40 hidden h-12 items-center gap-2.5 rounded-full bg-strow-ink ps-2 pe-5 text-sm text-white shadow-xl transition hover:scale-[1.03] md:flex"
+          className="ai-pop fixed bottom-6 end-6 z-40 hidden h-12 items-center gap-2.5 rounded-full bg-strow-blue ps-2 pe-5 text-sm text-white shadow-xl transition hover:scale-[1.03] md:flex"
         >
           <span className="ai-orb h-8 w-8" aria-hidden />
           Ask AI

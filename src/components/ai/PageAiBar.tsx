@@ -4,15 +4,25 @@ import Link from "next/link";
 import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import type { Locale } from "@/lib/i18n/dict";
+import { Sparkle } from "@/components/pulse/icons";
+
+type Seg = { href: string; en: string; ar: string; exact?: boolean };
+const BOOKS: Seg[] = [
+  { href: "/owner/closings", en: "Sales", ar: "المبيعات" },
+  { href: "/owner/expenses", en: "Purchases", ar: "المشتريات" },
+  { href: "/owner/items", en: "Items", ar: "الأصناف" },
+  { href: "/owner/review", en: "Review", ar: "المراجعة" },
+];
+const STAFF: Seg[] = [
+  { href: "/owner/baristas", en: "Team", ar: "الفريق" },
+  { href: "/owner/attendance", en: "Attendance", ar: "الحضور", exact: true },
+  { href: "/owner/attendance/log", en: "Log", ar: "السجل" },
+  { href: "/owner/attendance/reports", en: "Reports", ar: "التقارير" },
+];
 
 type P = { match: (p: string) => boolean; en: string[]; ar: string[] };
 
 const PROMPTS: P[] = [
-  {
-    match: (p) => p === "/owner",
-    en: ["What needs my attention today?", "How is this month going vs last month?", "Why is cash on hand negative?"],
-    ar: ["ما الذي يحتاج انتباهي اليوم؟", "كيف هذا الشهر مقارنة بالشهر الماضي؟", "لماذا النقد بالسالب؟"],
-  },
   {
     match: (p) => p.startsWith("/owner/closings"),
     en: ["Chart my sales by weekday", "Which days are missing a closing?", "Best and worst days this month"],
@@ -70,29 +80,53 @@ const PROMPTS: P[] = [
   },
 ];
 
-const HIDE = ["/owner/finance", "/owner/assistant", "/owner/login"];
+const HIDE = ["/owner/finance", "/owner/assistant", "/owner/login", "/owner/needs-you"];
 
-/** One-tap, page-aware questions for Strow AI, shown at the top of each page. */
+/** Top of each page: a switcher between related pages + one-tap questions for Strow AI. */
 export function PageAiBar({ locale }: { locale: Locale }) {
   const pathname = usePathname() ?? "";
-  if (HIDE.some((p) => pathname.startsWith(p))) return null;
+  if (pathname === "/owner" || HIDE.some((p) => pathname.startsWith(p))) return null;
+  const ar = locale === "ar";
+  const segs = BOOKS.some((s) => pathname.startsWith(s.href)) ? BOOKS : STAFF.some((s) => pathname.startsWith(s.href)) ? STAFF : null;
   const hit = PROMPTS.find((p) => p.match(pathname));
-  if (!hit) return null;
-  const prompts = locale === "ar" ? hit.ar : hit.en;
+  const prompts = hit ? (ar ? hit.ar : hit.en) : [];
+  if (!segs && !prompts.length) return null;
   return (
-    <div className="mx-auto w-full max-w-[76rem] px-4 pt-3 sm:px-6 md:px-10 print:hidden">
-      <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
-        <span className="ai-orb h-6 w-6 shrink-0" aria-hidden />
-        {prompts.map((q) => (
-          <Link
-            key={q}
-            href={`/owner/assistant?q=${encodeURIComponent(q)}` as Route}
-            className="shrink-0 rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-xs text-neutral-700 shadow-sm transition hover:border-neutral-300 active:scale-[.97]"
-          >
-            {q}
-          </Link>
-        ))}
-      </div>
+    <div className="mx-auto flex w-full max-w-[76rem] flex-col gap-2.5 px-4 pt-3 sm:px-6 md:px-10 md:pt-6 print:hidden">
+      {segs ? (
+        <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none]">
+          <div className="inline-flex gap-1 rounded-full bg-white/70 p-1">
+            {segs.map((s) => {
+              const on = s.exact ? pathname === s.href : pathname.startsWith(s.href);
+              return (
+                <Link
+                  key={s.href}
+                  href={s.href as Route}
+                  className={`shrink-0 rounded-full px-4 py-2 text-sm transition ${on ? "bg-strow-ink font-semibold text-white" : "text-neutral-600 hover:text-strow-ink"}`}
+                >
+                  {ar ? s.ar : s.en}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      {prompts.length ? (
+        <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-strow-blue text-white">
+            <Sparkle className="h-4 w-4" />
+          </span>
+          {prompts.map((q) => (
+            <Link
+              key={q}
+              href={`/owner/assistant?q=${encodeURIComponent(q)}` as Route}
+              className="shrink-0 rounded-full border border-neutral-300 bg-white px-3.5 py-1.5 text-xs text-neutral-700 transition hover:border-strow-blue active:scale-[.97]"
+            >
+              {q}
+            </Link>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -4,57 +4,48 @@ import Link from "next/link";
 import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import type { Locale } from "@/lib/i18n/dict";
+import { openOwnerMenu } from "./MobileNavDrawer";
+import { BooksIcon, MoreIcon, PulseIcon, Sparkle, StaffIcon } from "@/components/pulse/icons";
 
 const HIDE = ["/owner/finance", "/owner/assistant", "/owner/login"];
 
-type Tab = { href: Route; en: string; ar: string; icon: React.ReactNode; exact?: boolean };
-
-const I = (d: string) => (
-  <svg viewBox="0 0 24 24" className="h-[22px] w-[22px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d={d} />
-  </svg>
-);
-
-const LEFT: Tab[] = [
-  { href: "/owner", en: "Home", ar: "الرئيسية", icon: I("M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"), exact: true },
-  { href: "/owner/closings", en: "Sales", ar: "المبيعات", icon: I("M4 19V9M10 19V5M16 19v-7M22 19H2") },
-];
-const RIGHT: Tab[] = [
-  { href: "/owner/expenses", en: "Purchases", ar: "المشتريات", icon: I("M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6") },
-  { href: "/owner/items", en: "Items", ar: "الأصناف", icon: I("M4 7l8-4 8 4-8 4zM4 7v10l8 4 8-4V7M12 11v10") },
-];
-
-/** Phone-only bottom navigation with the AI in the middle. */
+/** Phone navigation from the Pulse design: Pulse · Books · ✦ AI · Staff · More. */
 export function MobileTabBar({ locale, aiBadge = 0 }: { locale: Locale; aiBadge?: number }) {
-  const pathname = usePathname() ?? "";
-  if (HIDE.some((p) => pathname.startsWith(p))) return null;
-  const item = (t: Tab) => {
-    const on = t.exact ? pathname === t.href : pathname.startsWith(t.href as string);
-    return (
-      <Link key={t.href as string} href={t.href} className={`flex flex-col items-center gap-0.5 py-2 text-[10px] transition ${on ? "text-strow-ink" : "text-neutral-400"}`}>
-        {t.icon}
-        <span className={on ? "font-medium" : ""}>{locale === "ar" ? t.ar : t.en}</span>
-      </Link>
-    );
-  };
+  const p = usePathname() ?? "";
+  if (HIDE.some((h) => p.startsWith(h))) return null;
+  const ar = locale === "ar";
+  const tab = (href: Route, label: string, icon: React.ReactNode, active: boolean) => (
+    <Link
+      href={href}
+      className={`flex min-h-11 min-w-14 flex-col items-center justify-center gap-[3px] text-[11px] transition ${active ? "font-semibold text-strow-ink" : "text-neutral-500"}`}
+    >
+      {icon}
+      {label}
+    </Link>
+  );
+  const books = ["/owner/closings", "/owner/expenses", "/owner/items", "/owner/review"].some((x) => p.startsWith(x));
+  const staff = ["/owner/baristas", "/owner/attendance"].some((x) => p.startsWith(x));
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden print:hidden">
-      <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2">
-        {LEFT.map(item)}
-        <Link href="/owner/assistant" className="-mt-5 flex flex-col items-center gap-0.5 pb-2 text-[10px] text-strow-ink">
-          <span className="relative">
-            <span className="ai-orb flex h-14 w-14 items-center justify-center shadow-lg ring-4 ring-white" aria-hidden />
-            <span className="absolute inset-0 flex items-center justify-center text-lg text-white">✦</span>
-            {aiBadge > 0 ? (
-              <span className="absolute -end-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white ring-2 ring-white">
-                {aiBadge > 99 ? "99+" : aiBadge}
-              </span>
-            ) : null}
+    <nav className="fixed inset-x-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 flex h-[68px] items-center justify-around rounded-[34px] border border-[rgba(15,28,43,0.08)] bg-white/80 px-1.5 shadow-[0_12px_32px_rgba(15,28,43,0.14)] backdrop-blur-[18px] md:hidden print:hidden">
+      {tab("/owner", ar ? "النبض" : "Pulse", <PulseIcon />, p === "/owner" || p.startsWith("/owner/needs-you"))}
+      {tab("/owner/closings", ar ? "الدفاتر" : "Books", <BooksIcon />, books)}
+      <Link
+        href="/owner/assistant"
+        aria-label="Ask Autopilot"
+        className="relative flex h-[52px] w-[52px] items-center justify-center rounded-full bg-strow-blue text-white shadow-[0_8px_20px_rgba(35,80,208,0.4)] transition active:scale-95"
+      >
+        <Sparkle />
+        {aiBadge > 0 ? (
+          <span className="absolute -end-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#9A1B12] px-1 text-[10px] font-semibold text-white ring-2 ring-white">
+            {aiBadge > 99 ? "99+" : aiBadge}
           </span>
-          <span className="font-medium">AI</span>
-        </Link>
-        {RIGHT.map(item)}
-      </div>
+        ) : null}
+      </Link>
+      {tab("/owner/baristas", ar ? "الفريق" : "Staff", <StaffIcon />, staff)}
+      <button type="button" onClick={openOwnerMenu} className="flex min-h-11 min-w-14 flex-col items-center justify-center gap-[3px] text-[11px] text-neutral-500">
+        <MoreIcon />
+        {ar ? "المزيد" : "More"}
+      </button>
     </nav>
   );
 }

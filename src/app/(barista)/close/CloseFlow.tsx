@@ -7,6 +7,7 @@ import { submitClosing } from "./actions";
 import { enqueueSubmission } from "@/lib/offline/queue";
 import { compressImage } from "@/lib/image";
 import { DayPicker } from "@/components/barista/DayPicker";
+import { CameraIcon } from "@/components/pulse/icons";
 import { shortDay, todayDubai } from "@/lib/dates";
 
 type Confidence = "high" | "medium" | "low";
@@ -62,12 +63,21 @@ function formatAed(n: number) {
   })}`;
 }
 
+const WD_S = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MO_S = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function chipLabel(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return `${WD_S[d.getUTCDay()]} ${d.getUTCDate()} ${MO_S[d.getUTCMonth()]}`;
+}
+
 export function CloseFlow({
   baristaName,
   initialDate,
+  missingDays = [],
 }: {
   baristaName: string;
   initialDate?: string;
+  missingDays?: string[];
 }) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("capture");
@@ -191,38 +201,47 @@ export function CloseFlow({
 
   if (stage === "capture") {
     return (
-      <div className="mx-auto w-full max-w-md flex-1 py-8">
-        <h1 className="text-xl font-medium">End of day close</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Hi {baristaName}. Snap a photo of your close sheet and the AI will
-          fill in the numbers for you to confirm.
-        </p>
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-[18px] py-5">
+        <div className="flex flex-col gap-1.5 px-1">
+          <h1 className="font-display text-[34px] font-bold leading-[1.05] tracking-[-1px]">End of day close</h1>
+          <p className="text-[15px] leading-relaxed text-neutral-500">
+            Hi {baristaName}. Photograph the closing sheet. The numbers fill in for you to confirm.
+          </p>
+        </div>
 
-        {errorMsg && (
-          <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">
-            {errorMsg}
+        {errorMsg && <div className="rounded-2xl bg-red-50 p-3 text-sm text-red-700">{errorMsg}</div>}
+
+        <DayPicker value={pickedDate} onChange={setPickedDate} label="Closing for" className="" />
+
+        {missingDays.length > 0 && (
+          <div className="flex flex-col gap-2 px-1">
+            <p className="text-[13px] text-neutral-500">Days still missing a closing</p>
+            <div className="flex flex-wrap gap-2">
+              {missingDays.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setPickedDate(d)}
+                  className={`h-11 rounded-full px-3.5 text-sm font-medium transition active:scale-95 ${
+                    pickedDate === d ? "border border-strow-ink bg-strow-ink text-white" : "border border-dashed border-[#B26B00] bg-white text-strow-ink"
+                  }`}
+                >
+                  {chipLabel(d)}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        <DayPicker
-          value={pickedDate}
-          onChange={setPickedDate}
-          label="Closing for"
-        />
-
         <label
           htmlFor="close-photo"
-          className="mt-4 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-neutral-300 bg-white p-10 text-center transition active:scale-[0.99]"
+          className="pulse-breathe mt-1.5 flex min-h-[240px] flex-1 cursor-pointer flex-col items-center justify-center gap-3.5 rounded-[32px] bg-strow-ink text-white"
         >
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-strow-ink text-3xl text-white">
-            📷
-          </div>
-          <div>
-            <p className="text-base font-medium">Take photo</p>
-            <p className="mt-1 text-xs text-neutral-500">
-              Or pick a photo from your gallery
-            </p>
-          </div>
+          <span className="flex h-[76px] w-[76px] items-center justify-center rounded-full bg-white/10">
+            <CameraIcon />
+          </span>
+          <span className="font-display text-[22px] font-semibold">Take photo</span>
+          <span className="text-sm text-[#B9C3D0]">or choose one from your gallery</span>
         </label>
         <input
           id="close-photo"
@@ -237,10 +256,7 @@ export function CloseFlow({
           }}
         />
 
-        <p className="mt-6 text-xs text-neutral-400">
-          Photo stays on your phone until you confirm. AI extraction takes
-          about 5 seconds.
-        </p>
+        <p className="text-center text-[13px] leading-relaxed text-neutral-500">The photo stays on this phone until you confirm.</p>
       </div>
     );
   }

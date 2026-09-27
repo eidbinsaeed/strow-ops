@@ -7,19 +7,35 @@ import { LangToggle } from "./LangToggle";
 import { tr } from "@/lib/i18n/tr";
 import type { Locale } from "@/lib/i18n/dict";
 
-export function MobileNavDrawer({
-  children,
-  locale,
-}: {
-  children: React.ReactNode;
-  locale: Locale;
-}) {
+/** Opens the phone menu from anywhere (e.g. the "More" tab). */
+export function openOwnerMenu() {
+  window.dispatchEvent(new Event("strow:open-menu"));
+}
+
+function todayLabel(locale: Locale): string {
+  const parts = new Intl.DateTimeFormat(locale === "ar" ? "ar-AE" : "en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "Asia/Dubai",
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return locale === "ar" ? `${get("weekday")} ${get("day")} ${get("month")}` : `${get("weekday")}, ${get("day")} ${get("month")}`;
+}
+
+export function MobileNavDrawer({ children, locale }: { children: React.ReactNode; locale: Locale }) {
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
 
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener("strow:open-menu", onOpen);
+    return () => window.removeEventListener("strow:open-menu", onOpen);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -35,99 +51,48 @@ export function MobileNavDrawer({
   }, [open]);
 
   const isRtl = locale === "ar";
+  // The chat screen has its own header.
+  const hideHeader = pathname.startsWith("/owner/assistant");
 
   return (
     <>
-      {/* Mobile top bar */}
-      <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-neutral-200 bg-white/95 px-4 backdrop-blur md:hidden print:hidden">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label={tr("nav.menu_open", locale)}
-          className="rounded-md p-2 text-neutral-700 hover:bg-neutral-100"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-5 w-5"
-          >
-            <line x1="4" y1="6" x2="20" y2="6" />
-            <line x1="4" y1="12" x2="20" y2="12" />
-            <line x1="4" y1="18" x2="20" y2="18" />
-          </svg>
-        </button>
-        <Link href="/owner" className="text-base font-medium">
-          {tr("brand.title", locale)}
-        </Link>
-        <LangToggle />
-      </div>
-      {/* Old hamburger position removed */}
-      {false && (
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            aria-label={tr("nav.menu_open", locale)}
-            className="rounded-md p-2 text-neutral-700 hover:bg-neutral-100"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-5 w-5"
+      {!hideHeader ? (
+        <header className="flex items-center justify-between gap-3 px-5 pb-1 pt-[max(1.25rem,env(safe-area-inset-top))] md:hidden print:hidden">
+          <Link href="/owner" className="flex min-w-0 flex-col gap-0.5">
+            <span className="font-display text-xl font-bold tracking-[-0.3px]">Qave Cafe</span>
+            <span className="truncate text-[13px] text-neutral-500" suppressHydrationWarning>
+              {todayLabel(locale)}
+            </span>
+          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <LangToggle />
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              aria-label={tr("nav.menu_open", locale)}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-strow-ink font-display text-base font-semibold text-white"
             >
-              <line x1="4" y1="6" x2="20" y2="6" />
-              <line x1="4" y1="12" x2="20" y2="12" />
-              <line x1="4" y1="18" x2="20" y2="18" />
-            </svg>
-          </button>
-      )}
+              E
+            </button>
+          </div>
+        </header>
+      ) : null}
 
-      {/* Backdrop + drawer */}
       {open && (
-        <div
-          className="fixed inset-0 z-50 md:hidden"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setOpen(false)}
-          />
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+          <div className="ai-fade absolute inset-0 bg-[#0F1C2B]/40" onClick={() => setOpen(false)} />
           <aside
-            className={`absolute inset-y-0 ${isRtl ? "right-0" : "left-0"} flex w-72 max-w-[85vw] flex-col overflow-y-auto bg-white shadow-xl`}
+            className={`absolute inset-y-0 ${isRtl ? "right-0 rounded-s-[28px]" : "left-0 rounded-e-[28px]"} flex w-[300px] max-w-[85vw] flex-col overflow-y-auto bg-strow-bg pb-[env(safe-area-inset-bottom)] shadow-2xl`}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-200">
-              <span className="text-base font-medium">
-                {tr("brand.title", locale)}
-              </span>
+            <div className="flex items-center justify-between px-6 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))]">
+              <span className="font-display text-2xl font-bold tracking-[-0.5px]">Strow</span>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label={tr("nav.menu_close", locale)}
-                className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xl leading-none text-strow-ink"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-5 w-5"
-                >
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                </svg>
+                ×
               </button>
             </div>
             {children}

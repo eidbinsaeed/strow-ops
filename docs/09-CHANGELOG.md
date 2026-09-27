@@ -113,3 +113,10 @@
 - AI memory (ai_memory) — supplier invoice layouts, price norms, owner preferences.
 - Read-only SQL gateway ai_read_query: Strow tables only; other projects and Personal Finance writes are blocked.
 - Layout: shared responsive page container, phone bottom tab bar with AI button, page-aware AI question chips, desktop AI panel, phone-friendly filters, motion.
+
+## v0.9.1 — 2026-09-27 — Pulse redesign (approved mockup "Strow Ops redesign")
+- New look on every owner page except Personal Finance: navy #0F1C2B on cool grey #E8EAED, blue #2350D0 for AI, amber #B26B00 for missing; Bricolage Grotesque + Instrument Sans.
+- Pulse home: last close hero (count-up), month strip (closed bars / missing dashed / today ping; tap for values), Autopilot findings, payment split, average day, cash on hand, month stats.
+- Needs you (/owner/needs-you): one finding at a time — bill photo with scan line, "now vs should be", proof list, Apply fix / Undo / Dismiss.
+- Phone: floating glass tab bar (Pulse · Books · ✦ AI · Staff · More), Qave Cafe header, Books and Staff section switchers. Desktop: Strow sidebar with badges, ask bar on Pulse.
+- Barista close: big title, missing-day chips, breathing Take photo button.

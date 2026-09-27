@@ -2,585 +2,391 @@ import Link from "next/link";
 import type { Route } from "next";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/i18n/locale";
-import { tr } from "@/lib/i18n/tr";
-import type { Locale } from "@/lib/i18n/dict";
-import { StatusPill } from "@/components/owner/StatusPill";
 import { CashControls } from "@/components/owner/CashControls";
-import { AutopilotCard } from "@/components/ai/AutopilotCard";
-import { Chart } from "@/components/ai/Charts";
 import { CountUpText } from "@/components/ai/CountUp";
-import { shortDay } from "@/lib/dates";
+import { MonthStrip, type StripDay } from "@/components/pulse/MonthStrip";
+import { Sparkle } from "@/components/pulse/icons";
+import { todayDubai } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-function aed(n: number) {
-  return `AED ${Number(n).toLocaleString("en-AE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+type Num = number | string | null;
+type Kpis = { projected_net: Num; revenue_mtd: Num; fixed_monthly: Num };
+type CashPos = {
+  cash_on_hand: Num;
+  cash_in_today: Num;
+  cash_out_today: Num;
+  cash_withdrawn_today: Num;
+  anchor_date: string | null;
+  needs_opening_count: boolean | number | null;
+};
+type Closing = { closing_date: string; grand_total: Num; cash_total: Num; card_total: Num; online_total: Num };
+type Finding = { id: string; status: string; severity: string; title: string; detail: string | null; ops: unknown[] | null };
+
+const N = (v: unknown) => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+};
+const fmt = (n: number, d = 2) => n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+const WD = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WD_AR = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+const WD_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function addDays(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function dayLong(iso: string, ar: boolean): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return ar
+    ? `${WD_AR[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS_AR[d.getUTCMonth()]}`
+    : `${WD[d.getUTCDay()]}, ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
-function formatTime(d: string) {
-  return new Date(d).toLocaleTimeString("en-AE", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const RANK: Record<string, number> = { critical: 0, warn: 1, info: 2 };
+const TAG: Record<string, string> = {
+  blue: "bg-[#E3EAFB] text-[#1A3FA8]",
+  red: "bg-[#FBE9E7] text-[#9A1B12]",
+  grey: "bg-[#EEF0F3] text-[#3F4A57]",
+};
 
-function StatCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-      <p className="text-xs uppercase tracking-wider text-neutral-500">
-        {label}
-      </p>
-      <p className="mt-2 text-3xl font-light text-strow-ink">
-        <CountUpText text={value} from={0.6} />
-      </p>
-      {hint ? <p className="mt-1 text-xs text-neutral-400">{hint}</p> : null}
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-neutral-50 p-3">
-      <p className="text-[11px] uppercase tracking-wider text-neutral-500">
-        {label}
-      </p>
-      <p className="mt-1 text-lg font-light tabular-nums text-strow-ink">
-        <CountUpText text={value} from={0.6} />
-      </p>
-    </div>
-  );
-}
-
-function TrendPill({ pct, locale }: { pct: number; locale: Locale }) {
-  const down = pct < 0;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${
-        down ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
-      }`}
-    >
-      <span aria-hidden>{down ? "▼" : "▲"}</span>
-      {Math.abs(pct)}% {tr("dash.trend.vs_avg", locale)}
-    </span>
-  );
-}
-
-export default async function OwnerDashboard() {
+export default async function PulsePage() {
   const locale = await getLocale();
-  const supabase = createServiceClient();
+  const ar = locale === "ar";
+  const db = createServiceClient();
+  const today = todayDubai();
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7));
+  const todayNum = Number(today.slice(8, 10));
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const monthPrefix = today.slice(0, 8);
+  const monthName = ar ? MONTHS_AR[m - 1] : MONTHS[m - 1];
 
-  // UAE-local "today" date string for filtering DATE columns
-  const today = new Date().toLocaleDateString("en-CA", {
-    timeZone: "Asia/Dubai",
-  });
-
-  const [
-    locationsRes,
-    baristasActiveRes,
-    baristasOnShiftRes,
-    suppliersRes,
-    categoriesRes,
-    todaySalesRes,
-    todayExpensesRes,
-    pendingClosingsRes,
-    pendingExpensesRes,
-    recentClosingsRes,
-    recentExpensesRes,
-    kpisRes,
-    dailyFlowRes,
-    badgesRes,
-    cashPosRes,
-  ] = await Promise.all([
-    supabase.from("locations").select("*", { count: "exact", head: true }),
-    supabase
-      .from("baristas")
-      .select("*", { count: "exact", head: true })
-      .eq("is_active", true),
-    supabase
-      .from("baristas")
-      .select("*", { count: "exact", head: true })
-      .eq("is_active", true)
-      .eq("is_on_shift", true),
-    supabase.from("suppliers").select("*", { count: "exact", head: true }),
-    supabase
-      .from("categories")
-      .select("*", { count: "exact", head: true })
-      .eq("is_active", true),
-    supabase
+  const [kpiRes, cashRes, closRes, lastRes, findRes, badgeRes, itemsRes] = await Promise.all([
+    db.from("v_dashboard_kpis").select("*").limit(1),
+    db.from("v_cash_position").select("*").limit(1),
+    db
       .from("closings")
-      .select("grand_total")
-      .eq("closing_date", today)
-      .in("status", ["confirmed", "pending_review"]),
-    supabase
-      .from("expenses")
-      .select("total")
-      .eq("expense_date", today)
-      .in("status", ["confirmed", "pending_review"]),
-    supabase
-      .from("closings")
-      .select("*", { count: "exact", head: true })
-      .in("status", ["pending_review", "flagged"]),
-    supabase
-      .from("expenses")
-      .select("*", { count: "exact", head: true })
-      .in("status", ["pending_review", "flagged"]),
-    supabase
-      .from("closings")
-      .select("id, closing_date, grand_total, status, created_at, baristas(name)")
-      .order("created_at", { ascending: false })
-      .limit(5),
-    supabase
-      .from("expenses")
-      .select(
-        "id, expense_date, total, status, created_at, suppliers(name), baristas(name)",
-      )
-      .order("created_at", { ascending: false })
-      .limit(5),
-    // Month-to-date KPIs + projections (tz-aware, one row per active location)
-    supabase.from("v_dashboard_kpis").select("*"),
-    // Per-day revenue + expenses, last 30 days (we chart the last 7)
-    supabase
-      .from("v_daily_flow_30d")
-      .select("*")
-      .order("date", { ascending: true }),
-    // Sidebar/alert counts — single cheap row
-    supabase.from("v_sidebar_badges").select("*").maybeSingle(),
-    // Running cash-on-hand position (one row per active location)
-    supabase.from("v_cash_position").select("*"),
+      .select("closing_date, grand_total, cash_total, card_total, online_total")
+      .gte("closing_date", addDays(today, -120))
+      .lte("closing_date", today)
+      .neq("status", "rejected")
+      .order("closing_date"),
+    db.from("closings").select("closing_date, grand_total").neq("status", "rejected").lte("closing_date", today).order("closing_date", { ascending: false }).limit(1),
+    db.from("ai_actions").select("id, status, severity, title, detail, ops").in("status", ["proposed", "info"]).order("created_at", { ascending: false }).limit(40),
+    db.from("v_sidebar_badges").select("pending_count").limit(1),
+    db.rpc("ai_read_query", {
+      q: "select count(distinct li.inventory_item_id)::int as items, coalesce(sum(li.line_total),0)::float8 as spent from expense_line_items li join expenses e on e.id = li.expense_id where e.status = 'confirmed' and li.inventory_item_id is not null",
+      max_rows: 1,
+    }),
   ]);
 
-  const salesToday = (todaySalesRes.data ?? []).reduce(
-    (sum, r) => sum + Number((r as { grand_total: number }).grand_total ?? 0),
-    0,
+  const kpi = ((kpiRes.data ?? [])[0] ?? null) as Kpis | null;
+  const cash = ((cashRes.data ?? [])[0] ?? null) as CashPos | null;
+  const rows = (closRes.data ?? []) as Closing[];
+  const last = ((lastRes.data ?? [])[0] ?? null) as { closing_date: string; grand_total: Num } | null;
+  const pending = N(((badgeRes.data ?? [])[0] as { pending_count?: number } | undefined)?.pending_count);
+  const itemsRow = (Array.isArray(itemsRes.data) ? itemsRes.data[0] : null) as { items?: number; spent?: number } | null;
+
+  // Month strip
+  const byDate = new Map(rows.map((r) => [r.closing_date, r]));
+  const elapsed = byDate.has(today) ? todayNum : todayNum - 1;
+  const days: StripDay[] = [];
+  let closedCount = 0;
+  let missingCount = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = `${monthPrefix}${String(d).padStart(2, "0")}`;
+    const row = byDate.get(iso);
+    if (row) {
+      if (d <= elapsed) closedCount++;
+      days.push({ iso, d, kind: "closed", value: N(row.grand_total) });
+    } else if (iso === today) days.push({ iso, d, kind: "today", value: 0 });
+    else if (d > todayNum) days.push({ iso, d, kind: "future", value: 0 });
+    else {
+      missingCount++;
+      days.push({ iso, d, kind: "missing", value: 0 });
+    }
+  }
+  const progress = elapsed > 0 ? Math.round((closedCount / elapsed) * 100) : 0;
+  const progressText =
+    elapsed <= 0
+      ? ar ? "أول يوم في الشهر." : "First day of the month."
+      : ar
+        ? `${closedCount} من ${elapsed} يوماً مُقفلة في ${monthName}. ${missingCount} ناقصة.`
+        : `${closedCount} of ${elapsed} days closed in ${monthName}. ${missingCount} ${missingCount === 1 ? "is" : "are"} missing.`;
+
+  // Payment split (month to date, else last 30 days)
+  const monthRows = rows.filter((r) => r.closing_date.startsWith(monthPrefix));
+  const splitRows = monthRows.length ? monthRows : rows.filter((r) => r.closing_date >= addDays(today, -30));
+  const card = splitRows.reduce((a, r) => a + N(r.card_total), 0);
+  const online = splitRows.reduce((a, r) => a + N(r.online_total), 0);
+  const cashS = splitRows.reduce((a, r) => a + N(r.cash_total), 0);
+  const tot = card + online + cashS;
+  const pct = (x: number) => (tot > 0 ? Math.round((x / tot) * 100) : 0);
+  const split = [
+    { k: ar ? "بطاقة" : "card", v: card, c: "#0F1C2B" },
+    { k: ar ? "أونلاين" : "online", v: online, c: "#2350D0" },
+    { k: ar ? "نقد" : "cash", v: cashS, c: "#C98300" },
+  ];
+
+  // Average day by weekday (last 120 days)
+  const byDow = new Map<number, { sum: number; n: number }>();
+  for (const r of rows) {
+    const v = N(r.grand_total);
+    if (v <= 0) continue;
+    const k = new Date(`${r.closing_date}T00:00:00Z`).getUTCDay();
+    const a = byDow.get(k) ?? { sum: 0, n: 0 };
+    a.sum += v;
+    a.n += 1;
+    byDow.set(k, a);
+  }
+  const avgs = [...byDow.entries()].map(([k, a]) => ({ k, v: a.sum / a.n })).sort((a, b) => b.v - a.v);
+  const week = avgs.length > 4 ? [...avgs.slice(0, 3), avgs[avgs.length - 1]] : avgs;
+  const weekMax = Math.max(1, ...week.map((w) => w.v));
+
+  // Autopilot findings
+  const findings = ((findRes.data ?? []) as Finding[])
+    .map((f) => ({ ...f, hasOps: Array.isArray(f.ops) && f.ops.length > 0 }))
+    .sort((a, b) => {
+      const key = (f: { status: string; severity: string; hasOps: boolean }) =>
+        f.status === "proposed" && f.hasOps ? 0 : f.status === "info" ? 1 + (RANK[f.severity] ?? 2) : 5;
+      return key(a) - key(b);
+    });
+  const tagOf = (f: { status: string; hasOps: boolean }) =>
+    f.status === "info"
+      ? { t: ar ? "يحتاجك" : "Needs you", c: TAG.red }
+      : f.hasOps
+        ? { t: ar ? "إصلاح جاهز" : "Fix ready", c: TAG.blue }
+        : { t: ar ? "للتحقق" : "Check", c: TAG.grey };
+  const totalFindings = findings.length + (pending > 0 ? 1 : 0);
+
+  const lastAmount = last ? Math.round(N(last.grand_total)).toLocaleString("en-US") : "0";
+  const projected = N(kpi?.projected_net);
+
+  const FindingRows = ({ limit }: { limit: number }) => (
+    <>
+      {findings.slice(0, limit).map((f) => {
+        const tag = tagOf(f);
+        return (
+          <Link
+            key={f.id}
+            href={`/owner/needs-you?id=${f.id}` as Route}
+            className="flex items-start gap-3 border-t border-[#EDF0F3] px-[18px] py-3.5 text-strow-ink transition hover:bg-neutral-50 active:bg-neutral-100 md:px-6"
+          >
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="text-[15px] font-semibold leading-snug">{f.title}</span>
+              {f.detail ? <span className="line-clamp-2 text-[13px] leading-snug text-neutral-500">{f.detail}</span> : null}
+            </span>
+            <span className={`shrink-0 rounded-xl px-2.5 py-1 text-xs font-semibold ${tag.c}`}>{tag.t}</span>
+          </Link>
+        );
+      })}
+      {pending > 0 ? (
+        <Link href="/owner/review" className="flex items-start gap-3 border-t border-[#EDF0F3] px-[18px] py-3.5 text-strow-ink transition hover:bg-neutral-50 md:px-6">
+          <span className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-[15px] font-semibold leading-snug">
+              {ar ? `${pending} فواتير تنتظر المراجعة` : `${pending} bill${pending === 1 ? "" : "s"} waiting for review`}
+            </span>
+            <span className="text-[13px] leading-snug text-neutral-500">{ar ? "قراءات غير مؤكدة" : "Reads the app wasn't sure about."}</span>
+          </span>
+          <span className={`shrink-0 rounded-xl px-2.5 py-1 text-xs font-semibold ${TAG.grey}`}>{ar ? "مراجعة" : "Review"}</span>
+        </Link>
+      ) : null}
+      {totalFindings === 0 ? (
+        <p className="border-t border-[#EDF0F3] px-[18px] py-5 text-sm text-emerald-700 md:px-6">{ar ? "كل شيء سليم." : "All clear — nothing needs you."}</p>
+      ) : null}
+    </>
   );
-  const expensesToday = (todayExpensesRes.data ?? []).reduce(
-    (sum, r) => sum + Number((r as { total: number }).total ?? 0),
-    0,
-  );
-  const netToday = salesToday - expensesToday;
-  const needsReview =
-    (pendingClosingsRes.count ?? 0) + (pendingExpensesRes.count ?? 0);
-
-  type Activity = {
-    kind: "closing" | "expense";
-    id: string;
-    when: string;
-    label: string;
-    amount: number;
-    status: string;
-  };
-
-  type ClosingActivity = {
-    id: string;
-    closing_date: string;
-    grand_total: number;
-    status: string;
-    created_at: string;
-    baristas: { name: string } | null;
-  };
-  type ExpenseActivity = {
-    id: string;
-    expense_date: string;
-    total: number;
-    status: string;
-    created_at: string;
-    suppliers: { name: string } | null;
-    baristas: { name: string } | null;
-  };
-
-  const recentClosings = (recentClosingsRes.data ?? []) as unknown as ClosingActivity[];
-  const recentExpenses = (recentExpensesRes.data ?? []) as unknown as ExpenseActivity[];
-
-  const activity: Activity[] = [
-    ...recentClosings.map((c) => ({
-      kind: "closing" as const,
-      id: c.id,
-      when: c.created_at,
-      label: `${tr("nav.sales", locale)} - ${c.baristas?.name ?? "-"}`,
-      amount: Number(c.grand_total ?? 0),
-      status: c.status,
-    })),
-    ...recentExpenses.map((e) => ({
-      kind: "expense" as const,
-      id: e.id,
-      when: e.created_at,
-      label: `${tr("nav.purchases", locale)} - ${e.suppliers?.name ?? tr("card.unknown_vendor", locale)}`,
-      amount: Number(e.total ?? 0),
-      status: e.status,
-    })),
-  ]
-    .sort((a, b) => (a.when < b.when ? 1 : -1))
-    .slice(0, 8);
-
-  // --- Month-to-date KPIs + projections (from v_dashboard_kpis) -----------
-  type KpiRow = {
-    revenue_mtd: number;
-    variable_expenses_mtd: number;
-    vat_net_mtd: number;
-    fixed_monthly: number;
-    projected_revenue: number;
-    projected_variable: number;
-    projected_net: number;
-    avg_revenue_7d: number;
-    latest_day_revenue: number;
-    trend_vs_avg_pct: number | null;
-    days_closed_mtd: number;
-    days_in_month: number;
-    days_elapsed: number;
-  };
-  const kpis = ((kpisRes.data ?? []) as unknown as KpiRow[])[0] ?? null;
-
-  // --- Daily flow, last 7 days (from v_daily_flow_30d) -------------------
-  type FlowRow = {
-    date: string;
-    revenue: number;
-    expenses: number;
-    is_weekend: boolean;
-  };
-  const flowAll = (dailyFlowRes.data ?? []) as unknown as FlowRow[];
-  const flow7 = flowAll.slice(-7);
-  const flowMax = Math.max(1, ...flow7.map((d) => Number(d.revenue)));
-  const flowHasData = flow7.some((d) => Number(d.revenue) > 0);
-
-  // --- Alert counts (from v_sidebar_badges) -----------------------------
-  type BadgeRow = {
-    pending_count: number;
-    uncategorized_count: number;
-    open_liabilities_count: number;
-    missing_float_count: number;
-    missing_trn_count: number;
-  };
-  const badges = (badgesRes.data as BadgeRow | null) ?? {
-    pending_count: 0,
-    uncategorized_count: 0,
-    open_liabilities_count: 0,
-    missing_float_count: 0,
-    missing_trn_count: 0,
-  };
-
-  // --- Running cash-on-hand position (from v_cash_position) -------------
-  type CashPositionRow = {
-    cash_on_hand: number;
-    cash_in_today: number;
-    cash_out_today: number;
-    cash_withdrawn_today: number;
-    anchor_date: string | null;
-    needs_opening_count: boolean;
-  };
-  const cashPos =
-    ((cashPosRes.data ?? []) as unknown as CashPositionRow[])[0] ?? null;
-
-  type Alert = {
-    key: string;
-    href: Route;
-    count?: number;
-    text: string;
-    tone: "warn" | "info";
-  };
-  const alerts: Alert[] = [];
-  if (badges.pending_count > 0)
-    alerts.push({
-      key: "pending",
-      href: "/owner/review",
-      count: badges.pending_count,
-      text: tr("dash.alerts.pending", locale),
-      tone: "warn",
-    });
-  if (badges.uncategorized_count > 0)
-    alerts.push({
-      key: "uncategorized",
-      href: "/owner/expenses",
-      count: badges.uncategorized_count,
-      text: tr("dash.alerts.uncategorized", locale),
-      tone: "info",
-    });
-  if (badges.missing_float_count > 0)
-    alerts.push({
-      key: "missing_float",
-      href: "/owner/closings",
-      count: badges.missing_float_count,
-      text: tr("dash.alerts.missing_float", locale),
-      tone: "info",
-    });
-  if (badges.missing_trn_count > 0)
-    alerts.push({
-      key: "missing_trn",
-      href: "/owner/suppliers",
-      count: badges.missing_trn_count,
-      text: tr("dash.alerts.missing_trn", locale),
-      tone: "info",
-    });
-  if (badges.open_liabilities_count > 0)
-    alerts.push({
-      key: "open_liabilities",
-      href: "/owner/liabilities",
-      count: badges.open_liabilities_count,
-      text: tr("dash.alerts.open_liabilities", locale),
-      tone: "info",
-    });
 
   return (
     <div className="page">
-      <header className="mb-8">
-        <h1 className="text-2xl font-light tracking-tight">
-          {tr("page.dashboard", locale)}
-        </h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          {tr("dash.today_at", locale)}
-        </p>
+      <header className="mb-5 hidden items-center gap-4 md:flex">
+        <div>
+          <h1 className="font-display text-[28px] font-bold tracking-[-0.6px]">{ar ? "النبض" : "Pulse"}</h1>
+          <p className="text-sm text-neutral-500">{dayLong(today, ar)}</p>
+        </div>
+        <form action="/owner/assistant" className="ms-auto flex h-12 w-full max-w-[440px] items-center gap-2.5 rounded-full border border-neutral-300 bg-white px-[18px] text-neutral-500">
+          <Sparkle className="h-[18px] w-[18px] text-strow-blue" />
+          <input
+            name="q"
+            placeholder={ar ? "اسأل الطيار الآلي أو ابحث عن أي فاتورة" : "Ask Autopilot or search any bill"}
+            aria-label="Ask Autopilot"
+            className="min-w-0 flex-1 bg-transparent text-[15px] text-strow-ink outline-none"
+          />
+        </form>
       </header>
 
-      {/* Strow AI — what it fixed, what needs you */}
-      <AutopilotCard />
-
-      {/* Hero — month-to-date result + projection */}
-      {kpis && (
-        <section className="mb-8 rounded-2xl border border-neutral-200 bg-white p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-neutral-500">
-                {tr("dash.hero.projected_net", locale)}
-              </p>
-              <p
-                className={`mt-1 text-4xl font-light tabular-nums ${
-                  Number(kpis.projected_net) < 0
-                    ? "text-red-600"
-                    : "text-strow-ink"
-                }`}
-              >
-                <CountUpText text={aed(Number(kpis.projected_net))} from={0.6} />
-              </p>
-              <p className="mt-1 text-xs text-neutral-400">
-                {tr("dash.hero.basis", locale)} · {kpis.days_closed_mtd}/
-                {kpis.days_in_month} {tr("dash.hero.days_closed", locale)}
-              </p>
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_392px] md:gap-[18px]">
+        {/* Hero + month strip */}
+        <section className="flex flex-col gap-4 md:col-start-1 md:row-start-1 md:gap-5 md:rounded-[32px] md:bg-white md:px-[30px] md:pb-[22px] md:pt-7">
+          <div className="flex flex-col gap-1.5 px-1 pt-2 md:flex-row md:items-end md:justify-between md:px-0 md:pt-0">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm text-neutral-500">
+                {last ? `${ar ? "آخر إقفال، " : "Last close, "}${dayLong(last.closing_date, ar)}` : ar ? "لا توجد إقفالات بعد" : "No closings yet"}
+              </span>
+              <span className="flex items-baseline gap-2">
+                <span className="font-display text-[22px] font-semibold text-neutral-500 md:text-2xl">AED</span>
+                <span className="font-display text-[68px] font-bold leading-none tracking-[-2.5px] tabular-nums md:text-[84px] md:tracking-[-3px]">
+                  <CountUpText text={lastAmount} duration={1100} />
+                </span>
+              </span>
             </div>
-            {kpis.trend_vs_avg_pct != null && (
-              <TrendPill
-                pct={Number(kpis.trend_vs_avg_pct)}
-                locale={locale}
-              />
+            <div className="mt-2.5 flex flex-col gap-2 md:mt-0 md:w-[240px] md:items-end">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-300 md:bg-[#E3E6EA]">
+                <div className="pulse-fill h-1.5 rounded-full bg-strow-ink" style={{ width: `${progress}%` }} />
+              </div>
+              <span className="text-[13px] text-neutral-500 md:text-end">{progressText}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-[28px] bg-white px-[18px] pb-3 pt-5 md:rounded-none md:bg-transparent md:p-0">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="font-display text-lg font-semibold">{monthName}</span>
+              <span className="flex gap-3 text-xs text-neutral-500">
+                <span className="flex items-center gap-1.5">
+                  <i className="inline-block h-2 w-2 rounded-[2px] bg-strow-ink" />
+                  {ar ? "مُقفل" : "Closed"}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <i className="inline-block h-2 w-2 rounded-[2px] border-[1.5px] border-dashed border-strow-amber" />
+                  {ar ? "ناقص" : "Missing"}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <i className="inline-block h-2 w-2 rounded-full bg-strow-blue" />
+                  {ar ? "اليوم" : "Today"}
+                </span>
+              </span>
+            </div>
+            <MonthStrip days={days} />
+            {missingCount > 0 ? (
+              <Link href="/close" className="flex min-h-11 items-center self-start text-sm font-semibold text-strow-amber">
+                {ar ? `أكمل ${missingCount} أيام ناقصة` : `Fill the ${missingCount} missing day${missingCount === 1 ? "" : "s"}`}
+              </Link>
+            ) : null}
+          </div>
+        </section>
+
+        {/* Autopilot */}
+        <section className="flex flex-col rounded-[28px] bg-white pb-1.5 pt-[18px] md:col-start-2 md:row-span-4 md:row-start-1 md:self-start md:rounded-[32px] md:pt-6">
+          <div className="flex items-center justify-between px-[18px] pb-2.5 md:px-6 md:pb-3.5">
+            <Link href="/owner/needs-you" className="flex items-center gap-2.5">
+              <span className="pulse-ping h-2.5 w-2.5 rounded-full bg-strow-blue" />
+              <span className="font-display text-lg font-semibold md:text-xl">Autopilot</span>
+            </Link>
+            <Link href="/owner/needs-you" className="text-[13px] text-neutral-500">
+              {ar ? `${totalFindings} ملاحظات` : `${totalFindings} finding${totalFindings === 1 ? "" : "s"}`} ›
+            </Link>
+          </div>
+          <div className="md:hidden">
+            <FindingRows limit={5} />
+          </div>
+          <div className="hidden md:block">
+            <FindingRows limit={9} />
+          </div>
+          {findings.length > 5 ? (
+            <Link href="/owner/needs-you" className="border-t border-[#EDF0F3] px-[18px] py-3 text-sm font-semibold text-strow-blue md:hidden">
+              {ar ? "عرض الكل" : `See all ${findings.length}`}
+            </Link>
+          ) : null}
+          <Link href="/owner/assistant/activity?tab=fixed" className="border-t border-[#EDF0F3] px-[18px] py-3 text-[13px] text-neutral-500 md:px-6">
+            {ar ? "ما الذي أصلحه الطيار الآلي ›" : "What Autopilot already fixed ›"}
+          </Link>
+        </section>
+
+        {/* Pay split, average day, cash */}
+        <div className="grid gap-4 md:col-start-1 md:row-start-2 md:grid-cols-3 md:gap-[18px]">
+          <div className="flex flex-col gap-3.5 rounded-[28px] bg-white px-[18px] py-5 md:p-[22px]">
+            <span className="font-display text-lg font-semibold md:text-[17px]">{ar ? "كيف يدفع العملاء" : "How customers pay"}</span>
+            {tot > 0 ? (
+              <>
+                <div className="flex h-3.5 gap-[3px] overflow-hidden rounded-[7px] md:h-3">
+                  {split.map((s) =>
+                    s.v > 0 ? <div key={s.k} className="pulse-fill" style={{ width: `${Math.max(2, pct(s.v))}%`, background: s.c }} /> : null,
+                  )}
+                </div>
+                <div className="flex justify-between text-[13px]">
+                  {split.map((s) => (
+                    <span key={s.k}>
+                      <strong className="text-base">{pct(s.v)}%</strong> <span className="text-neutral-500">{s.k}</span>
+                    </span>
+                  ))}
+                </div>
+                <span className="text-xs text-neutral-500">{monthRows.length ? (ar ? "هذا الشهر" : "This month") : ar ? "آخر 30 يوماً" : "Last 30 days"}</span>
+              </>
+            ) : (
+              <span className="text-sm text-neutral-500">{ar ? "لا توجد بيانات بعد" : "No sales recorded yet"}</span>
             )}
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <MiniStat
-              label={tr("dash.hero.revenue_mtd", locale)}
-              value={aed(Number(kpis.revenue_mtd))}
-            />
-            <MiniStat
-              label={tr("dash.hero.variable_mtd", locale)}
-              value={aed(Number(kpis.variable_expenses_mtd))}
-            />
-            <MiniStat
-              label={tr("dash.hero.fixed_monthly", locale)}
-              value={aed(Number(kpis.fixed_monthly))}
-            />
-            <MiniStat
-              label={tr("dash.hero.vat_net", locale)}
-              value={aed(Number(kpis.vat_net_mtd))}
-            />
-          </div>
-        </section>
-      )}
 
-      {/* Cash on hand — running balance + manual controls */}
-      {cashPos && (
-        <section className="mb-8">
-          <CashControls
-            cashOnHand={Number(cashPos.cash_on_hand)}
-            cashInToday={Number(cashPos.cash_in_today)}
-            cashOutToday={Number(cashPos.cash_out_today)}
-            cashWithdrawnToday={Number(cashPos.cash_withdrawn_today)}
-            anchorDate={cashPos.anchor_date}
-            needsOpeningCount={cashPos.needs_opening_count}
-            locale={locale}
-          />
-        </section>
-      )}
-
-      {/* Needs your eyes — actionable alerts */}
-      <section className="mb-8">
-        <h2 className="mb-3 text-sm font-medium text-neutral-700">
-          {tr("dash.alerts.title", locale)}
-        </h2>
-        {alerts.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-emerald-300 bg-emerald-50 p-6 text-center text-sm text-emerald-700">
-            {tr("dash.alerts.all_clear", locale)}
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-            {alerts.map((a) => (
-              <Link
-                key={a.key}
-                href={a.href}
-                className="flex items-center gap-3 border-b border-neutral-100 px-5 py-3 last:border-0 hover:bg-neutral-50"
-              >
-                <span
-                  className={`h-2 w-2 flex-shrink-0 rounded-full ${
-                    a.tone === "warn" ? "bg-red-500" : "bg-amber-400"
-                  }`}
-                />
-                {a.count != null && (
-                  <span className="min-w-[1.5rem] tabular-nums text-sm font-medium">
-                    {a.count}
-                  </span>
-                )}
-                <span className="flex-1 text-sm text-neutral-700">
-                  {a.text}
-                </span>
-                <span className="text-neutral-300" aria-hidden>
-                  →
-                </span>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Last 7 days — interactive sales vs purchases */}
-      <section className="mb-10">
-        <h2 className="mb-3 text-sm font-medium text-neutral-700">
-          {tr("dash.chart.title", locale)}
-        </h2>
-        {flowHasData ? (
-          <Chart
-            block={{
-              type: "chart",
-              kind: "bar",
-              title: "",
-              subtitle: "Sales vs purchases",
-              labels: flow7.map((d) => shortDay(d.date)),
-              series: [
-                { name: "Sales", values: flow7.map((d) => Math.round(Number(d.revenue))) },
-                { name: "Purchases", values: flow7.map((d) => Math.round(Number(d.expenses))) },
-              ],
-              unit: "AED",
-            }}
-          />
-        ) : (
-          <div className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm text-neutral-500">
-            {tr("dash.chart.no_data", locale)}
-          </div>
-        )}
-      </section>
-
-      <h2 className="mb-3 text-sm font-medium text-neutral-700">
-        {tr("dash.todays_flows", locale)}
-      </h2>
-      <div className="mb-10 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard
-          label={tr("dash.sales_today", locale)}
-          value={aed(salesToday)}
-          hint={tr("dash.cash_card_online", locale)}
-        />
-        <StatCard
-          label={tr("dash.expenses_today", locale)}
-          value={aed(expensesToday)}
-          hint={tr("dash.all_payments", locale)}
-        />
-        <StatCard
-          label={tr("dash.net_today", locale)}
-          value={aed(netToday)}
-        />
-        <StatCard
-          label={tr("dash.needs_review", locale)}
-          value={String(needsReview)}
-          hint={tr("dash.ai_flagged", locale)}
-        />
-      </div>
-
-      <h2 className="mb-3 text-sm font-medium text-neutral-700">
-        {tr("dash.setup_live", locale)}
-      </h2>
-      <div className="mb-10 grid grid-cols-2 gap-3 md:grid-cols-5">
-        <StatCard
-          label={tr("dash.locations", locale)}
-          value={String(locationsRes.count ?? 0)}
-        />
-        <StatCard
-          label={tr("dash.baristas", locale)}
-          value={String(baristasActiveRes.count ?? 0)}
-          hint={tr("dash.active", locale)}
-        />
-        <StatCard
-          label={tr("dash.on_shift", locale)}
-          value={String(baristasOnShiftRes.count ?? 0)}
-        />
-        <StatCard
-          label={tr("dash.vendors_count", locale)}
-          value={String(suppliersRes.count ?? 0)}
-        />
-        <StatCard
-          label={tr("dash.categories_count", locale)}
-          value={String(categoriesRes.count ?? 0)}
-          hint={tr("dash.active", locale)}
-        />
-      </div>
-
-      <section>
-        <h2 className="mb-3 text-sm font-medium text-neutral-700">
-          {tr("dash.recent_activity", locale)}
-        </h2>
-        {activity.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
-            <p className="text-sm text-neutral-500">
-              {tr("dash.no_submissions", locale)}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-            {activity.map((a) => (
-              <Link
-                key={`${a.kind}-${a.id}`}
-                href={a.kind === "closing" ? "/owner/closings" : "/owner/expenses"}
-                className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-3 last:border-0 hover:bg-neutral-50"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{a.label}</p>
-                  <p className="text-xs text-neutral-400">
-                    {formatTime(a.when)}
-                  </p>
+          <div className="flex flex-col gap-2.5 rounded-[28px] bg-white px-[18px] py-5 md:p-[22px]">
+            <span className="font-display text-lg font-semibold md:text-[17px]">{ar ? "متوسط اليوم" : "Average day"}</span>
+            {week.map((w) => {
+              const low = week.length > 3 && w === week[week.length - 1];
+              return (
+                <div key={w.k} className="flex items-center gap-2.5 text-[13px]">
+                  <span className="w-[30px] text-neutral-500">{WD_SHORT[w.k]}</span>
+                  <div className="h-2 flex-1 overflow-hidden rounded bg-[#EEF0F3]">
+                    <div className="pulse-fill h-2 rounded" style={{ width: `${Math.round((w.v / weekMax) * 100)}%`, background: low ? "#C98300" : "#0F1C2B" }} />
+                  </div>
+                  <span className="w-12 text-end font-semibold tabular-nums">{fmt(w.v, 0)}</span>
                 </div>
-                <span className="tabular-nums text-sm">{aed(a.amount)}</span>
-                <StatusPill status={a.status} locale={locale} />
-              </Link>
-            ))}
+              );
+            })}
+            {!week.length ? <span className="text-sm text-neutral-500">{ar ? "لا توجد بيانات" : "Not enough closings yet"}</span> : null}
           </div>
-        )}
-      </section>
 
-      <section className="mt-10 grid gap-4 md:grid-cols-2">
-        <Link
-          href="/owner/baristas"
-          className="rounded-2xl border border-neutral-200 bg-white p-5 transition hover:border-strow-ink"
-        >
-          <p className="text-sm font-medium">{tr("dash.manage_staff", locale)}</p>
-          <p className="mt-1 text-xs text-neutral-500">
-            {tr("dash.manage_staff_hint", locale)}
-          </p>
-        </Link>
-        <Link
-          href="/owner/review"
-          className="rounded-2xl border border-neutral-200 bg-white p-5 transition hover:border-strow-ink"
-        >
-          <p className="text-sm font-medium">{tr("nav.pending", locale)}</p>
-          <p className="mt-1 text-xs text-neutral-500">
-            {tr("dash.pending_hint", locale)}
-          </p>
-        </Link>
-      </section>
+          <div className="flex flex-col gap-2 rounded-[28px] bg-white px-[18px] py-5 md:p-[22px]">
+            <span className="font-display text-lg font-semibold md:text-[17px]">{ar ? "النقد في الصندوق" : "Cash on hand"}</span>
+            <span className={`font-display text-[30px] font-bold tracking-[-0.6px] tabular-nums ${N(cash?.cash_on_hand) < 0 ? "text-[#9A1B12]" : ""}`}>
+              {fmt(N(cash?.cash_on_hand))}
+            </span>
+            <span className="text-[13px] text-neutral-500">
+              {N(cash?.cash_on_hand) < 0
+                ? ar ? "لا يمكن أن يكون سالباً — أعد العدّ." : `Can't be negative.${cash?.anchor_date ? ` Last counted ${cash.anchor_date}.` : ""}`
+                : cash?.anchor_date ? `${ar ? "آخر عدّ" : "Last counted"} ${cash.anchor_date}` : ""}
+            </span>
+            <a href="#cash" className="mt-1 inline-flex h-11 items-center self-start rounded-full bg-strow-ink px-[18px] text-sm font-semibold text-white">
+              {ar ? "عُدّ النقد" : "Count the cash"}
+            </a>
+          </div>
+        </div>
+
+        {/* Small stat cards */}
+        <div className="grid grid-cols-2 gap-3 md:col-start-1 md:row-start-3 md:grid-cols-4 md:gap-[18px]">
+          {[
+            { l: ar ? "مبيعات هذا الشهر" : "Sales this month", v: fmt(N(kpi?.revenue_mtd), 0), red: false },
+            { l: ar ? "صافي متوقع" : "Projected net", v: fmt(projected, 0), red: projected < 0 },
+            { l: ar ? "تكاليف ثابتة شهرياً" : "Fixed costs a month", v: fmt(N(kpi?.fixed_monthly), 0), red: false },
+            { l: ar ? `إنفاق على ${N(itemsRow?.items)} صنف` : `Spent on ${N(itemsRow?.items)} items`, v: fmt(N(itemsRow?.spent)), red: false },
+          ].map((s) => (
+            <div key={s.l} className="flex flex-col gap-1.5 rounded-3xl bg-white p-4">
+              <span className="text-[13px] text-neutral-500">{s.l}</span>
+              <span className={`font-display text-2xl font-bold tracking-[-0.5px] tabular-nums ${s.red ? "text-[#9A1B12]" : ""}`}>
+                <CountUpText text={s.v} from={0.4} />
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Cash controls (count, withdraw, opening) */}
+        {cash ? (
+          <section id="cash" className="scroll-mt-6 md:col-start-1 md:row-start-4">
+            <CashControls
+              cashOnHand={N(cash.cash_on_hand)}
+              cashInToday={N(cash.cash_in_today)}
+              cashOutToday={N(cash.cash_out_today)}
+              cashWithdrawnToday={N(cash.cash_withdrawn_today)}
+              anchorDate={cash.anchor_date}
+              needsOpeningCount={Boolean(cash.needs_opening_count)}
+              locale={locale}
+            />
+          </section>
+        ) : null}
+      </div>
     </div>
   );
 }

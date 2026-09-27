@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChartBlock, StatsBlock, TableBlock } from "@/lib/ai/types";
 import { CountUpText } from "./CountUp";
 
-export const PALETTE = ["#1a1a1a", "#c47a2c", "#5f8f7f", "#b08968", "#7c83a6", "#d9a45b", "#9aa5a0", "#4b5563"];
+export const PALETTE = ["#0F1C2B", "#2350D0", "#C98300", "#5F8F7F", "#8B93A7", "#B26B00", "#9AA5A0", "#47515E"];
 
 export function fmtCompact(n: number): string {
   if (!Number.isFinite(n)) return "0";
