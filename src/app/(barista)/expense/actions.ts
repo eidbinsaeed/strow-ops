@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { runAutopilot } from "@/lib/ai/autopilot";
+import { broadcastLive } from "@/lib/live";
 import { redirect } from "next/navigation";
 import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -442,6 +443,9 @@ export async function submitExpense(formData: FormData) {
       line_item_count: lineItems.length,
     },
   });
+
+  // Owner screens update on the spot.
+  await broadcastLive({ t: "expenses", id: inserted.id as string });
 
   // Strow AI checks the new bill in the background (after the response is sent).
   if (process.env.ANTHROPIC_API_KEY) {

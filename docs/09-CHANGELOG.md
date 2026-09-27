@@ -132,3 +132,7 @@
 - Close form: Cash, Card, Talabat, Keeta, Beanz (+ optional other online); the AI reads each POS Payment Methods row and never uses the Transactions count as money. The date chip no longer shows red when the report only says "Today".
 - Photo prep: blank/black results are detected and retried (decode-at-size, smaller), otherwise the barista is asked to retake — no more black photos sent to the AI.
 - Pulse "How customers pay" shows every channel.
+
+## v0.9.4 — 2026-09-27 — Live updates, chat memory
+- Live: barista closings/bills and finished Autopilot runs broadcast on Supabase Realtime ("strow-live", no business data in the payload); open owner screens refresh instantly and show a banner (New closing from EiD · Sat 26 Sep · AED 1,401). Fallback: /api/live check every 20 s and whenever the app returns to the front.
+- AI chat reopens the last chat; "+ New" starts a fresh one. History shows readable titles ("Fix: …") and a delete button (the chat's changes stay in AI activity).

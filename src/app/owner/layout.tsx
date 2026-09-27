@@ -10,6 +10,7 @@ import { MobileTabBar } from "@/components/owner/MobileTabBar";
 import { AiFab } from "@/components/ai/AiFab";
 import { PageAiBar } from "@/components/ai/PageAiBar";
 import { ThemeScope } from "@/components/pulse/ThemeScope";
+import { LiveUpdates } from "@/components/live/LiveUpdates";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,7 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
         </main>
         <MobileTabBar locale={locale} aiBadge={aiOpen} />
         <AiFab />
+        <LiveUpdates />
       </ThemeScope>
     </LocaleProvider>
   );

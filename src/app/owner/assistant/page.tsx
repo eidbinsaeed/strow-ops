@@ -3,27 +3,31 @@ import type { Route } from "next";
 import { createServiceClient } from "@/lib/supabase/server";
 import { AssistantChat, type ChatMessage } from "@/components/ai/AssistantChat";
 import { BackButton } from "@/components/pulse/BackButton";
+import { HistoryMenu } from "@/components/ai/HistoryMenu";
 import type { Block } from "@/lib/ai/types";
 
 export const dynamic = "force-dynamic";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function AssistantPage({ searchParams }: { searchParams: Promise<{ c?: string; q?: string }> }) {
+export default async function AssistantPage({ searchParams }: { searchParams: Promise<{ c?: string; q?: string; new?: string }> }) {
   const sp = await searchParams;
-  const chatId = sp.c && UUID.test(sp.c) ? sp.c : null;
   const q = typeof sp.q === "string" && sp.q.trim() ? sp.q.slice(0, 1000) : undefined;
   const db = createServiceClient();
 
-  const [chatsRes, msgsRes, openRes] = await Promise.all([
-    db.from("ai_chats").select("id, title, updated_at").order("updated_at", { ascending: false }).limit(30),
-    chatId
-      ? db.from("ai_messages").select("id, role, blocks").eq("chat_id", chatId).order("created_at", { ascending: true }).limit(200)
-      : Promise.resolve({ data: [] as unknown[] }),
+  const [chatsRes, openRes] = await Promise.all([
+    db.from("ai_chats").select("id, title, updated_at").order("updated_at", { ascending: false }).limit(40),
     db.from("ai_actions").select("*", { count: "exact", head: true }).in("status", ["proposed", "info"]),
   ]);
-
   const chats = (chatsRes.data ?? []) as { id: string; title: string | null; updated_at: string }[];
+
+  // Coming back to the AI reopens the chat you were in — unless you tapped "+ New" or asked something new.
+  const explicit = sp.c && UUID.test(sp.c) ? sp.c : null;
+  const chatId = explicit ?? (!q && sp.new !== "1" ? (chats[0]?.id ?? null) : null);
+
+  const msgsRes = chatId
+    ? await db.from("ai_messages").select("id, role, blocks").eq("chat_id", chatId).order("created_at", { ascending: true }).limit(200)
+    : { data: [] as unknown[] };
   const initialMessages: ChatMessage[] = ((msgsRes.data ?? []) as { id: string; role: "user" | "assistant"; blocks: Block[] }[]).map((m) => ({
     id: m.id,
     role: m.role,
@@ -59,32 +63,15 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
               <span className="absolute -end-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] text-white">{openCount}</span>
             ) : null}
           </Link>
-          {chats.length ? (
-            <details key={chatId ?? "new"} className="relative">
-              <summary className="cursor-pointer list-none rounded-full border border-neutral-300 px-3 py-1.5 text-xs text-neutral-700 [&::-webkit-details-marker]:hidden">
-                History
-              </summary>
-              <div className="absolute end-0 z-30 mt-2 max-h-80 w-72 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-xl">
-                {chats.map((c) => (
-                  <Link
-                    key={c.id}
-                    href={`/owner/assistant?c=${c.id}` as Route}
-                    className={`block truncate rounded-xl px-3 py-2.5 text-sm hover:bg-neutral-100 ${c.id === chatId ? "bg-neutral-100 font-medium" : "text-neutral-700"}`}
-                  >
-                    {c.title || "Chat"}
-                  </Link>
-                ))}
-              </div>
-            </details>
-          ) : null}
-          <Link href="/owner/assistant" className="rounded-full bg-strow-ink px-3 py-1.5 text-xs text-white">
+          <HistoryMenu key={chatId ?? "new"} chats={chats} currentId={chatId} />
+          <Link href={"/owner/assistant?new=1" as Route} className="rounded-full bg-strow-ink px-3 py-1.5 text-xs text-white">
             + New
           </Link>
         </div>
       </header>
       <div className="min-h-0 flex-1">
         <AssistantChat
-          key={chatId ?? `new:${q ?? ""}`}
+          key={chatId ?? `new:${q ?? ""}:${sp.new ?? ""}`}
           initialChatId={chatId}
           initialMessages={initialMessages}
           initialPrompt={chatId ? undefined : q}

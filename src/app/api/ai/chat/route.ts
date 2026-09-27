@@ -79,7 +79,12 @@ export async function POST(req: Request) {
     if (!data) chatId = null;
   }
   if (!chatId) {
-    const { data, error } = await db.from("ai_chats").insert({ title: message.slice(0, 80) }).select("id").single();
+    const fix = /^Look into this and fix it if you can:\s*"([^"]+)"/i.exec(message);
+    const { data, error } = await db
+      .from("ai_chats")
+      .insert({ title: (fix ? `Fix: ${fix[1]}` : message).slice(0, 80) })
+      .select("id")
+      .single();
     if (error || !data) return NextResponse.json({ error: error?.message ?? "Could not start chat" }, { status: 500 });
     chatId = (data as { id: string }).id;
   }
@@ -177,4 +182,19 @@ export async function GET(req: Request) {
     .limit(1);
   const m = ((data ?? [])[0] ?? null) as { blocks: Block[]; created_at: string } | null;
   return NextResponse.json({ message: m }, { headers: { "Cache-Control": "no-store" } });
+}
+
+// Delete a chat from History. The changes it made (and their Undo) stay in AI activity.
+export async function DELETE(req: Request) {
+  if (!(await getOwnerSession())) return NextResponse.json({ ok: false, error: "Sign in again" }, { status: 401 });
+  const c = new URL(req.url).searchParams.get("c") ?? "";
+  if (!UUID.test(c)) return NextResponse.json({ ok: false, error: "Bad request" }, { status: 400 });
+  const db = createServiceClient();
+  const unlink = await db.from("ai_actions").update({ chat_id: null }).eq("chat_id", c);
+  if (unlink.error) return NextResponse.json({ ok: false, error: unlink.error.message }, { status: 500 });
+  const msgs = await db.from("ai_messages").delete().eq("chat_id", c);
+  if (msgs.error) return NextResponse.json({ ok: false, error: msgs.error.message }, { status: 500 });
+  const chat = await db.from("ai_chats").delete().eq("id", c);
+  if (chat.error) return NextResponse.json({ ok: false, error: chat.error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
 }

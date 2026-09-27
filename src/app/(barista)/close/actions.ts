@@ -7,6 +7,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
 import { uploadReceiptPhoto } from "@/lib/drive/upload";
 import { todayDubai } from "@/lib/dates";
+import { broadcastLive } from "@/lib/live";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -161,6 +162,9 @@ export async function submitClosing(formData: FormData) {
     };
   }
 
+  // Owner screens update on the spot.
+  await broadcastLive({ t: "closings", id: inserted.id });
+
   // Best-effort Drive upload + row patch. Failures don't undo the submission.
   if (photo_data_url) {
     const { data: loc } = await supabase
@@ -189,6 +193,8 @@ export async function submitClosing(formData: FormData) {
         .eq("id", inserted.id);
     }
   }
+
+  await broadcastLive({ t: "closings", id: inserted.id });
 
   await writeAudit({
     actor_id: session.bid,
