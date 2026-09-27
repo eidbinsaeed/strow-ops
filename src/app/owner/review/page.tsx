@@ -90,7 +90,7 @@ export default async function OwnerReviewPage() {
   ].sort((a, b) => (a.sortDate < b.sortDate ? 1 : -1));
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h1 className="text-2xl font-light tracking-tight">{tr("page.pending", locale)}</h1>

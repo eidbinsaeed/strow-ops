@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { runAutopilot } from "@/lib/ai/autopilot";
 import { redirect } from "next/navigation";
 import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -440,6 +442,19 @@ export async function submitExpense(formData: FormData) {
       line_item_count: lineItems.length,
     },
   });
+
+  // Strow AI checks the new bill in the background (after the response is sent).
+  if (process.env.ANTHROPIC_API_KEY) {
+    const newExpenseId = inserted.id as string;
+    after(async () => {
+      try {
+        await runAutopilot("expense", { expenseId: newExpenseId });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[autopilot] expense check failed:", e);
+      }
+    });
+  }
 
   revalidatePath("/owner");
   revalidatePath("/owner/expenses");

@@ -71,7 +71,7 @@ export function TableFilters({
 
   return (
     <div
-      className={`mb-4 flex flex-wrap items-center gap-2 ${pending ? "opacity-60" : ""}`}
+      className={`mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center ${pending ? "opacity-60" : ""}`}
     >
       {showSearch && (
         <input
@@ -87,30 +87,30 @@ export function TableFilters({
               250,
             );
           }}
-          className="w-48 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-strow-ink focus:outline-none"
+          className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-base focus:border-strow-ink focus:outline-none sm:w-56 sm:text-sm"
         />
       )}
 
       {showDates && (
-        <>
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           <input
             type="date"
             defaultValue={params.get("from") ?? ""}
             onChange={(e) => setParam("from", e.target.value || null)}
-            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-strow-ink focus:outline-none"
+            className="min-w-0 flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-base focus:border-strow-ink focus:outline-none sm:w-40 sm:flex-none sm:text-sm"
           />
           <span className="text-xs text-neutral-400">{tr("filter.between", locale)}</span>
           <input
             type="date"
             defaultValue={params.get("to") ?? ""}
             onChange={(e) => setParam("to", e.target.value || null)}
-            className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm focus:border-strow-ink focus:outline-none"
+            className="min-w-0 flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-base focus:border-strow-ink focus:outline-none sm:w-40 sm:flex-none sm:text-sm"
           />
-        </>
+        </div>
       )}
 
       {showStatus && (
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
           {STATUS_OPTIONS.map((opt) => {
             const active = activeStatuses.includes(opt.v);
             return (
@@ -118,7 +118,7 @@ export function TableFilters({
                 key={opt.v}
                 type="button"
                 onClick={() => toggleStatus(opt.v)}
-                className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition ${
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition ${
                   active
                     ? opt.cls + " ring-2 ring-offset-1 ring-neutral-300"
                     : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
@@ -137,7 +137,7 @@ export function TableFilters({
           onClick={() => {
             startTransition(() => router.push(pathname as never));
           }}
-          className="ml-auto text-xs text-neutral-500 underline hover:text-strow-ink"
+          className="self-start text-xs text-neutral-500 underline hover:text-strow-ink sm:ms-auto"
         >
           {tr("filter.clear", locale)}
         </button>

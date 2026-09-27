@@ -156,7 +156,7 @@ export default async function OwnerInsightsPage({
   ];
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       <header className="mb-8">
         <h1 className="text-2xl font-light tracking-tight">
           {tr("page.insights", locale)}

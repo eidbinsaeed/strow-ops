@@ -89,7 +89,7 @@ export default async function StaffReportsPage({
     }));
 
     return (
-      <div className="px-6 py-8 md:px-10">
+      <div className="page">
         {header}
         <h2 className="mb-2 text-sm font-medium">{tr("rep.overview", locale)}</h2>
         <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
@@ -170,7 +170,7 @@ export default async function StaffReportsPage({
   const months = Object.keys(byMonth).sort().reverse();
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       {header}
 
       <div className="mb-1 text-lg font-medium">

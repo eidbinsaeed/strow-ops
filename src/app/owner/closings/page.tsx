@@ -135,7 +135,7 @@ export default async function OwnerSalesPage({
   const missingRanges = groupRanges(missingDays);
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h1 className="text-2xl font-light tracking-tight">{tr("page.sales", locale)}</h1>

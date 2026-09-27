@@ -48,7 +48,7 @@ export default async function AttendanceLogPage() {
   }));
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       <header className="mb-4">
         <h1 className="text-2xl font-light tracking-tight">{tr("att.log.title", locale)}</h1>
         <p className="mt-1 text-sm text-neutral-500">{tr("att.log.subtitle", locale)}</p>

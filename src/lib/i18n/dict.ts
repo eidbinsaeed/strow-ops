@@ -353,3 +353,5 @@ DICT["att.st.late"] = { en: "Late", ar: "متأخر" };
 DICT["att.st.absent"] = { en: "Absent", ar: "غائب" };
 DICT["att.st.sick"] = { en: "Sick", ar: "مرضي" };
 DICT["att.st.off"] = { en: "Off / day off", ar: "إجازة" };
+
+DICT["nav.ai"] = { en: "Strow AI", ar: "Strow AI · المساعد" };

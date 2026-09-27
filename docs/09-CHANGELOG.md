@@ -105,3 +105,11 @@
 - Project memory folder created at `/docs/` with all 11 files seeded
 - Foundational decisions locked (D1–D13 in `03-DECISIONS.md`)
 - No code written yet
+
+## v0.9.0 — 2026-09-27 — Strow AI
+- Built-in assistant (Claude Opus 5.5, falls back to Sonnet 4.6): full-screen chat at /owner/assistant with interactive charts, sortable tables, stat cards, bill photos, follow-up chips, voice input, stop button.
+- Every AI change is logged in ai_actions with its before-state: one-tap Undo, Approve or Dismiss.
+- Autopilot: nightly sweep (Vercel cron 02:00 Dubai), "Run check now" on the dashboard, and an automatic check of every new bill.
+- AI memory (ai_memory) — supplier invoice layouts, price norms, owner preferences.
+- Read-only SQL gateway ai_read_query: Strow tables only; other projects and Personal Finance writes are blocked.
+- Layout: shared responsive page container, phone bottom tab bar with AI button, page-aware AI question chips, desktop AI panel, phone-friendly filters, motion.

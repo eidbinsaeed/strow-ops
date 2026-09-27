@@ -28,7 +28,7 @@ export default async function CategoryBreakdownPage({
   const csvHref = `/api/reports/category-breakdown/csv?from=${period.from}&to=${period.to}`;
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       <header className="mb-6">
         <h1 className="text-2xl font-light tracking-tight">{tr("report.category_breakdown", locale)}</h1>
         <p className="mt-1 text-sm text-neutral-500">{period.label}</p>

@@ -49,7 +49,7 @@ export default async function OwnerAuditPage() {
   const entries = (data ?? []) as AuditRow[];
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h1 className="text-2xl font-light tracking-tight">{tr("page.audit", locale)}</h1>

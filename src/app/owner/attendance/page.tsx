@@ -110,7 +110,7 @@ export default async function OwnerAttendancePage() {
   const onShift = staff.filter((s) => s.is_on_shift).length;
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       <header className="mb-6">
         <h1 className="text-2xl font-light tracking-tight">{tr("page.attendance", locale)}</h1>
         <p className="mt-1 text-sm text-neutral-500">{tr("att.subtitle", locale)}</p>

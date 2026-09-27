@@ -6,6 +6,10 @@ import { tr } from "@/lib/i18n/tr";
 import type { Locale } from "@/lib/i18n/dict";
 import { StatusPill } from "@/components/owner/StatusPill";
 import { CashControls } from "@/components/owner/CashControls";
+import { AutopilotCard } from "@/components/ai/AutopilotCard";
+import { Chart } from "@/components/ai/Charts";
+import { CountUpText } from "@/components/ai/CountUp";
+import { shortDay } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -38,7 +42,9 @@ function StatCard({
       <p className="text-xs uppercase tracking-wider text-neutral-500">
         {label}
       </p>
-      <p className="mt-2 text-3xl font-light text-strow-ink">{value}</p>
+      <p className="mt-2 text-3xl font-light text-strow-ink">
+        <CountUpText text={value} from={0.6} />
+      </p>
       {hint ? <p className="mt-1 text-xs text-neutral-400">{hint}</p> : null}
     </div>
   );
@@ -51,7 +57,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="mt-1 text-lg font-light tabular-nums text-strow-ink">
-        {value}
+        <CountUpText text={value} from={0.6} />
       </p>
     </div>
   );
@@ -326,7 +332,7 @@ export default async function OwnerDashboard() {
     });
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       <header className="mb-8">
         <h1 className="text-2xl font-light tracking-tight">
           {tr("page.dashboard", locale)}
@@ -335,6 +341,9 @@ export default async function OwnerDashboard() {
           {tr("dash.today_at", locale)}
         </p>
       </header>
+
+      {/* Strow AI — what it fixed, what needs you */}
+      <AutopilotCard />
 
       {/* Hero — month-to-date result + projection */}
       {kpis && (
@@ -351,7 +360,7 @@ export default async function OwnerDashboard() {
                     : "text-strow-ink"
                 }`}
               >
-                {aed(Number(kpis.projected_net))}
+                <CountUpText text={aed(Number(kpis.projected_net))} from={0.6} />
               </p>
               <p className="mt-1 text-xs text-neutral-400">
                 {tr("dash.hero.basis", locale)} · {kpis.days_closed_mtd}/
@@ -440,63 +449,31 @@ export default async function OwnerDashboard() {
         )}
       </section>
 
-      {/* Last 7 days — daily revenue flow */}
+      {/* Last 7 days — interactive sales vs purchases */}
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-medium text-neutral-700">
           {tr("dash.chart.title", locale)}
         </h2>
-        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-          {flowHasData ? (
-            <>
-              <div className="flex h-44 items-end gap-2">
-                {flow7.map((d) => {
-                  const rev = Number(d.revenue);
-                  const pct =
-                    rev > 0
-                      ? Math.min(
-                          Math.max(Math.round((rev / flowMax) * 85), 4),
-                          85,
-                        )
-                      : 0;
-                  return (
-                    <div
-                      key={d.date}
-                      className="flex h-full flex-1 flex-col items-center justify-end gap-1"
-                      title={`${d.date} — ${aed(rev)}`}
-                    >
-                      <span className="text-[10px] tabular-nums text-neutral-400">
-                        {rev > 0 ? Math.round(rev) : ""}
-                      </span>
-                      <div
-                        className={`w-full rounded-t ${
-                          d.is_weekend ? "bg-strow-ink/40" : "bg-strow-ink"
-                        }`}
-                        style={{ height: `${pct}%` }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-1 flex gap-2">
-                {flow7.map((d) => (
-                  <span
-                    key={d.date}
-                    className="flex-1 text-center text-[10px] tabular-nums text-neutral-500"
-                  >
-                    {d.date.slice(5)}
-                  </span>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="py-8 text-center text-sm text-neutral-500">
-              {tr("dash.chart.no_data", locale)}
-            </p>
-          )}
-          <p className="mt-3 text-xs text-neutral-400">
-            {tr("dash.chart.caption", locale)}
-          </p>
-        </div>
+        {flowHasData ? (
+          <Chart
+            block={{
+              type: "chart",
+              kind: "bar",
+              title: "",
+              subtitle: "Sales vs purchases",
+              labels: flow7.map((d) => shortDay(d.date)),
+              series: [
+                { name: "Sales", values: flow7.map((d) => Math.round(Number(d.revenue))) },
+                { name: "Purchases", values: flow7.map((d) => Math.round(Number(d.expenses))) },
+              ],
+              unit: "AED",
+            }}
+          />
+        ) : (
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm text-neutral-500">
+            {tr("dash.chart.no_data", locale)}
+          </div>
+        )}
       </section>
 
       <h2 className="mb-3 text-sm font-medium text-neutral-700">

@@ -39,7 +39,7 @@ export default async function VatReportPage({
   const csvHref = `/api/reports/vat/csv?from=${period.from}&to=${period.to}`;
 
   return (
-    <div className="px-6 py-8 md:px-10">
+    <div className="page">
       <header className="mb-6">
         <h1 className="text-2xl font-light tracking-tight">{tr("report.vat", locale)}</h1>
         <p className="mt-1 text-sm text-neutral-500">{period.label}</p>

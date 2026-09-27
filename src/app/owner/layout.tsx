@@ -7,6 +7,9 @@ import { LocaleProvider } from "@/components/owner/LocaleProvider";
 import { LangToggle } from "@/components/owner/LangToggle";
 import { getLocale, dirFor } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
+import { MobileTabBar } from "@/components/owner/MobileTabBar";
+import { AiFab } from "@/components/ai/AiFab";
+import { PageAiBar } from "@/components/ai/PageAiBar";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +55,11 @@ export default async function OwnerLayout({
     .select("*")
     .maybeSingle();
   const badges = (badgeRow as SidebarBadges | null) ?? undefined;
+  const { count: aiOpenCount } = await supabase
+    .from("ai_actions")
+    .select("*", { count: "exact", head: true })
+    .in("status", ["proposed", "info"]);
+  const aiOpen = aiOpenCount ?? 0;
 
   return (
     <LocaleProvider locale={locale}>
@@ -62,7 +70,7 @@ export default async function OwnerLayout({
       >
         {/* Mobile: top bar + drawer */}
         <MobileNavDrawer locale={locale}>
-          <OwnerNavContent signedIn={signedIn} locale={locale} badges={badges} />
+          <OwnerNavContent signedIn={signedIn} locale={locale} badges={badges} aiOpen={aiOpen} />
         </MobileNavDrawer>
 
         {/* Desktop: persistent sidebar */}
@@ -76,10 +84,15 @@ export default async function OwnerLayout({
           <p className="-mt-3 px-6 pb-3 text-xs text-neutral-500">
             {tr("brand.role", locale)}
           </p>
-          <OwnerNavContent signedIn={signedIn} locale={locale} badges={badges} />
+          <OwnerNavContent signedIn={signedIn} locale={locale} badges={badges} aiOpen={aiOpen} />
         </aside>
 
-        <main className="flex-1 overflow-x-hidden">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-hidden">
+          <PageAiBar locale={locale} />
+          {children}
+        </main>
+        <MobileTabBar locale={locale} aiBadge={aiOpen} />
+        <AiFab />
       </div>
     </LocaleProvider>
   );

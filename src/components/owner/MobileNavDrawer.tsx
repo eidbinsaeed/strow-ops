@@ -39,7 +39,7 @@ export function MobileNavDrawer({
   return (
     <>
       {/* Mobile top bar */}
-      <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3 md:hidden">
+      <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-neutral-200 bg-white/95 px-4 backdrop-blur md:hidden print:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}

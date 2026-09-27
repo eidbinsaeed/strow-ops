@@ -11,9 +11,11 @@ export function OwnerNavContent({
   signedIn,
   locale,
   badges,
+  aiOpen = 0,
 }: {
   signedIn: boolean;
   locale: Locale;
+  aiOpen?: number;
   badges?: { pending_count: number; uncategorized_count: number; missing_float_count: number; missing_trn_count: number };
 }) {
   return (
@@ -21,6 +23,9 @@ export function OwnerNavContent({
       <nav className="flex flex-col gap-3 px-3 pb-4 md:pb-6">
         <NavGroup label={tr("nav.group.operations", locale)}>
           <OwnerNavLink href="/owner">{tr("nav.dashboard", locale)}</OwnerNavLink>
+          <OwnerNavLink href="/owner/assistant">
+            {"✦ " + tr("nav.ai", locale) + (aiOpen ? " (" + aiOpen + ")" : "")}
+          </OwnerNavLink>
           <OwnerNavLink href="/owner/review">
             {tr("nav.pending", locale) + (badges?.pending_count ? " (" + badges.pending_count + ")" : "")}
           </OwnerNavLink>
