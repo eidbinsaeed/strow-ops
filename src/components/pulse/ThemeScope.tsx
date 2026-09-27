@@ -12,6 +12,7 @@ export function ThemeScope({ children, className = "", ...rest }: React.HTMLAttr
   return (
     <div {...rest} className={`${on ? "pulse-theme " : ""}${className}`}>
       {children}
+      <div id="strow-portal" />
     </div>
   );
 }

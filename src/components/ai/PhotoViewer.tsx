@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { Portal } from "@/components/pulse/Portal";
 export function photoSrc(table: string, id: string): string {
   return `/api/ai/photo?table=${encodeURIComponent(table)}&id=${encodeURIComponent(id)}`;
 }
@@ -23,7 +24,8 @@ export function PhotoViewer({ src, caption, onClose }: { src: string; caption?: 
     };
   }, [onClose]);
   return (
-    <div className="ai-fade fixed inset-0 z-[80] flex flex-col bg-black/95" role="dialog" aria-modal="true" onClick={onClose}>
+    <Portal>
+<div className="ai-fade fixed inset-0 z-[80] flex flex-col bg-black/95" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-[max(1rem,env(safe-area-inset-top))] text-white">
         <p className="min-w-0 truncate text-sm">{caption ?? "Bill photo"}</p>
         <button type="button" onClick={onClose} aria-label="Close" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-2xl leading-none">
@@ -45,6 +47,7 @@ export function PhotoViewer({ src, caption, onClose }: { src: string; caption?: 
         </a>
       </div>
     </div>
+</Portal>
   );
 }
 

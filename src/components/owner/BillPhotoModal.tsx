@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { Portal } from "@/components/pulse/Portal";
 /**
  * Full-screen bill photo viewer. Loads the image through /api/bill-photo
  * (server-side Drive fetch) instead of a Google iframe, so it works on any
@@ -37,7 +38,8 @@ export function BillPhotoModal({
   }, [onClose]);
 
   return (
-    <div
+    <Portal>
+<div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
@@ -92,5 +94,6 @@ export function BillPhotoModal({
         )}
       </div>
     </div>
+</Portal>
   );
 }

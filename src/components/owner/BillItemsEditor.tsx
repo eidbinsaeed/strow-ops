@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { getExpenseLines, saveExpenseLines, type LineDraft } from "@/app/owner/items/actions";
 
+import { Portal } from "@/components/pulse/Portal";
 type ItemOpt = { id: string; name: string; kind: string | null };
 
 type Row = {
@@ -74,7 +75,8 @@ export function BillItemsEditor({ expenseId, onClose }: { expenseId: string; onC
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <Portal>
+<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
           <h2 className="text-sm font-medium">Edit items on this bill</h2>
@@ -133,6 +135,7 @@ export function BillItemsEditor({ expenseId, onClose }: { expenseId: string; onC
         </div>
       </div>
     </div>
+</Portal>
   );
 }
 

@@ -15,6 +15,7 @@ import {
 } from "@/app/owner/review/actions";
 import { BillItemsEditor } from "@/components/owner/BillItemsEditor";
 
+import { Portal } from "@/components/pulse/Portal";
 type ClosingFields = {
   closing_date: string;
   cash_total: number;
@@ -245,7 +246,8 @@ function EditDialog(
   const isClosing = props.type === "closing";
 
   return (
-    <div
+    <Portal>
+<div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={props.onClose}
     >
@@ -287,6 +289,7 @@ function EditDialog(
         </form>
       </div>
     </div>
+</Portal>
   );
 }
 

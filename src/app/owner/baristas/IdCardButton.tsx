@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { Portal } from "@/components/pulse/Portal";
 type Props = {
   name: string;
   code: string | null;
@@ -91,7 +92,8 @@ export function IdCardButton({ name, code, role, photoUrl, cafe }: Props) {
       </button>
 
       {open && (
-        <div
+        <Portal>
+<div
           className="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/50 p-4"
           onClick={() => setOpen(false)}
         >
@@ -163,6 +165,7 @@ export function IdCardButton({ name, code, role, photoUrl, cafe }: Props) {
             </div>
           </div>
         </div>
+</Portal>
       )}
     </>
   );

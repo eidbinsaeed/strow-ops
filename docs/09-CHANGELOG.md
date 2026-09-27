@@ -136,3 +136,6 @@
 ## v0.9.4 — 2026-09-27 — Live updates, chat memory
 - Live: barista closings/bills and finished Autopilot runs broadcast on Supabase Realtime ("strow-live", no business data in the payload); open owner screens refresh instantly and show a banner (New closing from EiD · Sat 26 Sep · AED 1,401). Fallback: /api/live check every 20 s and whenever the app returns to the front.
 - AI chat reopens the last chat; "+ New" starts a fresh one. History shows readable titles ("Fix: …") and a delete button (the chat's changes stay in AI activity).
+
+## v0.9.5 — 2026-09-27 — Popups on iPhone
+- Fix: View bill / Edit / bill items / ID card / AI photo popups opened off-screen on iPhone (only the dark backdrop showed). Entrance animations held a transform (fill-mode both), which Safari treats as the popup's frame. Animations now use fill-mode backwards, and every popup renders through a Portal (#strow-portal) at the top of the page.
