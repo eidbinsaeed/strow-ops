@@ -9,7 +9,7 @@ type Chat = { id: string; title: string | null; updated_at: string };
 
 function niceTitle(t: string | null): string {
   if (!t) return "Chat";
-  return t.replace(/^Look into this and fix it if you can:\s*"?/i, "Fix: ").replace(/"\s*$/, "").trim() || "Chat";
+  return t.replace(/^\[مالية\]\s*/, "").replace(/^Look into this and fix it if you can:\s*"?/i, "Fix: ").replace(/"\s*$/, "").trim() || "Chat";
 }
 
 function ago(iso: string): string {
@@ -21,7 +21,7 @@ function ago(iso: string): string {
 }
 
 /** Chat history with one-tap delete (tap the bin, then "Delete" to confirm). */
-export function HistoryMenu({ chats, currentId }: { chats: Chat[]; currentId: string | null }) {
+export function HistoryMenu({ chats, currentId, basePath = "/owner/assistant" }: { chats: Chat[]; currentId: string | null; basePath?: string }) {
   const router = useRouter();
   const [list, setList] = useState(chats);
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export function HistoryMenu({ chats, currentId }: { chats: Chat[]; currentId: st
       if (!r.ok || !j.ok) throw new Error(j.error || "Could not delete that chat");
       setList((l) => l.filter((c) => c.id !== id));
       setConfirm(null);
-      if (id === currentId) router.replace("/owner/assistant?new=1" as Route);
+      if (id === currentId) router.replace(`${basePath}?new=1` as Route);
       else router.refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -60,7 +60,7 @@ export function HistoryMenu({ chats, currentId }: { chats: Chat[]; currentId: st
       <div className="absolute end-0 z-30 mt-2 max-h-[70vh] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-xl">
         {list.map((c) => (
           <div key={c.id} className={`flex items-center gap-1 rounded-xl ${c.id === currentId ? "bg-neutral-100" : ""}`}>
-            <Link href={`/owner/assistant?c=${c.id}` as Route} className="min-w-0 flex-1 px-3 py-2">
+            <Link href={`${basePath}?c=${c.id}` as Route} className="min-w-0 flex-1 px-3 py-2">
               <span className={`block truncate text-sm ${c.id === currentId ? "font-semibold text-strow-ink" : "text-neutral-800"}`}>{niceTitle(c.title)}</span>
               <span className="block text-[11px] text-neutral-400">{ago(c.updated_at)}</span>
             </Link>

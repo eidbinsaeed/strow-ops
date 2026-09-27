@@ -52,7 +52,7 @@ export function MobileNavDrawer({ children, locale }: { children: React.ReactNod
 
   const isRtl = locale === "ar";
   // The chat screen has its own header.
-  const hideHeader = pathname === "/owner/assistant";
+  const hideHeader = pathname === "/owner/assistant" || pathname === "/owner/finance/assistant";
 
   return (
     <>

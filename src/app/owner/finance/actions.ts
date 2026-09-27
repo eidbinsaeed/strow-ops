@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getOwnerSession } from "@/lib/auth/owner-session";
+import { backupFinance } from "@/lib/finance/backup";
 
 type Result = { ok?: boolean; error?: string };
 
@@ -26,6 +27,7 @@ export type BudgetLineInput = { section: "income" | "expense" | "wife" | "bills"
 /** Replace all budget lines for a given month. */
 export async function saveBudget(month: string, lines: BudgetLineInput[]): Promise<Result> {
   const g = await guard(); if (g) return g;
+  await backupFinance("save");
   if (!/^\d{4}-\d{2}$/.test(month)) return { error: "Bad month" };
   const supabase = createServiceClient();
   const loc = await locationId(supabase);
@@ -47,6 +49,7 @@ export async function saveBudget(month: string, lines: BudgetLineInput[]): Promi
 /* ---------- Debts ---------- */
 export async function addPerson(): Promise<Result> {
   const g = await guard(); if (g) return g;
+  await backupFinance("save");
   const supabase = createServiceClient();
   const loc = await locationId(supabase); if (!loc) return { error: "No location" };
   const { error } = await supabase.from("finance_people").insert({ location_id: loc, name: "اسم جديد", original_amount: 0 });
@@ -56,6 +59,7 @@ export async function addPerson(): Promise<Result> {
 
 export async function updatePerson(id: string, patch: { name?: string; original_amount?: number; note?: string | null }): Promise<Result> {
   const g = await guard(); if (g) return g;
+  await backupFinance("save");
   const supabase = createServiceClient();
   const upd: Record<string, unknown> = {};
   if (patch.name !== undefined) upd.name = patch.name;
@@ -68,6 +72,7 @@ export async function updatePerson(id: string, patch: { name?: string; original_
 
 export async function deletePerson(id: string): Promise<Result> {
   const g = await guard(); if (g) return g;
+  await backupFinance("delete-person", true);
   const supabase = createServiceClient();
   const { error } = await supabase.from("finance_people").delete().eq("id", id);
   if (error) return { error: error.message };
@@ -76,6 +81,7 @@ export async function deletePerson(id: string): Promise<Result> {
 
 export async function recordPayment(personId: string, amount: number, paidOn: string): Promise<Result> {
   const g = await guard(); if (g) return g;
+  await backupFinance("save");
   if (!personId || !amount) return { error: "Pick a person and amount" };
   const supabase = createServiceClient();
   const loc = await locationId(supabase); if (!loc) return { error: "No location" };
@@ -88,6 +94,7 @@ export async function recordPayment(personId: string, amount: number, paidOn: st
 
 export async function deletePayment(id: string): Promise<Result> {
   const g = await guard(); if (g) return g;
+  await backupFinance("save");
   const supabase = createServiceClient();
   const { error } = await supabase.from("finance_payments").delete().eq("id", id);
   if (error) return { error: error.message };
@@ -100,6 +107,7 @@ export type InstallmentInput = { name: string; group_name: string; total: number
 /** Replace all installment plans. */
 export async function saveInstallments(list: InstallmentInput[]): Promise<Result> {
   const g = await guard(); if (g) return g;
+  await backupFinance("save");
   const supabase = createServiceClient();
   const loc = await locationId(supabase); if (!loc) return { error: "No location" };
   await supabase.from("finance_installments").delete().eq("location_id", loc);
@@ -125,6 +133,7 @@ export type PersonInput = {
 /** Replace all people + their payments in one shot (keeps debts editing simple + live). */
 export async function savePeople(list: PersonInput[]): Promise<Result> {
   const g = await guard(); if (g) return g;
+  await backupFinance("save");
   const supabase = createServiceClient();
   const loc = await locationId(supabase); if (!loc) return { error: "No location" };
 
@@ -151,4 +160,17 @@ export async function savePeople(list: PersonInput[]): Promise<Result> {
   }
   revalidatePath("/owner/finance");
   return { ok: true };
+}
+
+/** Add a person with a name and amount in one step (used by the new finance page). */
+export async function createPerson(name: string, originalAmount: number): Promise<Result> {
+  const g = await guard(); if (g) return g;
+  await backupFinance("save");
+  const supabase = createServiceClient();
+  const loc = await locationId(supabase); if (!loc) return { error: "No location" };
+  const { data: last } = await supabase.from("finance_people").select("position").eq("location_id", loc).order("position", { ascending: false }).limit(1);
+  const position = ((last?.[0]?.position as number | undefined) ?? -1) + 1;
+  const { error } = await supabase.from("finance_people").insert({ location_id: loc, name: (name || "").trim() || "اسم جديد", original_amount: n(originalAmount), position });
+  if (error) return { error: error.message };
+  revalidatePath("/owner/finance"); return { ok: true };
 }

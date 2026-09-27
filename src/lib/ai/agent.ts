@@ -16,7 +16,8 @@ import type {
   ToolResultBlockParam,
   ToolUseBlock,
 } from "@anthropic-ai/sdk/resources/messages";
-import { DISPLAY_TOOLS, executeTool, statusFor, toolsFor, type ToolContext } from "./tools";
+import type { Tool } from "@anthropic-ai/sdk/resources/messages";
+import { DISPLAY_TOOLS, executeTool, statusFor, toolsFor, type ToolContext, type ToolOutcome } from "./tools";
 import type { TextBlock } from "./types";
 
 export const PRIMARY_MODEL = process.env.STROW_AI_MODEL || "claude-opus-5-5";
@@ -71,11 +72,14 @@ export async function runAgent(opts: {
   maxSteps: number;
   deadline: number;
   maxTokens?: number;
+  tools?: Tool[];
+  execute?: (name: string, input: unknown, ctx: ToolContext) => Promise<ToolOutcome>;
 }): Promise<{ text: string; model: string; steps: number }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
   const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 170_000 });
-  const tools = toolsFor(opts.ctx.mode);
+  const tools = opts.tools ?? toolsFor(opts.ctx.mode);
+  const exec = opts.execute ?? executeTool;
   const messages: MessageParam[] = [...opts.messages];
   let model = PRIMARY_MODEL;
   let finalText = "";
@@ -138,7 +142,7 @@ export async function runAgent(opts: {
     const results: ToolResultBlockParam[] = [];
     for (const tu of toolUses) {
       opts.ctx.emit({ t: "status", text: statusFor(tu.name, tu.input) });
-      const out = await executeTool(tu.name, tu.input, opts.ctx);
+      const out = await exec(tu.name, tu.input, opts.ctx);
       results.push({
         type: "tool_result",
         tool_use_id: tu.id,

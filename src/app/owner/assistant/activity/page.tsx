@@ -37,8 +37,8 @@ export default async function AiActivityPage({ searchParams }: { searchParams: P
   const tab = TABS.find((t) => t.key === sp.tab) ?? TABS[0];
   const db = createServiceClient();
   const [listRes, ...counts] = await Promise.all([
-    db.from("ai_actions").select("*").in("status", [...tab.statuses]).order("created_at", { ascending: false }).limit(100),
-    ...TABS.map((t) => db.from("ai_actions").select("*", { count: "exact", head: true }).in("status", [...t.statuses])),
+    db.from("ai_actions").select("*").in("status", [...tab.statuses]).or("entity_table.is.null,entity_table.not.like.finance*").order("created_at", { ascending: false }).limit(100),
+    ...TABS.map((t) => db.from("ai_actions").select("*", { count: "exact", head: true }).in("status", [...t.statuses]).or("entity_table.is.null,entity_table.not.like.finance*")),
   ]);
   const rows = (listRes.data ?? []) as Row[];
 

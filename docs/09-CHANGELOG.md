@@ -144,3 +144,8 @@
 - Web Push (iPhone Home Screen app, iOS 16.4+; desktop browsers too): alerts for every barista closing and bill, and when Autopilot needs the owner. Tap opens the right screen.
 - Turn on: card on Pulse, or the "Lock-screen alerts" row in the menu (with "Send a test").
 - Keys and subscribed devices live in a private Supabase Storage bucket (strow-system/push/…), generated on first use — no env vars needed. public/sw.js gained push + notificationclick handlers.
+
+## v1.0.0 — 2026-09-27 — Personal Finance, new layout
+- /owner/finance rebuilt in the Pulse look (Arabic, RTL): overview that fits one phone screen, month budget, installments, debts, analytics; hide-numbers eye. Same tables, same maths (lib/finance/model — ported line for line), same save actions. The original page stays at /owner/finance/classic.
+- Safety: daily full backup of every finance table to private storage (strow-system/finance-backups/<day>/), taken on the first visit and before the first save; always before deleting a person. Loader and backup read in pages, so no row is ever cut off at the 1,000-row API cap (a full-month save could otherwise have dropped lines that didn't load). Saves run in order.
+- المساعد المالي (/owner/finance/assistant): its own chat and history. Adds a payment to any section and month ("الشهر هذا دفعت ٤٠٠٠ لتصليح السيارة"), edits/moves/deletes lines, marks installments paid — each change with Undo — and analyses with charts like Strow AI. The café AI, Autopilot and AI activity never see personal finance.

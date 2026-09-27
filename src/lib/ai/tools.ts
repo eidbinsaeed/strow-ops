@@ -257,6 +257,16 @@ export function statusFor(name: string, input: unknown): string {
       return "Wrapping up";
     case "resolve_item":
       return "Closing it on your list";
+    case "finance_summary":
+      return "أقرأ ميزانيتك";
+    case "finance_add_line":
+      return "أضيف البند";
+    case "finance_update_line":
+      return "أعدّل البند";
+    case "finance_delete_line":
+      return "أحذف البند";
+    case "finance_installment_paid":
+      return "أحدّث القسط";
     default:
       return "Drawing it";
   }

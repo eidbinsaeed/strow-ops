@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { buildSystemPrompt } from "@/lib/ai/prompt";
 import { runAgent } from "@/lib/ai/agent";
 import { closeOpenItem } from "@/lib/ai/ops";
+import { FINANCE_TOOLS, buildFinancePrompt, executeFinanceTool } from "@/lib/ai/finance";
 import type { ToolContext } from "@/lib/ai/tools";
 import type { Block, StreamEvent } from "@/lib/ai/types";
 
@@ -63,7 +64,7 @@ function mergeRoles(list: { role: "user" | "assistant"; content: string }[]): Me
 export async function POST(req: Request) {
   if (!(await getOwnerSession())) return NextResponse.json({ error: "unauth" }, { status: 401 });
 
-  let body: { chatId?: unknown; message?: unknown; page?: unknown } = {};
+  let body: { chatId?: unknown; message?: unknown; page?: unknown; mode?: unknown } = {};
   try {
     body = await req.json();
   } catch {
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
   const message = String(body.message ?? "").trim().slice(0, 4000);
   if (!message) return NextResponse.json({ error: "empty" }, { status: 400 });
 
+  const finance = body.mode === "finance";
   const db = createServiceClient();
   let chatId: string | null = typeof body.chatId === "string" && UUID.test(body.chatId) ? body.chatId : null;
   if (chatId) {
@@ -82,7 +84,7 @@ export async function POST(req: Request) {
     const fix = /^Look into this and fix it if you can:\s*"([^"]+)"/i.exec(message);
     const { data, error } = await db
       .from("ai_chats")
-      .insert({ title: (fix ? `Fix: ${fix[1]}` : message).slice(0, 80) })
+      .insert({ title: (finance ? "[مالية] " : "") + (fix ? `Fix: ${fix[1]}` : message).slice(0, 80) })
       .select("id")
       .single();
     if (error || !data) return NextResponse.json({ error: error?.message ?? "Could not start chat" }, { status: 500 });
@@ -122,8 +124,15 @@ export async function POST(req: Request) {
       send({ t: "chat", chatId: cid, at: startedAt });
       send({ t: "status", text: "Thinking" });
       try {
-        const system = await buildSystemPrompt("chat");
-        const res = await runAgent({ system, messages, ctx, maxSteps: 20, deadline: Date.now() + 250_000 });
+        const system = finance ? await buildFinancePrompt() : await buildSystemPrompt("chat");
+        const res = await runAgent({
+          system,
+          messages,
+          ctx,
+          maxSteps: 20,
+          deadline: Date.now() + 250_000,
+          ...(finance ? { tools: FINANCE_TOOLS, execute: executeFinanceTool } : {}),
+        });
         // "Ask AI" on an open item: once a fix landed, take the item off the list.
         if (openItem && !(ctx.resolved ?? []).includes(openItem) && ctx.actions.some((a) => a.status === "applied")) {
           const closed = await closeOpenItem(openItem, "fixed in chat");

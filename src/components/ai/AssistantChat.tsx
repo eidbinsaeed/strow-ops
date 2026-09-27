@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Block, FollowupsBlock, StreamEvent } from "@/lib/ai/types";
 import { Chart, DataTable, Stats } from "./Charts";
 import { Markdown } from "./Markdown";
@@ -112,6 +112,10 @@ export function AssistantChat({
   contextPath,
   initialPrompt,
   onChatId,
+  mode,
+  suggestions,
+  copy,
+  basePath = "/owner/assistant",
 }: {
   initialChatId?: string | null;
   initialMessages?: ChatMessage[];
@@ -119,9 +123,13 @@ export function AssistantChat({
   contextPath?: string;
   initialPrompt?: string;
   onChatId?: (id: string) => void;
+  mode?: "finance";
+  suggestions?: string[];
+  copy?: Partial<(typeof COPY)["en"]>;
+  basePath?: string;
 }) {
   const locale = useLocale();
-  const t = COPY[locale] ?? COPY.en;
+  const t = useMemo(() => ({ ...(COPY[locale] ?? COPY.en), ...(copy ?? {}) }), [locale, copy]);
   const [chatId, setChatId] = useState<string | null>(initialChatId);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
@@ -187,7 +195,7 @@ export function AssistantChat({
             chatIdRef.current = ev.chatId;
             setChatId(ev.chatId);
             onChatId?.(ev.chatId);
-            if (variant === "full") window.history.replaceState(window.history.state, "", `/owner/assistant?c=${ev.chatId}`);
+            if (variant === "full") window.history.replaceState(window.history.state, "", `${basePath}?c=${ev.chatId}`);
           }
         } else if (ev.t === "status") patch((m) => ({ ...m, status: ev.text }));
         else if (ev.t === "block") patch((m) => ({ ...m, blocks: [...m.blocks, ev.block] }));
@@ -199,7 +207,7 @@ export function AssistantChat({
         const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chatId: chatIdRef.current, message: text, page: contextPath }),
+          body: JSON.stringify({ chatId: chatIdRef.current, message: text, page: contextPath, mode }),
           signal: ctrl.signal,
         });
         if (!res.ok || !res.body) {
@@ -252,7 +260,7 @@ export function AssistantChat({
         setBusy(false);
       }
     },
-    [busy, contextPath, onChatId, t, variant],
+    [busy, contextPath, onChatId, t, variant, mode, basePath],
   );
 
   useEffect(() => {
@@ -314,7 +322,7 @@ export function AssistantChat({
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className={`mx-auto w-full space-y-5 ${full ? "max-w-3xl px-4 py-5" : "px-3 py-4"}`}>
           {messages.length === 0 ? (
-            <Welcome t={t} suggestions={SUGGEST[locale] ?? SUGGEST.en} onPick={(s) => void send(s)} compact={!full} />
+            <Welcome t={t} suggestions={suggestions ?? SUGGEST[locale] ?? SUGGEST.en} onPick={(s) => void send(s)} compact={!full} />
           ) : (
             messages.map((m) => <MessageView key={m.id} m={m} now={now} fallback={t.thinking} />)
           )}

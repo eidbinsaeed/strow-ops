@@ -17,9 +17,9 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   resolved: { label: "Resolved", cls: "bg-emerald-50 text-emerald-700" },
 };
 
-export function StatusChip({ status }: { status: string }) {
+export function StatusChip({ status, label }: { status: string; label?: string }) {
   const s = STATUS[status] ?? { label: status, cls: "bg-neutral-100 text-neutral-600" };
-  return <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-medium ${s.cls}`}>{s.label}</span>;
+  return <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-medium ${s.cls}`}>{label ?? s.label}</span>;
 }
 
 export function askAiHref(title: string, entityTable?: string | null, entityId?: string | null, actionId?: string | null): Route {
@@ -52,6 +52,7 @@ export function ActionButtons({
   entityId,
   refresh = true,
   onStatus,
+  ar = false,
 }: {
   id: string;
   status: string;
@@ -61,6 +62,7 @@ export function ActionButtons({
   entityId?: string | null;
   refresh?: boolean;
   onStatus?: (s: string) => void;
+  ar?: boolean;
 }) {
   const router = useRouter();
   const [st, setSt] = useState(status);
@@ -96,7 +98,7 @@ export function ActionButtons({
     <div className="flex flex-wrap items-center gap-2">
       {st === "applied" ? (
         <Btn onClick={() => decide("undo")} busy={busy === "undo"}>
-          Undo
+          {ar ? "تراجع" : "Undo"}
         </Btn>
       ) : null}
       {st === "proposed" && hasOps ? (
@@ -123,14 +125,16 @@ export function ActionButtons({
 
 export function ActionCard({ a, refresh = false }: { a: ActionBlock; refresh?: boolean }) {
   const [st, setSt] = useState(a.status);
+  const fin = (a.entityTable ?? "").startsWith("finance_");
+  const finLabel: Record<string, string> = { applied: "تم", undone: "تم التراجع" };
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+    <div className="rounded-2xl border border-neutral-200 bg-white p-4" dir={fin ? "rtl" : undefined}>
       <div className="flex items-start gap-3">
-        <StatusChip status={st} />
+        <StatusChip status={st} label={fin ? finLabel[st] : undefined} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-strow-ink">{a.title}</p>
           {a.detail ? <p className="mt-1 text-sm leading-relaxed text-neutral-600">{a.detail}</p> : null}
-          {a.confidence != null && st !== "info" ? (
+          {a.confidence != null && st !== "info" && !fin ? (
             <p className="mt-1 text-[11px] text-neutral-400">Confidence {Math.round(Number(a.confidence) * 100)}%</p>
           ) : null}
         </div>
@@ -145,6 +149,7 @@ export function ActionCard({ a, refresh = false }: { a: ActionBlock; refresh?: b
           entityId={a.entityId}
           refresh={refresh}
           onStatus={setSt}
+          ar={fin}
         />
       </div>
     </div>

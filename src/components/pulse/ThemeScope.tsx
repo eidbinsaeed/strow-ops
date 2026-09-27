@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
  */
 export function ThemeScope({ children, className = "", ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   const pathname = usePathname() ?? "";
-  const on = !pathname.startsWith("/owner/finance");
+  const on = !pathname.startsWith("/owner/finance/classic");
   return (
     <div {...rest} className={`${on ? "pulse-theme " : ""}${className}`}>
       {children}
