@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { AssistantChat } from "./AssistantChat";
 
-const HIDE = ["/owner/finance", "/owner/assistant", "/owner/login"];
+const HIDE = ["/owner/finance", "/owner/login"];
 
 /** Desktop: floating "Ask AI" button that opens a chat panel over any page. */
 export function AiFab() {
@@ -14,7 +14,7 @@ export function AiFab() {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
-  if (pathname === "/owner" || HIDE.some((p) => pathname.startsWith(p))) return null;
+  if (pathname === "/owner" || pathname === "/owner/assistant" || HIDE.some((p) => pathname.startsWith(p))) return null;
 
   return (
     <>

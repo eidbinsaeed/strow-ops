@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { createServiceClient } from "@/lib/supabase/server";
 import { AssistantChat, type ChatMessage } from "@/components/ai/AssistantChat";
+import { BackButton } from "@/components/pulse/BackButton";
 import type { Block } from "@/lib/ai/types";
 
 export const dynamic = "force-dynamic";
@@ -44,9 +45,7 @@ export default async function AssistantPage({ searchParams }: { searchParams: Pr
     <div className="flex h-dvh flex-col">
       <header className="flex items-center justify-between gap-2 border-b border-neutral-200 bg-white px-4 py-2.5 md:px-6">
         <div className="flex min-w-0 items-center gap-2.5">
-          <Link href="/owner" aria-label="Back to Pulse" className="-ms-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-2xl leading-none text-strow-ink md:hidden">
-            ‹
-          </Link>
+          <BackButton fallback="/owner" className="-ms-1 w-9 shrink-0 justify-center md:hidden" />
           <span className="ai-orb h-8 w-8 shrink-0" aria-hidden />
           <div className="min-w-0">
             <h1 className="text-[15px] font-medium leading-tight">Strow AI</h1>

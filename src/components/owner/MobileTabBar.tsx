@@ -7,12 +7,12 @@ import type { Locale } from "@/lib/i18n/dict";
 import { openOwnerMenu } from "./MobileNavDrawer";
 import { BooksIcon, MoreIcon, PulseIcon, Sparkle, StaffIcon } from "@/components/pulse/icons";
 
-const HIDE = ["/owner/finance", "/owner/assistant", "/owner/login"];
+const HIDE = ["/owner/finance", "/owner/login"];
 
 /** Phone navigation from the Pulse design: Pulse · Books · ✦ AI · Staff · More. */
 export function MobileTabBar({ locale, aiBadge = 0 }: { locale: Locale; aiBadge?: number }) {
   const p = usePathname() ?? "";
-  if (HIDE.some((h) => p.startsWith(h))) return null;
+  if (p === "/owner/assistant" || HIDE.some((h) => p.startsWith(h))) return null;
   const ar = locale === "ar";
   const tab = (href: Route, label: string, icon: React.ReactNode, active: boolean) => (
     <Link

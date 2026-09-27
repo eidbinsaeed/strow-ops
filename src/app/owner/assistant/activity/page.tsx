@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { createServiceClient } from "@/lib/supabase/server";
 import { ActionButtons, StatusChip } from "@/components/ai/ActionButtons";
+import { BackButton } from "@/components/pulse/BackButton";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,9 @@ export default async function AiActivityPage({ searchParams }: { searchParams: P
 
   return (
     <div className="page">
+      <div className="-ms-1 mb-1">
+        <BackButton fallback="/owner" label="Back" />
+      </div>
       <header className="mb-5 flex items-center gap-3">
         <span className="ai-orb h-9 w-9 shrink-0" aria-hidden />
         <div>
