@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { runAutopilot } from "@/lib/ai/autopilot";
 import { broadcastLive } from "@/lib/live";
+import { getSettings } from "@/lib/settings";
 import { notifyNewExpense } from "@/lib/push";
 import { redirect } from "next/navigation";
 import { getBaristaSession } from "@/lib/auth/session";
@@ -119,15 +120,16 @@ function deriveStatus(args: {
   vat: number | null;
   total: number;
   anomalies: Anomalies;
-}): "confirmed" | "pending_review" {
-  const { confidence, subtotal, vat, total, anomalies } = args;
+  autoApprove: boolean;
+}): "confirmed" | "pending_review" | "flagged" {
+  const { confidence, subtotal, vat, total, anomalies, autoApprove } = args;
 
-  // Any AI-detected anomaly pauses the expense for owner review.
-  if (anomalies?.has_anomaly) return "pending_review";
+  // Something looks off → flagged: held for the owner, never auto-approved.
+  if (anomalies?.has_anomaly) return "flagged";
 
   if (subtotal != null && vat != null) {
     const sum = subtotal + vat;
-    if (Math.abs(sum - total) > 0.02) return "pending_review";
+    if (Math.abs(sum - total) > 0.02) return "flagged";
   }
 
   const fields: (keyof ConfidenceMap)[] = [
@@ -139,8 +141,10 @@ function deriveStatus(args: {
   const anyNotHigh = fields.some(
     (f) => confidence[f] && confidence[f] !== "high",
   );
+  if (anyNotHigh) return "flagged";
 
-  return anyNotHigh ? "pending_review" : "confirmed";
+  // Clean: straight into the books when auto-approve is on, else waits for the owner.
+  return autoApprove ? "confirmed" : "pending_review";
 }
 
 export async function submitExpense(formData: FormData) {
@@ -259,6 +263,7 @@ export async function submitExpense(formData: FormData) {
     vat: vat_amount,
     total,
     anomalies,
+    autoApprove: (await getSettings()).autoApproveBills,
   });
 
   const { data: inserted, error } = await supabase

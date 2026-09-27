@@ -41,11 +41,15 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
   }
 
   const supabase = createServiceClient();
-  const [{ data: badgeRow }, { count: aiOpenCount }] = await Promise.all([
+  const [{ data: badgeRow }, { count: aiOpenCount }, { count: waitClosings }, { count: waitBills }] = await Promise.all([
     supabase.from("v_sidebar_badges").select("*").maybeSingle(),
     supabase.from("ai_actions").select("*", { count: "exact", head: true }).in("status", ["proposed", "info"]),
+    supabase.from("closings").select("id", { count: "exact", head: true }).in("status", ["pending_review", "flagged"]),
+    supabase.from("expenses").select("id", { count: "exact", head: true }).in("status", ["pending_review", "flagged"]),
   ]);
-  const badges = (badgeRow as SidebarBadges | null) ?? undefined;
+  const baseBadges = (badgeRow as SidebarBadges | null) ?? undefined;
+  // Review badge = everything waiting for approval (held or flagged, closings and bills).
+  const badges = baseBadges ? { ...baseBadges, pending_count: (waitClosings ?? 0) + (waitBills ?? 0) } : undefined;
   const aiOpen = aiOpenCount ?? 0;
 
   return (

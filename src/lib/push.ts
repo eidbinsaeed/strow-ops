@@ -127,8 +127,8 @@ export async function notifyNewClosing(id: string) {
     const who = await baristaName(c.barista_id);
     await sendPush({
       title: `New closing · ${day(c.closing_date)}`,
-      body: `AED ${money(c.grand_total)}${who ? ` from ${who}` : ""}${c.status === "pending_review" ? " · needs your review" : ""}`,
-      url: "/owner/closings",
+      body: `AED ${money(c.grand_total)}${who ? ` from ${who}` : ""}${c.status === "flagged" ? " · flagged — tap to check" : c.status === "pending_review" ? " · waiting for your approval" : ""}`,
+      url: c.status === "confirmed" ? "/owner/closings" : "/owner/review",
       tag: `closing-${id}`,
     });
   } catch (e) {
@@ -149,8 +149,8 @@ export async function notifyNewExpense(id: string) {
     const supplier = (sup.data as { name?: string } | null)?.name;
     await sendPush({
       title: `New bill${supplier ? ` · ${supplier}` : ""}`,
-      body: `AED ${money(b.total)}${who ? ` from ${who}` : ""}${b.status === "pending_review" ? " · needs your review" : ""}`,
-      url: "/owner/expenses",
+      body: `AED ${money(b.total)}${who ? ` from ${who}` : ""}${b.status === "flagged" ? " · flagged — tap to check" : b.status === "pending_review" ? " · waiting for your approval" : ""}`,
+      url: b.status === "confirmed" ? "/owner/expenses" : "/owner/review",
       tag: `expense-${id}`,
     });
   } catch (e) {

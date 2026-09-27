@@ -4,6 +4,8 @@ import { RowActions } from "@/components/owner/RowActions";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { StatusPill as SharedStatusPill } from "@/components/owner/StatusPill";
+import { AutoApproveToggles } from "@/components/owner/AutoApproveToggles";
+import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,7 +21,40 @@ type ClosingRow = {
   notes: string | null;
   photo_drive_url: string | null;
   baristas: { name: string } | null;
+  ai_anomalies: Anomaly | null;
+  ai_confidence: Record<string, string> | null;
 };
+
+type Anomaly = { has_anomaly?: boolean; flags?: string[]; explanation?: string | null };
+
+const FIELD_NAMES: Record<string, string> = {
+  closing_date: "date", cash_total: "cash", card_total: "card", online_total: "online", talabat_total: "Talabat",
+  keeta_total: "Keeta", beanz_total: "Beanz", supplier_name: "supplier", expense_date: "date", total: "total", payment_method: "payment method",
+};
+
+/** Why an item is waiting: what the AI flagged, or that auto-approve is off. */
+function whyText(row: { status: string; ai_anomalies: Anomaly | null; ai_confidence: Record<string, string> | null }): string | null {
+  const parts: string[] = [];
+  const a = row.ai_anomalies;
+  if (a?.has_anomaly) parts.push(a.explanation || (a.flags ?? []).join(", ") || "The AI flagged this one.");
+  const unsure = Object.entries(row.ai_confidence ?? {})
+    .filter(([k, v]) => v && v !== "high" && FIELD_NAMES[k])
+    .map(([k]) => FIELD_NAMES[k]);
+  if (unsure.length) parts.push(`AI unsure about: ${[...new Set(unsure)].join(", ")}`);
+  if (!parts.length) return row.status === "pending_review" ? "Waiting for your approval (auto-approve is off)." : null;
+  return parts.join(" · ");
+}
+
+function WhyNote({ row }: { row: { status: string; ai_anomalies: Anomaly | null; ai_confidence: Record<string, string> | null } }) {
+  const why = whyText(row);
+  if (!why) return null;
+  return (
+    <p className={`mt-2 rounded-xl px-3 py-2 text-xs leading-snug ${row.status === "flagged" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>
+      {row.status === "flagged" ? "Flagged: " : ""}
+      {why}
+    </p>
+  );
+}
 
 type ExpenseRow = {
   id: string;
@@ -34,6 +69,8 @@ type ExpenseRow = {
   photo_drive_url: string | null;
   suppliers: { name: string } | null;
   baristas: { name: string } | null;
+  ai_anomalies: Anomaly | null;
+  ai_confidence: Record<string, string> | null;
 };
 
 function formatAed(n: number) {
@@ -60,14 +97,14 @@ export default async function OwnerReviewPage() {
     supabase
       .from("closings")
       .select(
-        "id, closing_date, cash_total, card_total, online_total, grand_total, status, notes, photo_drive_url, baristas(name)",
+        "id, closing_date, cash_total, card_total, online_total, grand_total, status, notes, photo_drive_url, baristas(name), ai_anomalies, ai_confidence",
       )
       .in("status", ["pending_review", "flagged"])
       .order("closing_date", { ascending: false }),
     supabase
       .from("expenses")
       .select(
-        "id, expense_date, invoice_number, subtotal, vat_amount, total, payment_method, status, notes, photo_drive_url, suppliers(name), baristas(name)",
+        "id, expense_date, invoice_number, subtotal, vat_amount, total, payment_method, status, notes, photo_drive_url, suppliers(name), baristas(name), ai_anomalies, ai_confidence",
       )
       .in("status", ["pending_review", "flagged"])
       .order("expense_date", { ascending: false }),
@@ -87,7 +124,12 @@ export default async function OwnerReviewPage() {
     ...expenses.map(
       (e): Item => ({ kind: "expense", sortDate: e.expense_date, row: e }),
     ),
-  ].sort((a, b) => (a.sortDate < b.sortDate ? 1 : -1));
+  ].sort((a, b) => {
+    const fa = a.row.status === "flagged", fb = b.row.status === "flagged";
+    if (fa !== fb) return fa ? -1 : 1; // flagged first
+    return a.sortDate < b.sortDate ? 1 : -1;
+  });
+  const settings = await getSettings();
 
   return (
     <div className="page">
@@ -100,6 +142,8 @@ export default async function OwnerReviewPage() {
           </p>
         </div>
       </header>
+
+      <AutoApproveToggles closings={settings.autoApproveClosings} bills={settings.autoApproveBills} />
 
       {items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
@@ -149,6 +193,7 @@ function ClosingCard({ row, locale }: { row: ClosingRow; locale: import("@/lib/i
           {row.notes && (
             <p className="mt-2 text-xs italic text-neutral-500">{row.notes}</p>
           )}
+          <WhyNote row={row} />
         </div>
       </div>
       <div className="mt-3">
@@ -194,6 +239,7 @@ function ExpenseCard({ row, locale }: { row: ExpenseRow; locale: import("@/lib/i
           {row.notes && (
             <p className="mt-2 text-xs italic text-neutral-500">{row.notes}</p>
           )}
+          <WhyNote row={row} />
         </div>
       </div>
       <div className="mt-3">

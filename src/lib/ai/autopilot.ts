@@ -21,6 +21,25 @@ export type AutopilotResult = {
   skipped?: boolean;
 };
 
+/** Autopilot found a problem in a just-submitted bill: hold it for the owner (status flagged + the reason). */
+async function flagExpense(id: string, titles: string[]) {
+  const db = createServiceClient();
+  const { data } = await db.from("expenses").select("status, ai_anomalies").eq("id", id).maybeSingle();
+  const row = data as { status: string; ai_anomalies: Record<string, unknown> | null } | null;
+  if (!row || !["confirmed", "pending_review"].includes(row.status)) return;
+  const prev = (row.ai_anomalies ?? {}) as Record<string, unknown>;
+  const flags = Array.isArray(prev.flags) ? (prev.flags as string[]) : [];
+  const ai_anomalies = {
+    ...prev,
+    has_anomaly: true,
+    flags: [...new Set([...flags, "autopilot"])],
+    explanation: typeof prev.explanation === "string" && prev.explanation ? prev.explanation : `Autopilot: ${titles[0]}`,
+    autopilot_findings: titles.slice(0, 5),
+  };
+  await db.from("expenses").update({ status: "flagged", ai_anomalies }).eq("id", id);
+  await broadcastLive({ t: "expenses", id });
+}
+
 export async function runAutopilot(
   trigger: AutopilotTrigger,
   opts: { expenseId?: string; budgetMs?: number } = {},
@@ -87,6 +106,11 @@ Work in batches with SQL that finds problems across many rows at once. Look at u
       .from("ai_runs")
       .update({ status: "done", finished_at: new Date().toISOString(), summary, model: result.model, stats: { applied, proposed, flagged, steps: result.steps } })
       .eq("id", runId);
+    if (single && opts.expenseId) {
+      const { data: open } = await db.from("ai_actions").select("title").eq("run_id", runId).in("status", ["proposed", "info"]);
+      const titles = ((open ?? []) as { title: string }[]).map((a) => a.title);
+      if (titles.length) await flagExpense(opts.expenseId, titles);
+    }
     await broadcastLive({ t: "ai_runs" });
     if (proposed + flagged > 0) await notifyAutopilot(runId);
     return { runId, summary, applied, proposed, flagged };

@@ -149,3 +149,8 @@
 - /owner/finance rebuilt in the Pulse look (Arabic, RTL): overview that fits one phone screen, month budget, installments, debts, analytics; hide-numbers eye. Same tables, same maths (lib/finance/model — ported line for line), same save actions. The original page stays at /owner/finance/classic.
 - Safety: daily full backup of every finance table to private storage (strow-system/finance-backups/<day>/), taken on the first visit and before the first save; always before deleting a person. Loader and backup read in pages, so no row is ever cut off at the 1,000-row API cap (a full-month save could otherwise have dropped lines that didn't load). Saves run in order.
 - المساعد المالي (/owner/finance/assistant): its own chat and history. Adds a payment to any section and month ("الشهر هذا دفعت ٤٠٠٠ لتصليح السيارة"), edits/moves/deletes lines, marks installments paid — each change with Undo — and analyses with charts like Strow AI. The café AI, Autopilot and AI activity never see personal finance.
+
+## v1.1.0 — 2026-09-27 — Auto-approve + flagged queue
+- Review page: Auto-approve switches for closings and purchase bills (settings in private storage, strow-system/settings/app-<ts>.json, newest wins).
+- ON: clean submissions are confirmed; anything suspicious is "flagged" and held. OFF: clean ones wait as pending_review. Flagged = AI anomaly, a field the AI wasn't sure of, bill maths not adding up — or Autopilot's per-bill check opening a finding (bill set to flagged with the reason in ai_anomalies).
+- Review cards show why ("Flagged: …" / "AI unsure about: total"); flagged first. Badges and Pulse count everything waiting. Lock-screen alerts say flagged/waiting and open Review.

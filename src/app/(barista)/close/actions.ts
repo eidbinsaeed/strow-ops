@@ -8,6 +8,7 @@ import { writeAudit } from "@/lib/audit/log";
 import { uploadReceiptPhoto } from "@/lib/drive/upload";
 import { todayDubai } from "@/lib/dates";
 import { broadcastLive } from "@/lib/live";
+import { getSettings } from "@/lib/settings";
 import { after } from "next/server";
 import { notifyNewClosing } from "@/lib/push";
 
@@ -54,9 +55,11 @@ function parseAnomalies(raw: string | null): Anomalies {
 function deriveStatus(
   confidence: ConfidenceMap,
   anomalies: Anomalies,
-): "confirmed" | "pending_review" {
-  // Any AI-detected anomaly pauses the closing for owner review.
-  if (anomalies?.has_anomaly) return "pending_review";
+  autoApprove: boolean,
+): "confirmed" | "pending_review" | "flagged" {
+  // Something looks off (AI anomaly, or a number it wasn't sure how to read) → flagged:
+  // held for the owner, never auto-approved.
+  if (anomalies?.has_anomaly) return "flagged";
 
   const fields: (keyof ConfidenceMap)[] = [
     "closing_date",
@@ -70,7 +73,10 @@ function deriveStatus(
   const anyNotHigh = fields.some(
     (f) => confidence[f] && confidence[f] !== "high",
   );
-  return anyNotHigh ? "pending_review" : "confirmed";
+  if (anyNotHigh) return "flagged";
+
+  // Clean: straight into the books when auto-approve is on, else waits for the owner.
+  return autoApprove ? "confirmed" : "pending_review";
 }
 
 export async function submitClosing(formData: FormData) {
@@ -132,7 +138,7 @@ export async function submitClosing(formData: FormData) {
     return { error: "Totals cannot be negative" };
   }
 
-  const status = deriveStatus(confidence, anomalies);
+  const status = deriveStatus(confidence, anomalies, (await getSettings()).autoApproveClosings);
   const supabase = createServiceClient();
 
   // grand_total and over_short are GENERATED columns - never insert.

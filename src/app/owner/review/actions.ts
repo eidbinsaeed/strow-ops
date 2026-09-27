@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
-import { getOwnerActor } from "@/lib/auth/owner-session";
+import { getOwnerActor, getOwnerSession } from "@/lib/auth/owner-session";
+import { saveSettings } from "@/lib/settings";
 
 export type ItemType = "closing" | "expense";
 
@@ -226,5 +227,17 @@ export async function sendToPending(type: ItemType, id: string) {
   });
 
   revalidateAll(type);
+  return { ok: true };
+}
+
+/** Auto-approve switches (Review page). */
+export async function setAutoApprove(kind: "closings" | "bills", on: boolean) {
+  if (!(await getOwnerSession())) return { error: "Sign in again" };
+  try {
+    await saveSettings(kind === "closings" ? { autoApproveClosings: !!on } : { autoApproveBills: !!on });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/owner/review");
   return { ok: true };
 }

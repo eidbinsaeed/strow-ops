@@ -79,7 +79,10 @@ export default async function PulsePage() {
       .order("closing_date"),
     db.from("closings").select("closing_date, grand_total").neq("status", "rejected").lte("closing_date", today).order("closing_date", { ascending: false }).limit(1),
     db.from("ai_actions").select("id, status, severity, title, detail, ops").in("status", ["proposed", "info"]).order("created_at", { ascending: false }).limit(40),
-    db.from("v_sidebar_badges").select("pending_count").limit(1),
+    Promise.all([
+      db.from("closings").select("id", { count: "exact", head: true }).in("status", ["pending_review", "flagged"]),
+      db.from("expenses").select("id", { count: "exact", head: true }).in("status", ["pending_review", "flagged"]),
+    ]).then(([c, e]) => ({ data: [{ pending_count: (c.count ?? 0) + (e.count ?? 0) }] })),
     db.rpc("ai_read_query", {
       q: "select count(distinct li.inventory_item_id)::int as items, coalesce(sum(li.line_total),0)::float8 as spent from expense_line_items li join expenses e on e.id = li.expense_id where e.status = 'confirmed' and li.inventory_item_id is not null",
       max_rows: 1,
@@ -198,9 +201,9 @@ export default async function PulsePage() {
         <Link href="/owner/review" className="flex items-start gap-3 border-t border-[#EDF0F3] px-[18px] py-3.5 text-strow-ink transition hover:bg-neutral-50 md:px-6">
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-[15px] font-semibold leading-snug">
-              {ar ? `${pending} فواتير تنتظر المراجعة` : `${pending} bill${pending === 1 ? "" : "s"} waiting for review`}
+              {ar ? `${pending} بانتظار موافقتك` : `${pending} waiting for your approval`}
             </span>
-            <span className="text-[13px] leading-snug text-neutral-500">{ar ? "قراءات غير مؤكدة" : "Reads the app wasn't sure about."}</span>
+            <span className="text-[13px] leading-snug text-neutral-500">{ar ? "إقفالات وفواتير مُعلّمة أو معلّقة" : "Flagged or held closings and bills — tap to approve."}</span>
           </span>
           <span className={`shrink-0 rounded-xl px-2.5 py-1 text-xs font-semibold ${TAG.grey}`}>{ar ? "مراجعة" : "Review"}</span>
         </Link>
