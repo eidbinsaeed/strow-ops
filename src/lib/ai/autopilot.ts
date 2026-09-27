@@ -8,6 +8,7 @@ import { buildSystemPrompt } from "./prompt";
 import { runAgent, PRIMARY_MODEL } from "./agent";
 import type { ToolContext } from "./tools";
 import { broadcastLive } from "@/lib/live";
+import { notifyAutopilot } from "@/lib/push";
 
 export type AutopilotTrigger = "cron" | "manual" | "expense";
 
@@ -87,6 +88,7 @@ Work in batches with SQL that finds problems across many rows at once. Look at u
       .update({ status: "done", finished_at: new Date().toISOString(), summary, model: result.model, stats: { applied, proposed, flagged, steps: result.steps } })
       .eq("id", runId);
     await broadcastLive({ t: "ai_runs" });
+    if (proposed + flagged > 0) await notifyAutopilot(runId);
     return { runId, summary, applied, proposed, flagged };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

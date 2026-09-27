@@ -8,6 +8,8 @@ import { writeAudit } from "@/lib/audit/log";
 import { uploadReceiptPhoto } from "@/lib/drive/upload";
 import { todayDubai } from "@/lib/dates";
 import { broadcastLive } from "@/lib/live";
+import { after } from "next/server";
+import { notifyNewClosing } from "@/lib/push";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -162,8 +164,9 @@ export async function submitClosing(formData: FormData) {
     };
   }
 
-  // Owner screens update on the spot.
+  // Owner screens update on the spot, and the owner's phone gets a lock-screen alert.
   await broadcastLive({ t: "closings", id: inserted.id });
+  after(() => notifyNewClosing(inserted.id));
 
   // Best-effort Drive upload + row patch. Failures don't undo the submission.
   if (photo_data_url) {

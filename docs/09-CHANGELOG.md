@@ -139,3 +139,8 @@
 
 ## v0.9.5 — 2026-09-27 — Popups on iPhone
 - Fix: View bill / Edit / bill items / ID card / AI photo popups opened off-screen on iPhone (only the dark backdrop showed). Entrance animations held a transform (fill-mode both), which Safari treats as the popup's frame. Animations now use fill-mode backwards, and every popup renders through a Portal (#strow-portal) at the top of the page.
+
+## v0.9.6 — 2026-09-27 — Lock-screen notifications
+- Web Push (iPhone Home Screen app, iOS 16.4+; desktop browsers too): alerts for every barista closing and bill, and when Autopilot needs the owner. Tap opens the right screen.
+- Turn on: card on Pulse, or the "Lock-screen alerts" row in the menu (with "Send a test").
+- Keys and subscribed devices live in a private Supabase Storage bucket (strow-system/push/…), generated on first use — no env vars needed. public/sw.js gained push + notificationclick handlers.

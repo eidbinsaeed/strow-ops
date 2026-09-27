@@ -77,3 +77,45 @@ self.addEventListener("message", (event) => {
     event.source?.postMessage({ type: "pong" });
   }
 });
+
+// ---------- Lock-screen notifications (Web Push) ----------
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Strow", {
+      body: data.body || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: data.tag || undefined,
+      data: { url: data.url || "/owner" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || "/owner", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (wins) => {
+      for (const w of wins) {
+        if ("focus" in w) {
+          await w.focus();
+          if ("navigate" in w) {
+            try {
+              await w.navigate(target);
+            } catch (e) {
+              /* focused is enough */
+            }
+          }
+          return;
+        }
+      }
+      if (self.clients.openWindow) await self.clients.openWindow(target);
+    }),
+  );
+});

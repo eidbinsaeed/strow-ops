@@ -2,6 +2,7 @@ import Link from "next/link";
 import { OwnerNavLink } from "@/components/owner/OwnerNavLink";
 import { OwnerLogoutButton } from "@/components/owner/OwnerLogoutButton";
 import { tr } from "@/lib/i18n/tr";
+import { PushToggle } from "@/components/push/PushToggle";
 import type { Locale } from "@/lib/i18n/dict";
 
 /** Navigation shared by the desktop sidebar and the phone menu (Pulse layout). */
@@ -45,6 +46,7 @@ export function OwnerNavContent({
         </NavGroup>
       </nav>
 
+      {signedIn ? <PushToggle variant="row" locale={locale} /> : null}
       <div className="px-0 py-3">
         {signedIn ? (
           <OwnerLogoutButton locale={locale} />

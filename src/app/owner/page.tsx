@@ -7,6 +7,7 @@ import { CountUpText } from "@/components/ai/CountUp";
 import { MonthStrip, type StripDay } from "@/components/pulse/MonthStrip";
 import { Sparkle } from "@/components/pulse/icons";
 import { todayDubai } from "@/lib/dates";
+import { PushToggle } from "@/components/push/PushToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -227,6 +228,8 @@ export default async function PulsePage() {
           />
         </form>
       </header>
+
+      <PushToggle variant="card" locale={locale} />
 
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_392px] md:gap-[18px]">
         {/* Hero + month strip */}
