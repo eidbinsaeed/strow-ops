@@ -126,3 +126,9 @@
 - New status "resolved" (migration 0011) + resolve_item tool: fixed items leave Needs you. "Ask AI" passes the item id, and the item closes automatically once a fix lands.
 - Dropped connection on the phone ("Load failed"): the chat keeps the spinner and fetches the finished answer from the server.
 - Data: 18 unmatched bill lines linked (15 new items, 17 aliases) — one undoable action.
+
+## v0.9.3 — 2026-09-27 — Delivery apps on the closing
+- closings: new talabat_total, keeta_total, beanz_total (migration closings_delivery_app_split); online_total stays their sum, so grand_total, views and reports are unchanged. 26 Sep backfilled from the POS report (128 / 77 / 263).
+- Close form: Cash, Card, Talabat, Keeta, Beanz (+ optional other online); the AI reads each POS Payment Methods row and never uses the Transactions count as money. The date chip no longer shows red when the report only says "Today".
+- Photo prep: blank/black results are detected and retried (decode-at-size, smaller), otherwise the barista is asked to retake — no more black photos sent to the AI.
+- Pulse "How customers pay" shows every channel.

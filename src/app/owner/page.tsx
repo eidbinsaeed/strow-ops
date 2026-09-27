@@ -20,7 +20,7 @@ type CashPos = {
   anchor_date: string | null;
   needs_opening_count: boolean | number | null;
 };
-type Closing = { closing_date: string; grand_total: Num; cash_total: Num; card_total: Num; online_total: Num };
+type Closing = { closing_date: string; grand_total: Num; cash_total: Num; card_total: Num; online_total: Num; talabat_total: Num; keeta_total: Num; beanz_total: Num };
 type Finding = { id: string; status: string; severity: string; title: string; detail: string | null; ops: unknown[] | null };
 
 const N = (v: unknown) => {
@@ -71,7 +71,7 @@ export default async function PulsePage() {
     db.from("v_cash_position").select("*").limit(1),
     db
       .from("closings")
-      .select("closing_date, grand_total, cash_total, card_total, online_total")
+      .select("closing_date, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total")
       .gte("closing_date", addDays(today, -120))
       .lte("closing_date", today)
       .neq("status", "rejected")
@@ -122,16 +122,24 @@ export default async function PulsePage() {
   // Payment split (month to date, else last 30 days)
   const monthRows = rows.filter((r) => r.closing_date.startsWith(monthPrefix));
   const splitRows = monthRows.length ? monthRows : rows.filter((r) => r.closing_date >= addDays(today, -30));
-  const card = splitRows.reduce((a, r) => a + N(r.card_total), 0);
-  const online = splitRows.reduce((a, r) => a + N(r.online_total), 0);
-  const cashS = splitRows.reduce((a, r) => a + N(r.cash_total), 0);
-  const tot = card + online + cashS;
+  const sumOf = (f: (r: Closing) => Num) => splitRows.reduce((a, r) => a + N(f(r)), 0);
+  const card = sumOf((r) => r.card_total);
+  const cashS = sumOf((r) => r.cash_total);
+  const onlineAll = sumOf((r) => r.online_total);
+  const talabat = sumOf((r) => r.talabat_total);
+  const keeta = sumOf((r) => r.keeta_total);
+  const beanz = sumOf((r) => r.beanz_total);
+  const otherOnline = Math.max(0, onlineAll - talabat - keeta - beanz);
+  const tot = card + cashS + onlineAll;
   const pct = (x: number) => (tot > 0 ? Math.round((x / tot) * 100) : 0);
   const split = [
     { k: ar ? "بطاقة" : "card", v: card, c: "#0F1C2B" },
-    { k: ar ? "أونلاين" : "online", v: online, c: "#2350D0" },
+    { k: ar ? "طلبات" : "Talabat", v: talabat, c: "#F26B1D" },
+    { k: "Beanz", v: beanz, c: "#8A5A3B" },
+    { k: ar ? "كيتا" : "Keeta", v: keeta, c: "#7C83A6" },
+    { k: ar ? "أونلاين" : "online", v: otherOnline, c: "#2350D0" },
     { k: ar ? "نقد" : "cash", v: cashS, c: "#C98300" },
-  ];
+  ].filter((x) => x.v > 0.004);
 
   // Average day by weekday (last 120 days)
   const byDow = new Map<number, { sum: number; n: number }>();
@@ -308,9 +316,10 @@ export default async function PulsePage() {
                     s.v > 0 ? <div key={s.k} className="pulse-fill" style={{ width: `${Math.max(2, pct(s.v))}%`, background: s.c }} /> : null,
                   )}
                 </div>
-                <div className="flex justify-between text-[13px]">
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[13px]">
                   {split.map((s) => (
-                    <span key={s.k}>
+                    <span key={s.k} className="flex items-center gap-1.5">
+                      <i className="inline-block h-2 w-2 rounded-full" style={{ background: s.c }} />
                       <strong className="text-base">{pct(s.v)}%</strong> <span className="text-neutral-500">{s.k}</span>
                     </span>
                   ))}

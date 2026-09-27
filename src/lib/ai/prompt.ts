@@ -94,7 +94,7 @@ Your job is to find problems in the data and fix them like a meticulous bookkeep
 
 const DATA_RULES = `Data rules
 - Only status 'confirmed' rows count in the books; 'pending_review' and 'flagged' are waiting for review; 'rejected' rows are excluded.
-- closings: one row per day (unique per location and closing_date). grand_total and over_short are generated columns — never set them; change cash_total, card_total or online_total instead.
+- closings: one row per day (unique per location and closing_date). Payment split: cash_total, card_total, online_total; from 27 Sep 2026 online_total = talabat_total + keeta_total + beanz_total (+ any other online), matching the POS Payment Methods report. grand_total and over_short are generated columns — never set them; change cash_total, card_total or online_total instead.
 - expenses: one row per bill; subtotal + vat_amount = total. expense_line_items: quantity × unit_price = line_total (net of discount, before VAT); discount and vat_amount are per-line extras. Supplier name = suppliers.name via expenses.supplier_id. Items link through inventory_item_id to inventory_items; alternative spellings live in item_aliases.
 - Dates on UAE receipts are DD/MM/YYYY. A bill date far from when it was entered (created_at) usually means a misread year or month.
 - Personal Finance tables (finance_*, budget_*) are the owner's private budget: read them only when he asks, never change them.

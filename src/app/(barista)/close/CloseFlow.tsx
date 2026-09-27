@@ -23,6 +23,10 @@ type Extracted = {
   cash_total: number | null;
   card_total: number | null;
   online_total: number | null;
+  talabat_total?: number | null;
+  keeta_total?: number | null;
+  beanz_total?: number | null;
+  other_online_total?: number | null;
   grand_total: number | null;
   cash_float_start: number | null;
   cash_float_end: number | null;
@@ -32,6 +36,9 @@ type Extracted = {
     cash_total?: Confidence;
     card_total?: Confidence;
     online_total?: Confidence;
+    talabat_total?: Confidence;
+    keeta_total?: Confidence;
+    beanz_total?: Confidence;
     grand_total?: Confidence;
   };
   anomalies?: Anomalies | null;
@@ -94,7 +101,12 @@ export function CloseFlow({
 
   const [cashTotal, setCashTotal] = useState("");
   const [cardTotal, setCardTotal] = useState("");
+  // onlineTotal holds "other online" only; the apps have their own fields.
   const [onlineTotal, setOnlineTotal] = useState("");
+  const [talabat, setTalabat] = useState("");
+  const [keeta, setKeeta] = useState("");
+  const [beanz, setBeanz] = useState("");
+  const [showOther, setShowOther] = useState(false);
   const [cashFloatStart, setCashFloatStart] = useState("");
   const [cashFloatEnd, setCashFloatEnd] = useState("");
 
@@ -151,7 +163,17 @@ export function CloseFlow({
       setFormDate(pickedDate);
       setCashTotal(fmtNum(ext.cash_total));
       setCardTotal(fmtNum(ext.card_total));
-      setOnlineTotal(fmtNum(ext.online_total));
+      setTalabat(fmtNum(ext.talabat_total));
+      setKeeta(fmtNum(ext.keeta_total));
+      setBeanz(fmtNum(ext.beanz_total));
+      {
+        const known = (ext.talabat_total ?? 0) + (ext.keeta_total ?? 0) + (ext.beanz_total ?? 0);
+        const other =
+          ext.other_online_total ?? (ext.online_total != null && ext.online_total - known > 0.009 ? ext.online_total - known : null);
+        const hasOther = other != null && other > 0;
+        setOnlineTotal(hasOther ? fmtNum(Math.round(other * 100) / 100) : "");
+        setShowOther(hasOther);
+      }
       setCashFloatStart(fmtNum(ext.cash_float_start));
       setCashFloatEnd(fmtNum(ext.cash_float_end));
       setStage("review");
@@ -193,6 +215,10 @@ export function CloseFlow({
     setCashTotal("");
     setCardTotal("");
     setOnlineTotal("");
+    setTalabat("");
+    setKeeta("");
+    setBeanz("");
+    setShowOther(false);
     setCashFloatStart("");
     setCashFloatEnd("");
     setErrorMsg(null);
@@ -286,13 +312,12 @@ export function CloseFlow({
   const c = extracted?.confidence ?? {};
   const cashConf: Confidence = c.cash_total ?? "medium";
   const cardConf: Confidence = c.card_total ?? "medium";
-  const onlineConf: Confidence = c.online_total ?? "medium";
-  const dateConf: Confidence = c.closing_date ?? "medium";
+  // The day comes from the date chip the barista picked; only flag it when the sheet shows a different day.
+  const dateConf: Confidence = extracted?.closing_date && extracted.closing_date !== formDate ? "medium" : "high";
 
-  const computedGrand =
-    (parseFloat(cashTotal) || 0) +
-    (parseFloat(cardTotal) || 0) +
-    (parseFloat(onlineTotal) || 0);
+  const onlineSum =
+    (parseFloat(talabat) || 0) + (parseFloat(keeta) || 0) + (parseFloat(beanz) || 0) + (parseFloat(onlineTotal) || 0);
+  const computedGrand = (parseFloat(cashTotal) || 0) + (parseFloat(cardTotal) || 0) + onlineSum;
 
   const aiGrand = extracted?.grand_total ?? null;
   const grandMatchesAi =
@@ -338,7 +363,7 @@ export function CloseFlow({
       )}
 
       <form action={handleSubmitForm} className="space-y-3">
-        <input type="hidden" name="ai_confidence" value={JSON.stringify(c)} />
+        <input type="hidden" name="ai_confidence" value={JSON.stringify({ ...c, closing_date: dateConf })} />
         <input
           type="hidden"
           name="ai_anomalies"
@@ -394,14 +419,46 @@ export function CloseFlow({
           required
         />
 
+        <p className="-mb-1 pt-1 text-xs font-medium uppercase tracking-wider text-neutral-500">Delivery apps</p>
         <ControlledField
-          label="Online total (AED)"
-          name="online_total"
-          value={onlineTotal}
-          onChange={setOnlineTotal}
-          confidence={onlineConf}
-          required
+          label="Talabat (AED)"
+          name="talabat_total"
+          value={talabat}
+          onChange={setTalabat}
+          confidence={c.talabat_total ?? "medium"}
+          required={false}
         />
+        <ControlledField
+          label="Keeta (AED)"
+          name="keeta_total"
+          value={keeta}
+          onChange={setKeeta}
+          confidence={c.keeta_total ?? "medium"}
+          required={false}
+        />
+        <ControlledField
+          label="Beanz (AED)"
+          name="beanz_total"
+          value={beanz}
+          onChange={setBeanz}
+          confidence={c.beanz_total ?? "medium"}
+          required={false}
+        />
+        {showOther ? (
+          <ControlledField
+            label="Other online (AED)"
+            name="other_online_total"
+            value={onlineTotal}
+            onChange={setOnlineTotal}
+            confidence="medium"
+            required={false}
+          />
+        ) : (
+          <button type="button" onClick={() => setShowOther(true)} className="-mt-1 block text-xs font-semibold text-strow-blue">
+            + Other online payment
+          </button>
+        )}
+        <input type="hidden" name="online_total" value={onlineSum.toFixed(2)} />
 
         <div className="rounded-2xl bg-neutral-100 p-4">
           <div className="flex items-baseline justify-between">
@@ -409,7 +466,7 @@ export function CloseFlow({
               Grand total
             </span>
             <span className="text-[10px] uppercase tracking-wider text-neutral-400">
-              auto from cash + card + online
+              cash + card + apps
             </span>
           </div>
           <p className="mt-1 text-2xl font-light tabular-nums">

@@ -15,6 +15,9 @@ type ConfidenceMap = {
   cash_total?: Confidence;
   card_total?: Confidence;
   online_total?: Confidence;
+  talabat_total?: Confidence;
+  keeta_total?: Confidence;
+  beanz_total?: Confidence;
   grand_total?: Confidence;
 };
 
@@ -57,6 +60,9 @@ function deriveStatus(
     "cash_total",
     "card_total",
     "online_total",
+    "talabat_total",
+    "keeta_total",
+    "beanz_total",
   ];
   const anyNotHigh = fields.some(
     (f) => confidence[f] && confidence[f] !== "high",
@@ -75,9 +81,17 @@ export async function submitClosing(formData: FormData) {
   const card_total = parseNumberOrNull(
     formData.get("card_total") as string | null,
   );
-  const online_total = parseNumberOrNull(
-    formData.get("online_total") as string | null,
-  );
+  // New form: Talabat / Keeta / Beanz (+ other online); a blank app field means 0.
+  // Old queued (offline) submissions only carry online_total.
+  const hasApps = ["talabat_total", "keeta_total", "beanz_total"].some((k) => formData.has(k));
+  const app = (k: string) => (hasApps ? parseNumberOrNull(formData.get(k) as string | null) ?? 0 : null);
+  const talabat_total = app("talabat_total");
+  const keeta_total = app("keeta_total");
+  const beanz_total = app("beanz_total");
+  const other_online = parseNumberOrNull(formData.get("other_online_total") as string | null) ?? 0;
+  const online_total = hasApps
+    ? Math.round(((talabat_total ?? 0) + (keeta_total ?? 0) + (beanz_total ?? 0) + other_online) * 100) / 100
+    : parseNumberOrNull(formData.get("online_total") as string | null);
   const cash_float_start = parseNumberOrNull(
     formData.get("cash_float_start") as string | null,
   );
@@ -109,9 +123,9 @@ export async function submitClosing(formData: FormData) {
     return { error: "That date is in the future. Pick today or an earlier day." };
   }
   if (cash_total == null || card_total == null || online_total == null) {
-    return { error: "Cash, card, and online totals are all required" };
+    return { error: hasApps ? "Cash and card totals are required" : "Cash, card, and online totals are all required" };
   }
-  if (cash_total < 0 || card_total < 0 || online_total < 0) {
+  if (cash_total < 0 || card_total < 0 || online_total < 0 || [talabat_total, keeta_total, beanz_total].some((v) => v != null && v < 0) || other_online < 0) {
     return { error: "Totals cannot be negative" };
   }
 
@@ -128,6 +142,9 @@ export async function submitClosing(formData: FormData) {
       cash_total,
       card_total,
       online_total,
+      talabat_total,
+      keeta_total,
+      beanz_total,
       cash_float_start,
       cash_float_end,
       notes,
@@ -184,6 +201,9 @@ export async function submitClosing(formData: FormData) {
       cash_total,
       card_total,
       online_total,
+      talabat_total,
+      keeta_total,
+      beanz_total,
       status,
     },
   });
