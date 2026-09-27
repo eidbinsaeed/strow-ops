@@ -254,3 +254,19 @@ export async function decideAction(id: string, decision: "approve" | "reject" | 
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+/** Close an open proposal/alert once it has been fixed or confirmed fine. */
+export async function closeOpenItem(id: string, note?: string | null): Promise<{ title: string } | null> {
+  const db = createServiceClient();
+  const { data: row } = await db.from("ai_actions").select("id, title, detail, status").eq("id", id).maybeSingle();
+  const r = row as { id: string; title: string; detail: string | null; status: string } | null;
+  if (!r || !["proposed", "info"].includes(r.status)) return null;
+  const detail = note ? `${r.detail ? r.detail + " — " : ""}Resolved: ${note}` : r.detail;
+  const { data: done } = await db
+    .from("ai_actions")
+    .update({ status: "resolved", decided_at: new Date().toISOString(), detail })
+    .eq("id", id)
+    .in("status", ["proposed", "info"])
+    .select("id");
+  return done && done.length ? { title: r.title } : null;
+}

@@ -14,6 +14,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   undone: { label: "Undone", cls: "bg-neutral-100 text-neutral-500" },
   rejected: { label: "Dismissed", cls: "bg-neutral-100 text-neutral-500" },
   failed: { label: "Failed", cls: "bg-red-50 text-red-700" },
+  resolved: { label: "Resolved", cls: "bg-emerald-50 text-emerald-700" },
 };
 
 export function StatusChip({ status }: { status: string }) {
@@ -21,8 +22,9 @@ export function StatusChip({ status }: { status: string }) {
   return <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-medium ${s.cls}`}>{s.label}</span>;
 }
 
-export function askAiHref(title: string, entityTable?: string | null, entityId?: string | null): Route {
-  const prompt = `Look into this and fix it if you can: "${title}"${entityTable && entityId ? ` (${entityTable} ${entityId})` : ""}. Check the bill photo if the paper decides it.`;
+export function askAiHref(title: string, entityTable?: string | null, entityId?: string | null, actionId?: string | null): Route {
+  const refs = [actionId ? `open item ${actionId}` : null, entityTable && entityId ? `${entityTable} ${entityId}` : null].filter(Boolean);
+  const prompt = `Look into this and fix it if you can: "${title}"${refs.length ? ` (${refs.join("; ")})` : ""}. Check the bill photo if the paper decides it.`;
   return `/owner/assistant?q=${encodeURIComponent(prompt)}` as Route;
 }
 
@@ -103,7 +105,7 @@ export function ActionButtons({
         </Btn>
       ) : null}
       {(st === "proposed" && !hasOps) || st === "info" ? (
-        <Link href={askAiHref(title, entityTable, entityId)} className="inline-flex h-9 items-center justify-center rounded-full bg-strow-ink px-4 text-sm text-white transition active:scale-[.97]">
+        <Link href={askAiHref(title, entityTable, entityId, id)} className="inline-flex h-9 items-center justify-center rounded-full bg-strow-ink px-4 text-sm text-white transition active:scale-[.97]">
           ✦ Ask AI
         </Link>
       ) : null}

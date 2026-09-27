@@ -27,6 +27,8 @@ const COPY = {
     listening: "Listening…",
     tryThese: "Try one of these",
     error: "Something went wrong",
+    recovering: "Connection dropped — still working, fetching the answer…",
+    lost: "Lost the connection. Open this chat again from History in a minute to see the answer.",
   },
   ar: {
     placeholder: "اسأل أي شيء عن المقهى…",
@@ -37,6 +39,8 @@ const COPY = {
     listening: "أستمع…",
     tryThese: "جرّب أحد هذه",
     error: "حدث خطأ",
+    recovering: "انقطع الاتصال — ما زلت أعمل، أجلب الإجابة…",
+    lost: "انقطع الاتصال. افتح هذه المحادثة من السجل بعد دقيقة لترى الإجابة.",
   },
 };
 
@@ -76,6 +80,23 @@ function getSR(): (new () => SpeechRec) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+async function recoverAnswer(chatId: string, since: string): Promise<Block[] | null> {
+  const until = Date.now() + 5 * 60_000;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 4000));
+    try {
+      const r = await fetch(`/api/ai/chat?c=${encodeURIComponent(chatId)}&after=${encodeURIComponent(since)}`, { cache: "no-store" });
+      if (r.ok) {
+        const j = (await r.json()) as { message?: { blocks?: unknown } | null };
+        if (j.message) return Array.isArray(j.message.blocks) ? (j.message.blocks as Block[]) : [];
+      }
+    } catch {
+      /* still offline — keep trying */
+    }
+  }
+  return null;
+}
+
 function rid(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
 }
@@ -113,6 +134,7 @@ export function AssistantChat({
   const abortRef = useRef<AbortController | null>(null);
   const recRef = useRef<SpeechRec | null>(null);
   const chatIdRef = useRef<string | null>(initialChatId);
+  const sinceRef = useRef<string | null>(null);
   const sentInitial = useRef(false);
   const stick = useRef(true);
 
@@ -146,6 +168,7 @@ export function AssistantChat({
       const text = raw.trim();
       if (!text || busy) return;
       recRef.current?.stop();
+      sinceRef.current = null;
       stick.current = true;
       setBusy(true);
       setInput("");
@@ -159,6 +182,7 @@ export function AssistantChat({
       const patch = (fn: (m: ChatMessage) => ChatMessage) => setMessages((ms) => ms.map((m) => (m.id === aid ? fn(m) : m)));
       const handle = (ev: StreamEvent) => {
         if (ev.t === "chat") {
+          sinceRef.current = ev.at ?? null;
           if (ev.chatId !== chatIdRef.current) {
             chatIdRef.current = ev.chatId;
             setChatId(ev.chatId);
@@ -212,7 +236,16 @@ export function AssistantChat({
         }
       } catch (e) {
         const aborted = (e as Error)?.name === "AbortError";
-        patch((m) => ({ ...m, blocks: [...m.blocks, { type: "text", text: aborted ? t.stopped : `⚠️ ${(e as Error)?.message || t.error}` }] }));
+        const since = sinceRef.current;
+        const cid = chatIdRef.current;
+        if (!aborted && since && cid) {
+          // The server keeps working and saves the answer — fetch it instead of losing it.
+          patch((m) => ({ ...m, status: t.recovering }));
+          const got = await recoverAnswer(cid, since);
+          patch((m) => ({ ...m, blocks: got ?? [...m.blocks, { type: "text", text: "⚠️ " + t.lost }] }));
+        } else {
+          patch((m) => ({ ...m, blocks: [...m.blocks, { type: "text", text: aborted ? t.stopped : `⚠️ ${(e as Error)?.message || t.error}` }] }));
+        }
       } finally {
         abortRef.current = null;
         patch((m) => ({ ...m, pending: false, status: undefined }));

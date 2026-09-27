@@ -4,6 +4,7 @@ import { getOwnerSession } from "@/lib/auth/owner-session";
 import { createServiceClient } from "@/lib/supabase/server";
 import { buildSystemPrompt } from "@/lib/ai/prompt";
 import { runAgent } from "@/lib/ai/agent";
+import { closeOpenItem } from "@/lib/ai/ops";
 import type { ToolContext } from "@/lib/ai/tools";
 import type { Block, StreamEvent } from "@/lib/ai/types";
 
@@ -95,7 +96,9 @@ export async function POST(req: Request) {
     .filter((m) => m.text && m.text.trim())
     .map((m) => ({ role: m.role, content: m.text as string }));
 
+  const startedAt = new Date().toISOString();
   await db.from("ai_messages").insert({ chat_id: cid, role: "user", blocks: [{ type: "text", text: message }], text: message });
+  const openItem = /open item ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(message)?.[1] ?? null;
 
   const page = typeof body.page === "string" ? body.page.slice(0, 80) : "";
   const messages = mergeRoles([...history, { role: "user", content: message + (page ? `\n\n(The owner is on the page ${page}.)` : "") }]);
@@ -111,13 +114,22 @@ export async function POST(req: Request) {
         }
       };
       const ctx: ToolContext = { mode: "chat", chatId: cid, emit: send, blocks: [], photosLeft: 6, actions: [] };
-      send({ t: "chat", chatId: cid });
+      send({ t: "chat", chatId: cid, at: startedAt });
       send({ t: "status", text: "Thinking" });
       try {
         const system = await buildSystemPrompt("chat");
-        const res = await runAgent({ system, messages, ctx, maxSteps: 14, deadline: Date.now() + 255_000 });
+        const res = await runAgent({ system, messages, ctx, maxSteps: 20, deadline: Date.now() + 250_000 });
+        // "Ask AI" on an open item: once a fix landed, take the item off the list.
+        if (openItem && !(ctx.resolved ?? []).includes(openItem) && ctx.actions.some((a) => a.status === "applied")) {
+          const closed = await closeOpenItem(openItem, "fixed in chat");
+          if (closed) {
+            const b: Block = { type: "action", id: openItem, title: closed.title, detail: "Closed — the fix above resolved it.", status: "resolved", opsCount: 0 };
+            ctx.blocks.push(b);
+            send({ t: "block", block: b });
+          }
+        }
         if (!ctx.blocks.some((b) => b.type !== "followups")) {
-          const b: Block = { type: "text", text: res.text || "Done." };
+          const b: Block = { type: "text", text: res.text || "I could not finish a written answer this time. Ask again, or ask for a smaller piece, and I will pick it up." };
           ctx.blocks.push(b);
           send({ t: "block", block: b });
         }
@@ -145,4 +157,24 @@ export async function POST(req: Request) {
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+// Recover a finished answer after the phone dropped the connection mid-reply.
+export async function GET(req: Request) {
+  if (!(await getOwnerSession())) return NextResponse.json({ error: "unauth" }, { status: 401 });
+  const url = new URL(req.url);
+  const c = url.searchParams.get("c") ?? "";
+  const after = url.searchParams.get("after") ?? "";
+  if (!UUID.test(c) || Number.isNaN(Date.parse(after))) return NextResponse.json({ error: "bad request" }, { status: 400 });
+  const db = createServiceClient();
+  const { data } = await db
+    .from("ai_messages")
+    .select("blocks, created_at")
+    .eq("chat_id", c)
+    .eq("role", "assistant")
+    .gt("created_at", new Date(after).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const m = ((data ?? [])[0] ?? null) as { blocks: Block[]; created_at: string } | null;
+  return NextResponse.json({ message: m }, { headers: { "Cache-Control": "no-store" } });
 }

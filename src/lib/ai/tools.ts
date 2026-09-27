@@ -4,7 +4,7 @@
 import type { Tool, TextBlockParam, ImageBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { createServiceClient } from "@/lib/supabase/server";
 import { downloadDriveFile } from "@/lib/drive/upload";
-import { recordAction, validateOps } from "./ops";
+import { closeOpenItem, recordAction, validateOps } from "./ops";
 import type { ActionBlock, Block, ChartBlock, ChartKind, StatsBlock, StreamEvent, TableBlock } from "./types";
 
 export type AgentMode = "chat" | "autopilot";
@@ -17,6 +17,7 @@ export type ToolContext = {
   blocks: Block[];
   photosLeft: number;
   actions: { id: string; status: string }[];
+  resolved?: string[];
 };
 
 export type ToolOutcome = {
@@ -146,6 +147,16 @@ export const TOOLS: Record<string, Tool> = {
     description: "Retire a memory note that turned out to be wrong or outdated.",
     input_schema: { type: "object", properties: { memory_id: { type: "string" } }, required: ["memory_id"] },
   },
+  resolve_item: {
+    name: "resolve_item",
+    description:
+      "Close an open item on the owner's list (a proposal or alert, by its action id) once it is fixed or you confirmed nothing needs changing, so it stops showing under Needs you.",
+    input_schema: {
+      type: "object",
+      properties: { action_id: { type: "string" }, note: { type: "string", description: "One line on how it was resolved" } },
+      required: ["action_id"],
+    },
+  },
   show_chart: {
     name: "show_chart",
     description:
@@ -244,6 +255,8 @@ export function statusFor(name: string, input: unknown): string {
       return "Updating my memory";
     case "suggest_followups":
       return "Wrapping up";
+    case "resolve_item":
+      return "Closing it on your list";
     default:
       return "Drawing it";
   }
@@ -433,6 +446,21 @@ async function showBill(i: Json, ctx: ToolContext): Promise<ToolOutcome> {
   return show(ctx, { type: "bill", table, id, caption: str(i.caption)?.slice(0, 120) ?? undefined });
 }
 
+async function resolveItem(i: Json, ctx: ToolContext): Promise<ToolOutcome> {
+  const id = String(i.action_id ?? "").trim();
+  if (!UUID.test(id)) return { content: "Invalid action id.", isError: true };
+  const note = str(i.note)?.slice(0, 300) ?? null;
+  const closed = await closeOpenItem(id, note);
+  if (!closed) return { content: "That item is not open any more (already closed, or not found)." };
+  (ctx.resolved ??= []).push(id);
+  if (ctx.mode === "chat") {
+    const block: ActionBlock = { type: "action", id, title: closed.title, detail: note, status: "resolved", opsCount: 0 };
+    ctx.blocks.push(block);
+    ctx.emit({ t: "block", block });
+  }
+  return { content: "Closed — it no longer shows under Needs you." };
+}
+
 async function remember(i: Json): Promise<ToolOutcome> {
   const note = String(i.note ?? "").trim();
   if (!note) return { content: "Empty note.", isError: true };
@@ -471,6 +499,8 @@ export async function executeTool(name: string, input: unknown, ctx: ToolContext
         return await viewPhoto(i, ctx);
       case "show_bill":
         return await showBill(i, ctx);
+      case "resolve_item":
+        return await resolveItem(i, ctx);
       case "remember":
         return await remember(i);
       case "forget":

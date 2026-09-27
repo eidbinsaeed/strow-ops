@@ -50,7 +50,7 @@ export type Block =
   | BillBlock;
 
 export type StreamEvent =
-  | { t: "chat"; chatId: string }
+  | { t: "chat"; chatId: string; at?: string }
   | { t: "status"; text: string }
   | { t: "block"; block: Block }
   | { t: "done" }

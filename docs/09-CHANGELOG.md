@@ -120,3 +120,9 @@
 - Needs you (/owner/needs-you): one finding at a time — bill photo with scan line, "now vs should be", proof list, Apply fix / Undo / Dismiss.
 - Phone: floating glass tab bar (Pulse · Books · ✦ AI · Staff · More), Qave Cafe header, Books and Staff section switchers. Desktop: Strow sidebar with badges, ask bar on Pulse.
 - Barista close: big title, missing-day chips, breathing Take photo button.
+
+## v0.9.2 — 2026-09-27 — AI reliability
+- Replies cut off by the length limit are redone in smaller batches instead of being dropped (the cause of the bare "Done." answers); every chat turn ends with a written answer.
+- New status "resolved" (migration 0011) + resolve_item tool: fixed items leave Needs you. "Ask AI" passes the item id, and the item closes automatically once a fix lands.
+- Dropped connection on the phone ("Load failed"): the chat keeps the spinner and fetches the finished answer from the server.
+- Data: 18 unmatched bill lines linked (15 new items, 17 aliases) — one undoable action.

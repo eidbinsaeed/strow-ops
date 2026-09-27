@@ -10,7 +10,7 @@ const TABS = [
   { key: "needs", label: "Needs you", statuses: ["proposed"] },
   { key: "alerts", label: "Alerts", statuses: ["info"] },
   { key: "fixed", label: "Fixed", statuses: ["applied"] },
-  { key: "history", label: "History", statuses: ["undone", "rejected", "failed"] },
+  { key: "history", label: "History", statuses: ["resolved", "undone", "rejected", "failed"] },
 ] as const;
 
 type Row = {

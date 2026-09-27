@@ -193,7 +193,7 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
       ) : open ? (
         <div className="flex flex-col gap-1.5">
           <Link
-            href={askAiHref(it.title, it.entityTable, it.entityId)}
+            href={askAiHref(it.title, it.entityTable, it.entityId, it.id)}
             className="flex h-14 items-center justify-center rounded-full bg-strow-ink text-base font-semibold text-white transition active:scale-[.98]"
           >
             ✦ Ask AI to handle it
