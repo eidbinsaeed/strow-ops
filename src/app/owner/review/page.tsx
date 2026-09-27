@@ -20,6 +20,7 @@ type ClosingRow = {
   talabat_total?: number | null;
   keeta_total?: number | null;
   beanz_total?: number | null;
+  transactions?: number | null;
   grand_total: number;
   status: string;
   notes: string | null;
@@ -101,7 +102,7 @@ export default async function OwnerReviewPage() {
     supabase
       .from("closings")
       .select(
-        "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, grand_total, status, notes, photo_drive_url, baristas(name), ai_anomalies, ai_confidence",
+        "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, grand_total, status, notes, photo_drive_url, baristas(name), ai_anomalies, ai_confidence",
       )
       .in("status", ["pending_review", "flagged"])
       .order("closing_date", { ascending: false }),
@@ -192,7 +193,7 @@ function ClosingCard({ row, locale }: { row: ClosingRow; locale: import("@/lib/i
             {formatDate(row.closing_date)} - {formatAed(row.grand_total)}
           </p>
           <p className="mt-1 text-xs text-neutral-500">
-            {payParts(row).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}`).join(" - ")} - {tr("card.by", locale)} {row.baristas?.name ?? "-"}
+            {payParts(row).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}`).join(" - ")}{row.transactions ? ` - ${row.transactions} orders · avg ${formatAed(Number(row.grand_total) / row.transactions)}` : ""} - {tr("card.by", locale)} {row.baristas?.name ?? "-"}
           </p>
           {row.notes && (
             <p className="mt-2 text-xs italic text-neutral-500">{row.notes}</p>
@@ -214,6 +215,7 @@ function ClosingCard({ row, locale }: { row: ClosingRow; locale: import("@/lib/i
                     talabat_total: row.talabat_total == null ? null : Number(row.talabat_total),
                     keeta_total: row.keeta_total == null ? null : Number(row.keeta_total),
                     beanz_total: row.beanz_total == null ? null : Number(row.beanz_total),
+                    transactions: row.transactions ?? null,
             notes: row.notes,
           }}
         />

@@ -14,7 +14,7 @@ The photo is usually the POS "Payment Methods" report (a tablet screen photograp
 
 == PAYMENT METHODS ==
 The café is paid through: Cash, Card, Talabat, Keeta and Beanz. On the POS "Payment Methods" report each method is one row with columns: Transactions, Total Sales, Net Sales, Tax, Refunded.
-- Use the "Total Sales" amount of each row. The "Transactions" column is a COUNT of orders — never read it as money.
+- Use the "Total Sales" amount of each row for the money fields. The "Transactions" column is a COUNT of orders — never read it as money: put those counts in transactions_by_method (cash, card, talabat, keeta, beanz, other; whole numbers, a method with no row = 0) and the header "Total Transactions" in transactions_total. Handwritten sheets usually have no order count — then both are null.
 - cash_total = the Cash row. card_total = the Card row (also "Visa", "Mastercard", "Network").
 - talabat_total = the Talabat row. keeta_total = the Keeta row (OCR may show it as "Kaeeta", "Keta", "Keeta Food" or "كيتا"). beanz_total = the Beanz row.
 - other_online_total = any other online or delivery method (Deliveroo, Careem, Noon, "Online"...) added together; null if there is none.
@@ -54,6 +54,8 @@ Return ONLY valid JSON matching this schema, no markdown fences, no commentary:
   "other_online_total": number | null,
   "online_total": number | null,
   "grand_total": number | null,
+  "transactions_total": number | null,
+  "transactions_by_method": { "cash": number, "card": number, "talabat": number, "keeta": number, "beanz": number, "other": number } | null,
   "cash_float_start": number | null,
   "cash_float_end": number | null,
   "notes": string | null,
@@ -64,7 +66,8 @@ Return ONLY valid JSON matching this schema, no markdown fences, no commentary:
     "talabat_total": "high" | "medium" | "low",
     "keeta_total": "high" | "medium" | "low",
     "beanz_total": "high" | "medium" | "low",
-    "grand_total": "high" | "medium" | "low"
+    "grand_total": "high" | "medium" | "low",
+    "transactions_total": "high" | "medium" | "low"
   },
   "anomalies": {
     "has_anomaly": boolean,

@@ -21,7 +21,7 @@ type CashPos = {
   anchor_date: string | null;
   needs_opening_count: boolean | number | null;
 };
-type Closing = { closing_date: string; grand_total: Num; cash_total: Num; card_total: Num; online_total: Num; talabat_total: Num; keeta_total: Num; beanz_total: Num };
+type Closing = { closing_date: string; grand_total: Num; cash_total: Num; card_total: Num; online_total: Num; talabat_total: Num; keeta_total: Num; beanz_total: Num; transactions: number | null };
 type Finding = { id: string; status: string; severity: string; title: string; detail: string | null; ops: unknown[] | null };
 
 const N = (v: unknown) => {
@@ -72,12 +72,12 @@ export default async function PulsePage() {
     db.from("v_cash_position").select("*").limit(1),
     db
       .from("closings")
-      .select("closing_date, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total")
+      .select("closing_date, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions")
       .gte("closing_date", addDays(today, -120))
       .lte("closing_date", today)
       .neq("status", "rejected")
       .order("closing_date"),
-    db.from("closings").select("closing_date, grand_total").neq("status", "rejected").lte("closing_date", today).order("closing_date", { ascending: false }).limit(1),
+    db.from("closings").select("closing_date, grand_total, transactions").neq("status", "rejected").lte("closing_date", today).order("closing_date", { ascending: false }).limit(1),
     db.from("ai_actions").select("id, status, severity, title, detail, ops").in("status", ["proposed", "info"]).order("created_at", { ascending: false }).limit(40),
     Promise.all([
       db.from("closings").select("id", { count: "exact", head: true }).in("status", ["pending_review", "flagged"]),
@@ -92,7 +92,7 @@ export default async function PulsePage() {
   const kpi = ((kpiRes.data ?? [])[0] ?? null) as Kpis | null;
   const cash = ((cashRes.data ?? [])[0] ?? null) as CashPos | null;
   const rows = (closRes.data ?? []) as Closing[];
-  const last = ((lastRes.data ?? [])[0] ?? null) as { closing_date: string; grand_total: Num } | null;
+  const last = ((lastRes.data ?? [])[0] ?? null) as { closing_date: string; grand_total: Num; transactions: number | null } | null;
   const pending = N(((badgeRes.data ?? [])[0] as { pending_count?: number } | undefined)?.pending_count);
   const itemsRow = (Array.isArray(itemsRes.data) ? itemsRes.data[0] : null) as { items?: number; spent?: number } | null;
 
@@ -107,7 +107,7 @@ export default async function PulsePage() {
     const row = byDate.get(iso);
     if (row) {
       if (d <= elapsed) closedCount++;
-      days.push({ iso, d, kind: "closed", value: N(row.grand_total) });
+      days.push({ iso, d, kind: "closed", value: N(row.grand_total), orders: row.transactions ?? null });
     } else if (iso === today) days.push({ iso, d, kind: "today", value: 0 });
     else if (d > todayNum) days.push({ iso, d, kind: "future", value: 0 });
     else {
@@ -125,6 +125,10 @@ export default async function PulsePage() {
 
   // Payment split (month to date, else last 30 days)
   const monthRows = rows.filter((r) => r.closing_date.startsWith(monthPrefix));
+  // Orders (POS transactions) this month — the average only uses days that have an order count.
+  const withOrders = monthRows.filter((r) => (r.transactions ?? 0) > 0);
+  const monthOrders = withOrders.reduce((a, r) => a + (r.transactions ?? 0), 0);
+  const monthOrderSales = withOrders.reduce((a, r) => a + N(r.grand_total), 0);
   const splitRows = monthRows.length ? monthRows : rows.filter((r) => r.closing_date >= addDays(today, -30));
   const sumOf = (f: (r: Closing) => Num) => splitRows.reduce((a, r) => a + N(f(r)), 0);
   const card = sumOf((r) => r.card_total);
@@ -240,7 +244,7 @@ export default async function PulsePage() {
           <div className="flex flex-col gap-1.5 px-1 pt-2 md:flex-row md:items-end md:justify-between md:px-0 md:pt-0">
             <div className="flex flex-col gap-1.5">
               <span className="text-sm text-neutral-500">
-                {last ? `${ar ? "آخر إقفال، " : "Last close, "}${dayLong(last.closing_date, ar)}` : ar ? "لا توجد إقفالات بعد" : "No closings yet"}
+                {last ? `${ar ? "آخر إقفال، " : "Last close, "}${dayLong(last.closing_date, ar)}${last.transactions ? ` · ${last.transactions} ${ar ? "طلب" : "orders"}` : ""}` : ar ? "لا توجد إقفالات بعد" : "No closings yet"}
               </span>
               <span className="flex items-baseline gap-2">
                 <span className="font-display text-[22px] font-semibold text-neutral-500 md:text-2xl">AED</span>
@@ -371,11 +375,13 @@ export default async function PulsePage() {
         </div>
 
         {/* Small stat cards */}
-        <div className="grid grid-cols-2 gap-3 md:col-start-1 md:row-start-3 md:grid-cols-4 md:gap-[18px]">
+        <div className="grid grid-cols-2 gap-3 md:col-start-1 md:row-start-3 md:grid-cols-3 md:gap-[18px]">
           {[
             { l: ar ? "مبيعات هذا الشهر" : "Sales this month", v: fmt(N(kpi?.revenue_mtd), 0), red: false },
             { l: ar ? "صافي متوقع" : "Projected net", v: fmt(projected, 0), red: projected < 0 },
             { l: ar ? "تكاليف ثابتة شهرياً" : "Fixed costs a month", v: fmt(N(kpi?.fixed_monthly), 0), red: false },
+            { l: ar ? "طلبات هذا الشهر" : "Orders this month", v: fmt(monthOrders, 0), red: false },
+            { l: ar ? "متوسط الطلب" : "Average order", v: monthOrders > 0 ? fmt(monthOrderSales / monthOrders) : "—", red: false },
             { l: ar ? `إنفاق على ${N(itemsRow?.items)} صنف` : `Spent on ${N(itemsRow?.items)} items`, v: fmt(N(itemsRow?.spent)), red: false },
           ].map((s) => (
             <div key={s.l} className="flex flex-col gap-1.5 rounded-3xl bg-white p-4">

@@ -99,6 +99,23 @@ export async function submitClosing(formData: FormData) {
   const keeta_total = app("keeta_total");
   const beanz_total = app("beanz_total");
   const other_online = parseNumberOrNull(formData.get("other_online_total") as string | null) ?? 0;
+  // Orders for the day (POS "Total Transactions") and, when the AI read them, orders per payment method.
+  const txRaw = parseNumberOrNull(formData.get("transactions") as string | null);
+  const transactions = txRaw != null && txRaw >= 0 ? Math.round(txRaw) : null;
+  let transactions_by_method: Record<string, number> | null = null;
+  try {
+    const raw = JSON.parse(String(formData.get("transactions_by_method") ?? "") || "null") as Record<string, unknown> | null;
+    if (raw && typeof raw === "object") {
+      const clean: Record<string, number> = {};
+      for (const k of ["cash", "card", "talabat", "keeta", "beanz", "other"]) {
+        const n = Number(raw[k]);
+        if (raw[k] != null && Number.isFinite(n) && n >= 0) clean[k] = Math.round(n);
+      }
+      transactions_by_method = Object.keys(clean).length ? clean : null;
+    }
+  } catch {
+    transactions_by_method = null;
+  }
   const online_total = hasApps
     ? Math.round(((talabat_total ?? 0) + (keeta_total ?? 0) + (beanz_total ?? 0) + other_online) * 100) / 100
     : parseNumberOrNull(formData.get("online_total") as string | null);
@@ -162,6 +179,8 @@ export async function submitClosing(formData: FormData) {
       talabat_total,
       keeta_total,
       beanz_total,
+      transactions,
+      transactions_by_method,
       cash_float_start,
       cash_float_end,
       notes,
@@ -227,6 +246,7 @@ export async function submitClosing(formData: FormData) {
       talabat_total,
       keeta_total,
       beanz_total,
+      transactions,
       status,
     },
   });

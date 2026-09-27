@@ -27,6 +27,8 @@ type Extracted = {
   keeta_total?: number | null;
   beanz_total?: number | null;
   other_online_total?: number | null;
+  transactions_total?: number | null;
+  transactions_by_method?: Record<string, number | null> | null;
   grand_total: number | null;
   cash_float_start: number | null;
   cash_float_end: number | null;
@@ -40,6 +42,7 @@ type Extracted = {
     keeta_total?: Confidence;
     beanz_total?: Confidence;
     grand_total?: Confidence;
+    transactions_total?: Confidence;
   };
   anomalies?: Anomalies | null;
 };
@@ -107,6 +110,7 @@ export function CloseFlow({
   const [keeta, setKeeta] = useState("");
   const [beanz, setBeanz] = useState("");
   const [showOther, setShowOther] = useState(false);
+  const [orders, setOrders] = useState("");
   const [cashFloatStart, setCashFloatStart] = useState("");
   const [cashFloatEnd, setCashFloatEnd] = useState("");
 
@@ -166,6 +170,7 @@ export function CloseFlow({
       setTalabat(fmtNum(ext.talabat_total));
       setKeeta(fmtNum(ext.keeta_total));
       setBeanz(fmtNum(ext.beanz_total));
+      setOrders(ext.transactions_total != null ? String(Math.round(ext.transactions_total)) : "");
       {
         const known = (ext.talabat_total ?? 0) + (ext.keeta_total ?? 0) + (ext.beanz_total ?? 0);
         const other =
@@ -219,6 +224,7 @@ export function CloseFlow({
     setKeeta("");
     setBeanz("");
     setShowOther(false);
+    setOrders("");
     setCashFloatStart("");
     setCashFloatEnd("");
     setErrorMsg(null);
@@ -460,6 +466,18 @@ export function CloseFlow({
           </button>
         )}
         <input type="hidden" name="online_total" value={onlineSum.toFixed(2)} />
+        <ControlledField
+          label="Orders today (transactions)"
+          name="transactions"
+          value={orders}
+          onChange={setOrders}
+          confidence={c.transactions_total ?? "medium"}
+          required={false}
+        />
+        {parseInt(orders, 10) > 0 && computedGrand > 0 ? (
+          <p className="-mt-2 px-1 text-xs text-neutral-500">≈ AED {(computedGrand / parseInt(orders, 10)).toFixed(2)} per order</p>
+        ) : null}
+        <input type="hidden" name="transactions_by_method" value={extracted?.transactions_by_method ? JSON.stringify(extracted.transactions_by_method) : ""} />
 
         <div className="rounded-2xl bg-neutral-100 p-4">
           <div className="flex items-baseline justify-between">

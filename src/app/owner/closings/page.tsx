@@ -21,6 +21,7 @@ type ClosingRow = {
   talabat_total?: number | null;
   keeta_total?: number | null;
   beanz_total?: number | null;
+  transactions?: number | null;
   grand_total: number;
   status: string;
   notes: string | null;
@@ -99,7 +100,7 @@ export default async function OwnerSalesPage({
   let query = supabase
     .from("closings")
     .select(
-      "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, grand_total, status, notes, photo_drive_url, baristas(name)",
+      "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, grand_total, status, notes, photo_drive_url, baristas(name)",
     )
     .order("closing_date", { ascending: false })
     .limit(200);
@@ -199,7 +200,7 @@ export default async function OwnerSalesPage({
                     {formatAed(c.grand_total)}
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    {payParts(c).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}`).join(" - ")} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
+                    {payParts(c).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}`).join(" - ")}{c.transactions ? ` - ${c.transactions} orders · avg ${formatAed(Number(c.grand_total) / c.transactions)}` : ""} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
                   </p>
                   {c.notes && (
                     <p className="mt-2 text-xs italic text-neutral-500">
@@ -222,6 +223,7 @@ export default async function OwnerSalesPage({
                     talabat_total: c.talabat_total == null ? null : Number(c.talabat_total),
                     keeta_total: c.keeta_total == null ? null : Number(c.keeta_total),
                     beanz_total: c.beanz_total == null ? null : Number(c.beanz_total),
+                    transactions: c.transactions ?? null,
                     notes: c.notes,
                   }}
                 />

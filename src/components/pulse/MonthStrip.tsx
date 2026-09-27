@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useState } from "react";
 
-export type StripDay = { iso: string; d: number; kind: "closed" | "missing" | "today" | "future"; value: number };
+export type StripDay = { iso: string; d: number; kind: "closed" | "missing" | "today" | "future"; value: number; orders?: number | null };
 
 const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -27,7 +27,7 @@ export function MonthStrip({ days }: { days: StripDay[] }) {
           <>
             <span className="font-semibold text-strow-ink">{label(sel.iso)}</span>
             {sel.kind === "closed" ? (
-              <span className="tabular-nums text-neutral-500">AED {sel.value.toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+              <span className="tabular-nums text-neutral-500">AED {sel.value.toLocaleString("en-US", { maximumFractionDigits: 2 })}{sel.orders ? ` · ${sel.orders} orders · avg ${(sel.value / sel.orders).toFixed(2)}` : ""}</span>
             ) : sel.kind === "missing" ? (
               <>
                 <span className="text-strow-amber">No closing</span>

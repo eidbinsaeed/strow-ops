@@ -106,7 +106,7 @@ export async function editClosing(id: string, formData: FormData) {
 
   const { data: before } = await supabase
     .from("closings")
-    .select("closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, notes")
+    .select("closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, notes")
     .eq("id", id)
     .maybeSingle();
 
@@ -138,9 +138,12 @@ export async function editClosing(id: string, formData: FormData) {
   const after = hasSplitForm
     ? { closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, notes }
     : { closing_date, cash_total, card_total, online_total, notes };
+  // Orders (transactions) — only when the form sent the field.
+  const txRaw = formData.has("transactions") ? parseNumberOrNull(formData.get("transactions")) : undefined;
+  const afterTx = txRaw === undefined ? after : { ...after, transactions: txRaw == null ? null : Math.max(Math.round(txRaw), 0) };
   const { error } = await supabase
     .from("closings")
-    .update(after)
+    .update(afterTx)
     .eq("id", id);
   if (error) return { error: error.message };
 
@@ -152,7 +155,7 @@ export async function editClosing(id: string, formData: FormData) {
     entity_type: "closing",
     entity_id: id,
     before_state: before ?? null,
-    after_state: after,
+    after_state: afterTx,
   });
 
   revalidateAll("closing");

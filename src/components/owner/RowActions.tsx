@@ -24,6 +24,7 @@ type ClosingFields = {
   talabat_total?: number | null;
   keeta_total?: number | null;
   beanz_total?: number | null;
+  transactions?: number | null;
   notes: string | null;
 };
 
@@ -351,6 +352,9 @@ function ClosingFormFields({ fields }: { fields: ClosingFields }) {
       </div>
       {box("other", "Other online (AED)", "other_online_total")}
       <input type="hidden" name="online_total" value={online.toFixed(2)} />
+      <Label name="transactions" label="Orders (transactions)">
+        <input name="transactions" type="number" step="1" min="0" defaultValue={fields.transactions ?? ""} inputMode="numeric" placeholder="0" className={inputClass()} />
+      </Label>
       <div className="flex items-baseline justify-between rounded-xl bg-neutral-100 px-3 py-2.5 text-sm">
         <span className="text-neutral-500">Total — online {online.toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
         <span className="font-display text-lg font-bold tabular-nums">AED {total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

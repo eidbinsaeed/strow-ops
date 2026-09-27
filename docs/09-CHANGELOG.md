@@ -159,3 +159,7 @@
 - Edit window (Sales / Review): Cash, Card, Talabat, Keeta, Beanz (+ other online) with a live total; online saved as their sum. Days saved before the split stay unsplit (their online shows as "Other online"), so opening Edit never changes a total.
 - Sales and Review cards show the full split.
 - A payment method with no row on the POS report = 0 (no orders), not a flag: the AI returns 0/high, and the server doesn't hold a closing for an app with no money when the entered totals add up to the report's total. Refunds, total mismatch, future date, negatives and an unsure cash/card read still flag.
+
+## v1.0.2 — 2026-09-27 — Orders per day
+- closings.transactions (orders that day, POS "Total Transactions") + closings.transactions_by_method (orders per payment method, jsonb). 26 Sep backfilled: 36 orders (card 21, beanz 8, talabat 3, keeta 2, cash 2) → avg AED 38.92.
+- The AI reads the Transactions column/header from the POS report; the barista confirms "Orders today". Sales/Review cards: "36 orders · avg AED 38.92"; Edit window has Orders; Pulse: orders on the last close, in the day strip, and "Orders this month" / "Average order".
