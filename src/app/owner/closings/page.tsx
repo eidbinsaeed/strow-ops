@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
+import { payParts } from "@/lib/pay-split";
 import { Suspense } from "react";
 import { TableFilters } from "@/components/owner/TableFilters";
 import { parseFilters } from "@/lib/filters";
@@ -17,6 +18,9 @@ type ClosingRow = {
   cash_total: number;
   card_total: number;
   online_total: number;
+  talabat_total?: number | null;
+  keeta_total?: number | null;
+  beanz_total?: number | null;
   grand_total: number;
   status: string;
   notes: string | null;
@@ -95,7 +99,7 @@ export default async function OwnerSalesPage({
   let query = supabase
     .from("closings")
     .select(
-      "id, closing_date, cash_total, card_total, online_total, grand_total, status, notes, photo_drive_url, baristas(name)",
+      "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, grand_total, status, notes, photo_drive_url, baristas(name)",
     )
     .order("closing_date", { ascending: false })
     .limit(200);
@@ -195,7 +199,7 @@ export default async function OwnerSalesPage({
                     {formatAed(c.grand_total)}
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    {tr("card.cash", locale)} {formatAed(c.cash_total)} - {tr("card.card", locale)} {formatAed(c.card_total)} - {tr("card.online", locale)} {formatAed(c.online_total)} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
+                    {payParts(c).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}`).join(" - ")} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
                   </p>
                   {c.notes && (
                     <p className="mt-2 text-xs italic text-neutral-500">
@@ -215,6 +219,9 @@ export default async function OwnerSalesPage({
                     cash_total: Number(c.cash_total),
                     card_total: Number(c.card_total),
                     online_total: Number(c.online_total),
+                    talabat_total: c.talabat_total == null ? null : Number(c.talabat_total),
+                    keeta_total: c.keeta_total == null ? null : Number(c.keeta_total),
+                    beanz_total: c.beanz_total == null ? null : Number(c.beanz_total),
                     notes: c.notes,
                   }}
                 />

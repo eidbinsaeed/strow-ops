@@ -56,26 +56,27 @@ function deriveStatus(
   confidence: ConfidenceMap,
   anomalies: Anomalies,
   autoApprove: boolean,
+  amounts: { cash: number; card: number; online: number; talabat: number | null; keeta: number | null; beanz: number | null },
+  aiGrand: number | null,
 ): "confirmed" | "pending_review" | "flagged" {
-  // Something looks off (AI anomaly, or a number it wasn't sure how to read) → flagged:
-  // held for the owner, never auto-approved.
-  if (anomalies?.has_anomaly) return "flagged";
-
-  const fields: (keyof ConfidenceMap)[] = [
-    "closing_date",
-    "cash_total",
-    "card_total",
-    "online_total",
-    "talabat_total",
-    "keeta_total",
-    "beanz_total",
-  ];
-  const anyNotHigh = fields.some(
-    (f) => confidence[f] && confidence[f] !== "high",
-  );
-  if (anyNotHigh) return "flagged";
-
-  // Clean: straight into the books when auto-approve is on, else waits for the owner.
+  // Do the entered totals add up to the report's own total? Then a payment method with no row
+  // (e.g. no Keeta orders that day) is simply 0 — not a reason to hold the closing.
+  const sum = amounts.cash + amounts.card + amounts.online;
+  const reconciles = aiGrand != null && Math.abs(sum - aiGrand) <= 0.01;
+  const a = anomalies as { has_anomaly?: boolean; flags?: unknown } | null | undefined;
+  const flags = Array.isArray(a?.flags) ? (a!.flags as unknown[]).filter((f): f is string => typeof f === "string") : [];
+  // Real problems always hold it: refunds, a total that doesn't match, a future date, negatives, float issues…
+  if (flags.some((f) => f !== "unreadable")) return "flagged";
+  if (a?.has_anomaly && !reconciles) return "flagged";
+  const conf = (confidence ?? {}) as Record<string, string | undefined>;
+  const unsure = (k: string) => !!conf[k] && conf[k] !== "high";
+  if (["closing_date", "cash_total", "card_total"].some(unsure)) return "flagged";
+  // Delivery apps: only the ones that actually had money need a confident read.
+  const apps: [string, number | null][] = [["talabat_total", amounts.talabat], ["keeta_total", amounts.keeta], ["beanz_total", amounts.beanz]];
+  const split = apps.some(([, v]) => v != null);
+  if (!reconciles && apps.some(([k, v]) => (v ?? 0) > 0 && unsure(k))) return "flagged";
+  if (!split && !reconciles && unsure("online_total")) return "flagged";
+  // Clean: straight into the books when auto-approve is on, else it waits for the owner.
   return autoApprove ? "confirmed" : "pending_review";
 }
 
@@ -138,7 +139,14 @@ export async function submitClosing(formData: FormData) {
     return { error: "Totals cannot be negative" };
   }
 
-  const status = deriveStatus(confidence, anomalies, (await getSettings()).autoApproveClosings);
+  const aiGrand = parseNumberOrNull(formData.get("ai_grand_total") as string | null);
+  const status = deriveStatus(
+    confidence,
+    anomalies,
+    (await getSettings()).autoApproveClosings,
+    { cash: cash_total, card: card_total, online: online_total, talabat: talabat_total, keeta: keeta_total, beanz: beanz_total },
+    aiGrand,
+  );
   const supabase = createServiceClient();
 
   // grand_total and over_short are GENERATED columns - never insert.

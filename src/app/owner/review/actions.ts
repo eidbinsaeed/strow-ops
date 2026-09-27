@@ -106,14 +106,23 @@ export async function editClosing(id: string, formData: FormData) {
 
   const { data: before } = await supabase
     .from("closings")
-    .select("closing_date, cash_total, card_total, online_total, notes")
+    .select("closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, notes")
     .eq("id", id)
     .maybeSingle();
 
   const closing_date = String(formData.get("closing_date") ?? "").trim();
   const cash_total = parseNumberOrNull(formData.get("cash_total"));
   const card_total = parseNumberOrNull(formData.get("card_total"));
-  const online_total = parseNumberOrNull(formData.get("online_total"));
+  // App split (Talabat / Keeta / Beanz + other online). If all three apps are left blank the day
+  // stays unsplit (columns null) and online = "other online".
+  const appRaw = ["talabat_total", "keeta_total", "beanz_total"].map((k) => String(formData.get(k) ?? "").trim());
+  const hasSplitForm = formData.has("talabat_total");
+  const anyApp = appRaw.some((x) => x !== "");
+  const [talabat_total, keeta_total, beanz_total] = appRaw.map((x) => (anyApp ? parseNumberOrNull(x) ?? 0 : null));
+  const other_online = parseNumberOrNull(formData.get("other_online_total")) ?? 0;
+  const online_total = hasSplitForm
+    ? Math.round(((talabat_total ?? 0) + (keeta_total ?? 0) + (beanz_total ?? 0) + other_online) * 100) / 100
+    : parseNumberOrNull(formData.get("online_total"));
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(closing_date)) {
@@ -122,11 +131,13 @@ export async function editClosing(id: string, formData: FormData) {
   if (cash_total == null || card_total == null || online_total == null) {
     return { error: "Cash, card, and online are all required" };
   }
-  if (cash_total < 0 || card_total < 0 || online_total < 0) {
+  if (cash_total < 0 || card_total < 0 || online_total < 0 || [talabat_total, keeta_total, beanz_total, other_online].some((x) => x != null && x < 0)) {
     return { error: "Totals cannot be negative" };
   }
 
-  const after = { closing_date, cash_total, card_total, online_total, notes };
+  const after = hasSplitForm
+    ? { closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, notes }
+    : { closing_date, cash_total, card_total, online_total, notes };
   const { error } = await supabase
     .from("closings")
     .update(after)

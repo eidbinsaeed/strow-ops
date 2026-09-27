@@ -21,6 +21,9 @@ type ClosingFields = {
   cash_total: number;
   card_total: number;
   online_total: number;
+  talabat_total?: number | null;
+  keeta_total?: number | null;
+  beanz_total?: number | null;
   notes: string | null;
 };
 
@@ -298,60 +301,62 @@ function inputClass() {
 }
 
 function ClosingFormFields({ fields }: { fields: ClosingFields }) {
+  // Days saved before the app split show their online amount as "Other online", so totals never change by opening Edit.
+  const split = fields.talabat_total != null || fields.keeta_total != null || fields.beanz_total != null;
+  const num = (v: string) => {
+    const x = parseFloat(v.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))));
+    return Number.isFinite(x) ? x : 0;
+  };
+  const str = (v: number | null | undefined) => (v == null ? "" : String(v));
+  const known = Number(fields.talabat_total ?? 0) + Number(fields.keeta_total ?? 0) + Number(fields.beanz_total ?? 0);
+  const [v, setV] = useState({
+    cash: str(fields.cash_total),
+    card: str(fields.card_total),
+    talabat: split ? str(fields.talabat_total ?? 0) : "",
+    keeta: split ? str(fields.keeta_total ?? 0) : "",
+    beanz: split ? str(fields.beanz_total ?? 0) : "",
+    other: split ? (Number(fields.online_total) - known > 0.004 ? String(Math.round((Number(fields.online_total) - known) * 100) / 100) : "") : str(fields.online_total),
+  });
+  const online = num(v.talabat) + num(v.keeta) + num(v.beanz) + num(v.other);
+  const total = num(v.cash) + num(v.card) + online;
+  const box = (name: keyof typeof v, label: string, formName: string, required = false) => (
+    <Label name={formName} label={label}>
+      <input
+        name={formName}
+        type="number"
+        step="0.01"
+        min="0"
+        value={v[name]}
+        onChange={(e) => setV({ ...v, [name]: e.target.value })}
+        required={required}
+        inputMode="decimal"
+        placeholder="0"
+        className={inputClass()}
+      />
+    </Label>
+  );
   return (
     <>
       <Label name="closing_date" label="Sale date">
-        <input
-          name="closing_date"
-          type="date"
-          defaultValue={fields.closing_date}
-          required
-          className={inputClass()}
-        />
+        <input name="closing_date" type="date" defaultValue={fields.closing_date} required className={inputClass()} />
       </Label>
-      <Label name="cash_total" label="Cash total (AED)">
-        <input
-          name="cash_total"
-          type="number"
-          step="0.01"
-          min="0"
-          defaultValue={fields.cash_total}
-          required
-          inputMode="decimal"
-          className={inputClass()}
-        />
-      </Label>
-      <Label name="card_total" label="Card total (AED)">
-        <input
-          name="card_total"
-          type="number"
-          step="0.01"
-          min="0"
-          defaultValue={fields.card_total}
-          required
-          inputMode="decimal"
-          className={inputClass()}
-        />
-      </Label>
-      <Label name="online_total" label="Online total (AED)">
-        <input
-          name="online_total"
-          type="number"
-          step="0.01"
-          min="0"
-          defaultValue={fields.online_total}
-          required
-          inputMode="decimal"
-          className={inputClass()}
-        />
-      </Label>
+      <div className="grid grid-cols-2 gap-3">
+        {box("cash", "Cash (AED)", "cash_total", true)}
+        {box("card", "Card (AED)", "card_total", true)}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {box("talabat", "Talabat", "talabat_total")}
+        {box("keeta", "Keeta", "keeta_total")}
+        {box("beanz", "Beanz", "beanz_total")}
+      </div>
+      {box("other", "Other online (AED)", "other_online_total")}
+      <input type="hidden" name="online_total" value={online.toFixed(2)} />
+      <div className="flex items-baseline justify-between rounded-xl bg-neutral-100 px-3 py-2.5 text-sm">
+        <span className="text-neutral-500">Total — online {online.toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+        <span className="font-display text-lg font-bold tabular-nums">AED {total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+      </div>
       <Label name="notes" label="Notes">
-        <textarea
-          name="notes"
-          defaultValue={fields.notes ?? ""}
-          rows={2}
-          className={inputClass()}
-        />
+        <textarea name="notes" defaultValue={fields.notes ?? ""} rows={2} className={inputClass()} />
       </Label>
     </>
   );

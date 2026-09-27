@@ -154,3 +154,8 @@
 - Review page: Auto-approve switches for closings and purchase bills (settings in private storage, strow-system/settings/app-<ts>.json, newest wins).
 - ON: clean submissions are confirmed; anything suspicious is "flagged" and held. OFF: clean ones wait as pending_review. Flagged = AI anomaly, a field the AI wasn't sure of, bill maths not adding up — or Autopilot's per-bill check opening a finding (bill set to flagged with the reason in ai_anomalies).
 - Review cards show why ("Flagged: …" / "AI unsure about: total"); flagged first. Badges and Pulse count everything waiting. Lock-screen alerts say flagged/waiting and open Review.
+
+## v1.0.1 — 2026-09-27 — Closings: app split everywhere
+- Edit window (Sales / Review): Cash, Card, Talabat, Keeta, Beanz (+ other online) with a live total; online saved as their sum. Days saved before the split stay unsplit (their online shows as "Other online"), so opening Edit never changes a total.
+- Sales and Review cards show the full split.
+- A payment method with no row on the POS report = 0 (no orders), not a flag: the AI returns 0/high, and the server doesn't hold a closing for an app with no money when the entered totals add up to the report's total. Refunds, total mismatch, future date, negatives and an unsure cash/card read still flag.

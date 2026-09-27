@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
+import { payParts } from "@/lib/pay-split";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { StatusPill as SharedStatusPill } from "@/components/owner/StatusPill";
@@ -16,6 +17,9 @@ type ClosingRow = {
   cash_total: number;
   card_total: number;
   online_total: number;
+  talabat_total?: number | null;
+  keeta_total?: number | null;
+  beanz_total?: number | null;
   grand_total: number;
   status: string;
   notes: string | null;
@@ -97,7 +101,7 @@ export default async function OwnerReviewPage() {
     supabase
       .from("closings")
       .select(
-        "id, closing_date, cash_total, card_total, online_total, grand_total, status, notes, photo_drive_url, baristas(name), ai_anomalies, ai_confidence",
+        "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, grand_total, status, notes, photo_drive_url, baristas(name), ai_anomalies, ai_confidence",
       )
       .in("status", ["pending_review", "flagged"])
       .order("closing_date", { ascending: false }),
@@ -188,7 +192,7 @@ function ClosingCard({ row, locale }: { row: ClosingRow; locale: import("@/lib/i
             {formatDate(row.closing_date)} - {formatAed(row.grand_total)}
           </p>
           <p className="mt-1 text-xs text-neutral-500">
-            {tr("card.cash", locale)} {formatAed(row.cash_total)} - {tr("card.card", locale)} {formatAed(row.card_total)} - {tr("card.online", locale)} {formatAed(row.online_total)} - {tr("card.by", locale)} {row.baristas?.name ?? "-"}
+            {payParts(row).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}`).join(" - ")} - {tr("card.by", locale)} {row.baristas?.name ?? "-"}
           </p>
           {row.notes && (
             <p className="mt-2 text-xs italic text-neutral-500">{row.notes}</p>
@@ -207,6 +211,9 @@ function ClosingCard({ row, locale }: { row: ClosingRow; locale: import("@/lib/i
             cash_total: Number(row.cash_total),
             card_total: Number(row.card_total),
             online_total: Number(row.online_total),
+                    talabat_total: row.talabat_total == null ? null : Number(row.talabat_total),
+                    keeta_total: row.keeta_total == null ? null : Number(row.keeta_total),
+                    beanz_total: row.beanz_total == null ? null : Number(row.beanz_total),
             notes: row.notes,
           }}
         />

@@ -364,6 +364,7 @@ export function CloseFlow({
 
       <form action={handleSubmitForm} className="space-y-3">
         <input type="hidden" name="ai_confidence" value={JSON.stringify({ ...c, closing_date: dateConf })} />
+        <input type="hidden" name="ai_grand_total" value={extracted?.grand_total ?? ""} />
         <input
           type="hidden"
           name="ai_anomalies"

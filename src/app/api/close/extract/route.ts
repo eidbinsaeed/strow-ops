@@ -18,7 +18,7 @@ The café is paid through: Cash, Card, Talabat, Keeta and Beanz. On the POS "Pay
 - cash_total = the Cash row. card_total = the Card row (also "Visa", "Mastercard", "Network").
 - talabat_total = the Talabat row. keeta_total = the Keeta row (OCR may show it as "Kaeeta", "Keta", "Keeta Food" or "كيتا"). beanz_total = the Beanz row.
 - other_online_total = any other online or delivery method (Deliveroo, Careem, Noon, "Online"...) added together; null if there is none.
-- When the report clearly lists all methods and one of the five has no row, return 0 for it with "high" confidence. If the list is cut off or unreadable, return null.
+- A payment method with no row simply had no sales that day (e.g. no Keeta orders): return 0 for it with "high" confidence. That is normal — never treat a missing row as unreadable or as an anomaly. Only return null if the list itself is cut off or unreadable.
 - online_total = talabat_total + keeta_total + beanz_total + other_online_total (treat nulls as 0).
 - grand_total = the report's "Total Sales" figure in the header.
 
