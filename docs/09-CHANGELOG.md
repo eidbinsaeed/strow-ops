@@ -168,3 +168,8 @@
 - Cause of the fast credit burn: every chat step ran on Opus 5.5 and re-sent the whole prompt, tools, history and every earlier data/photo result at full price (a deep question = 0.5–1M input tokens ≈ $2–5).
 - Now: prompt caching (tools + system + rolling conversation breakpoint; cached reads 10%), Sonnet 5 by default (Opus 5.5 only in Deep mode), Haiku 4.5 for per-bill Autopilot checks, data results capped 8k chars (was 24k), history 10 messages × 1.8k chars (was 16 × 6k), chat ≤12 steps / 3 photos, Autopilot ≤6/16 steps and 1/4 photos.
 - ai_usage table: tokens + estimated USD per request (chat, finance chat, Autopilot, photo reading). AI activity shows today / month / breakdown, Deep-mode switch and a monthly budget ($10/20/40/80, default $20) that pauses Autopilot.
+
+## v1.0.4 — 2026-09-28 — Order counts from past photos
+- Sales page card: reads the POS "Transactions" numbers off every past closing photo that has no order count (last 40 days or all), 6 per request, 3 at a time, Sonnet 5, ≈1 cent a photo, logged in AI spend.
+- Saved only when the photo's sales total equals the saved closing (±AED 1), method counts add up, and the read is sure; never overwrites an existing count. Handwritten sheets are skipped; unclear ones are listed with the reason, a Photo link and "Use N orders".
+- closing_order_scans (migration 0015) records each photo's result so none is paid for twice.

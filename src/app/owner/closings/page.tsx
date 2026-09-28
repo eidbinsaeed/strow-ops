@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
+import { OrdersScanCard } from "@/components/owner/OrdersScanCard";
 import { payParts } from "@/lib/pay-split";
 import { Suspense } from "react";
 import { TableFilters } from "@/components/owner/TableFilters";
@@ -149,6 +150,8 @@ export default async function OwnerSalesPage({
           </p>
         </div>
       </header>
+
+      <OrdersScanCard />
 
       {missingDays.length > 0 && (
         <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-5">
