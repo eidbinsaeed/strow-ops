@@ -177,3 +177,8 @@
 ## v1.0.5 — 2026-09-28 — Channel comparison
 - Photo reader v2 also reads each row's Total Sales and fills Talabat / Keeta / Beanz for days saved with one lumped "online" number — only when cash, card and the apps all match the saved closing (±AED 1) and the read is sure; never overwrites. Photos read by v1 are re-read once for this; handwritten sheets never.
 - Pulse "How customers pay": per channel orders and average order (days with POS counts).
+
+## v1.0.6 — 2026-09-28 — Faster page switching
+- Cause: page code ran in Washington (iad1) while the database is in Singapore (ap-southeast-1): every query crossed the Pacific (~0.2 s each) and the phone reached the US first. Functions now run in Singapore (vercel.json regions: sin1), next to the database.
+- Loading screens (owner, AI chat): a tap switches instantly to an outline of the page while data loads; also lets Next prefetch the page shell.
+- Browser keeps just-visited pages for 30 s (experimental.staleTimes), so tab switching / back is instant.

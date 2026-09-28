@@ -1,3 +1,4 @@
 {
+  "regions": ["sin1"],
   "crons": [{ "path": "/api/ai/autopilot", "schedule": "0 22 * * *" }]
 }
