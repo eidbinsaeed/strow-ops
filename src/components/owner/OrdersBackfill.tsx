@@ -62,9 +62,9 @@ export function OrdersBackfill({ recent, all, checks }: { recent: number; all: n
   return (
     <section className="mb-6 flex flex-col gap-3 rounded-[24px] bg-white p-5">
       <div>
-        <p className="font-display text-[17px] font-bold text-strow-ink">Order counts from past photos</p>
+        <p className="font-display text-[17px] font-bold text-strow-ink">Orders &amp; app sales from past photos</p>
         <p className="mt-0.5 text-[13px] text-neutral-500">
-          Reads the Transactions numbers off each POS photo, once. Saved only when the photo&apos;s total matches that day. About 1 cent a photo.
+          Reads the order counts and each app&apos;s sales (Talabat, Keeta, Beanz) off each POS photo, once. Saved only when the photo matches that day&apos;s closing. About 1 cent a photo.
         </p>
       </div>
       {all > recent && !running && !done.length ? (

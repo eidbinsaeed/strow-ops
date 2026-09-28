@@ -16,7 +16,23 @@ const MODELS = [process.env.STROW_AI_MODEL || "claude-sonnet-5", "claude-sonnet-
 const METHODS = ["cash", "card", "talabat", "keeta", "beanz", "other"] as const;
 
 export type ScanOutcome = { id: string; date: string; status: "filled" | "not_pos" | "check" | "error"; reason?: string | null; transactions?: number | null };
-type Row = { id: string; closing_date: string; grand_total: number | string; photo_drive_url: string | null };
+type Money = number | string | null;
+type Row = {
+  id: string;
+  closing_date: string;
+  grand_total: Money;
+  cash_total: Money;
+  card_total: Money;
+  online_total: Money;
+  talabat_total: Money;
+  keeta_total: Money;
+  beanz_total: Money;
+  transactions: number | null;
+  photo_drive_url: string | null;
+};
+const SELECT = "id, closing_date, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, photo_drive_url";
+/** A day still needs the photo read if it has no order count, or its online total isn't split by app yet. */
+const NEEDS = "transactions.is.null,and(talabat_total.is.null,keeta_total.is.null,beanz_total.is.null,online_total.gt.0)";
 
 const PROMPT = `This photo is from Qave Cafe's end-of-day close. Usually it is the POS "Payment Methods" report: one row per payment method (Beanz, Card, Kaeeta/Keeta, Talabat, Cash) with a "Transactions" column (a COUNT of orders) and a "Total Sales" column (money), plus totals at the top ("Total Transactions", "Total Sales"). Sometimes it is a handwritten sheet instead.
 
@@ -25,10 +41,11 @@ Return ONLY this JSON, nothing else:
  "total_transactions": integer or null,
  "by_method": {"cash": int, "card": int, "talabat": int, "keeta": int, "beanz": int, "other": int} or null,
  "total_sales": number or null,
+ "sales_by_method": {"cash": number, "card": number, "talabat": number, "keeta": number, "beanz": number, "other": number} or null,
  "confidence": "high" or "medium" or "low",
  "note": "one short line, only if something is unclear"}
 
-Rules: transactions are counts, never money. "Kaeeta"/"Keta" = keeta. A method with no row had no orders, so 0. total_sales is the report's overall sales total in AED. If it is not a POS report, or the counts can't be read, use null for them. Say "high" only if every number is clearly readable.`;
+Rules: transactions are counts, never money. "Kaeeta"/"Keta" = keeta. A method with no row had no orders, so 0. total_sales is the report's overall sales total in AED; sales_by_method is each row's "Total Sales" amount in AED (a method with no row = 0). If it is not a POS report, or the counts can't be read, use null for them. Say "high" only if every number is clearly readable.`;
 
 function fileIdOf(url: string | null): string | null {
   if (!url) return null;
@@ -49,12 +66,16 @@ function sinceDate(days: number): string {
 
 async function candidates(days: number | null, exclude: string[]): Promise<Row[]> {
   const db = createServiceClient();
-  const { data: scanned } = await db.from("closing_order_scans").select("closing_id").in("status", ["filled", "not_pos", "check"]).range(0, 19999);
-  const skip = new Set([...((scanned ?? []) as { closing_id: string }[]).map((r) => r.closing_id), ...exclude]);
+  // Skip handwritten sheets, and photos already read with this version of the reader.
+  const { data: scanned } = await db.from("closing_order_scans").select("closing_id, status, read").range(0, 19999);
+  const skip = new Set(exclude);
+  for (const r of (scanned ?? []) as { closing_id: string; status: string; read: { v?: number } | null }[]) {
+    if (r.status === "not_pos" || ((r.status === "filled" || r.status === "check") && r.read?.v === 2)) skip.add(r.closing_id);
+  }
   let q = db
     .from("closings")
-    .select("id, closing_date, grand_total, photo_drive_url")
-    .is("transactions", null)
+    .select(SELECT)
+    .or(NEEDS)
     .neq("status", "rejected")
     .not("photo_drive_url", "is", null)
     .order("closing_date", { ascending: false })
@@ -139,20 +160,67 @@ async function readOne(row: Row, usage: Map<string, Usage>): Promise<ScanOutcome
   }
   const salesRaw = Number(read.total_sales);
   const sales = read.total_sales != null && Number.isFinite(salesRaw) ? salesRaw : null;
+  let sb: Record<string, number> | null = null;
+  if (read.sales_by_method && typeof read.sales_by_method === "object") {
+    sb = {};
+    for (const k of METHODS) {
+      const v = (read.sales_by_method as Record<string, unknown>)[k];
+      const n = Number(v);
+      if (v != null && Number.isFinite(n) && n >= 0) sb[k] = Math.round(n * 100) / 100;
+    }
+    if (!Object.keys(sb).length) sb = null;
+  }
   const saved = Number(row.grand_total) || 0;
   const sum = by ? Object.values(by).reduce((a, b) => a + b, 0) : null;
   const note = typeof read.note === "string" && read.note.trim() ? read.note.trim().slice(0, 160) : null;
-  const facts = { transactions: tx, by_method: by, total_sales: sales, confidence: read.confidence ?? null, note, model: used };
+  const facts = { v: 2, transactions: tx, by_method: by, total_sales: sales, sales_by_method: sb, confidence: read.confidence ?? null, note, model: used };
+  const aed = (x: number) => x.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
   if (read.is_pos_report === false) return out("not_pos", "Handwritten sheet — no order count on it", facts);
-  if (tx == null) return out("check", "Couldn't read the order count", facts);
-  if (sum != null && sum !== tx) return out("check", `Methods add up to ${sum} orders but the total says ${tx}`, facts, tx);
-  if (sales == null) return out("check", "Couldn't read the photo's sales total to confirm the day", facts, tx);
-  if (Math.abs(sales - saved) > 1) return out("check", `Photo total AED ${sales.toLocaleString("en-US")} ≠ saved AED ${saved.toLocaleString("en-US")}`, facts, tx);
-  if (read.confidence !== "high") return out("check", note ? `Not fully sure: ${note}` : "Not fully sure of the numbers", facts, tx);
+  const sure = read.confidence === "high";
+  const dayOk = sales != null && Math.abs(sales - saved) <= 1;
+  const problems: string[] = [];
+  const patch: Record<string, unknown> = {};
 
-  const { error } = await db.from("closings").update({ transactions: tx, transactions_by_method: by }).eq("id", row.id).is("transactions", null);
-  if (error) return out("error", error.message, facts, tx);
+  // 1) Order counts — only if the day has none yet.
+  if (row.transactions == null) {
+    if (tx == null) problems.push("Couldn't read the order count");
+    else if (sum != null && sum !== tx) problems.push(`Methods add up to ${sum} orders but the total says ${tx}`);
+    else if (!dayOk) problems.push(sales == null ? "Couldn't read the photo's sales total to confirm the day" : `Photo total AED ${aed(sales)} ≠ saved AED ${aed(saved)}`);
+    else if (!sure) problems.push(note ? `Not fully sure: ${note}` : "Not fully sure of the numbers");
+    else {
+      patch.transactions = tx;
+      patch.transactions_by_method = by;
+    }
+  }
+  // 2) Each app's sales — only if the day's online total isn't split yet, and cash, card and the apps all match what's saved.
+  const needSplit = row.talabat_total == null && row.keeta_total == null && row.beanz_total == null && Number(row.online_total) > 0;
+  if (needSplit) {
+    if (!sb) problems.push("Couldn't read each app's sales");
+    else {
+      const apps = (sb.talabat ?? 0) + (sb.keeta ?? 0) + (sb.beanz ?? 0) + (sb.other ?? 0);
+      const match =
+        Math.abs((sb.cash ?? 0) - Number(row.cash_total ?? 0)) <= 1 &&
+        Math.abs((sb.card ?? 0) - Number(row.card_total ?? 0)) <= 1 &&
+        Math.abs(apps - Number(row.online_total ?? 0)) <= 1;
+      if (!match) problems.push(`App sales on the photo (online ${aed(apps)}) don't match the saved day (online ${aed(Number(row.online_total ?? 0))})`);
+      else if (!sure) problems.push(note ? `Not fully sure: ${note}` : "Not fully sure of the app amounts");
+      else {
+        patch.talabat_total = sb.talabat ?? 0;
+        patch.keeta_total = sb.keeta ?? 0;
+        patch.beanz_total = sb.beanz ?? 0;
+      }
+    }
+  }
+  if (Object.keys(patch).length) {
+    // Guards: never overwrite a count or a split that's already there.
+    let q = db.from("closings").update(patch).eq("id", row.id);
+    if ("transactions" in patch) q = q.is("transactions", null);
+    if ("talabat_total" in patch) q = q.is("talabat_total", null).is("keeta_total", null).is("beanz_total", null);
+    const { error } = await q;
+    if (error) return out("error", error.message, facts, tx);
+  }
+  if (problems.length) return out("check", problems[0], facts, tx);
   return out("filled", null, facts, tx);
 }
 

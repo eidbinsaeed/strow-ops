@@ -173,3 +173,7 @@
 - Sales page card: reads the POS "Transactions" numbers off every past closing photo that has no order count (last 40 days or all), 6 per request, 3 at a time, Sonnet 5, ≈1 cent a photo, logged in AI spend.
 - Saved only when the photo's sales total equals the saved closing (±AED 1), method counts add up, and the read is sure; never overwrites an existing count. Handwritten sheets are skipped; unclear ones are listed with the reason, a Photo link and "Use N orders".
 - closing_order_scans (migration 0015) records each photo's result so none is paid for twice.
+
+## v1.0.5 — 2026-09-28 — Channel comparison
+- Photo reader v2 also reads each row's Total Sales and fills Talabat / Keeta / Beanz for days saved with one lumped "online" number — only when cash, card and the apps all match the saved closing (±AED 1) and the read is sure; never overwrites. Photos read by v1 are re-read once for this; handwritten sheets never.
+- Pulse "How customers pay": per channel orders and average order (days with POS counts).

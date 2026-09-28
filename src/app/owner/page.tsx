@@ -21,7 +21,7 @@ type CashPos = {
   anchor_date: string | null;
   needs_opening_count: boolean | number | null;
 };
-type Closing = { closing_date: string; grand_total: Num; cash_total: Num; card_total: Num; online_total: Num; talabat_total: Num; keeta_total: Num; beanz_total: Num; transactions: number | null };
+type Closing = { closing_date: string; grand_total: Num; cash_total: Num; card_total: Num; online_total: Num; talabat_total: Num; keeta_total: Num; beanz_total: Num; transactions: number | null; transactions_by_method: Record<string, number> | null };
 type Finding = { id: string; status: string; severity: string; title: string; detail: string | null; ops: unknown[] | null };
 
 const N = (v: unknown) => {
@@ -72,7 +72,7 @@ export default async function PulsePage() {
     db.from("v_cash_position").select("*").limit(1),
     db
       .from("closings")
-      .select("closing_date, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions")
+      .select("closing_date, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, transactions_by_method")
       .gte("closing_date", addDays(today, -120))
       .lte("closing_date", today)
       .neq("status", "rejected")
@@ -148,6 +148,30 @@ export default async function PulsePage() {
     { k: ar ? "أونلاين" : "online", v: otherOnline, c: "#2350D0" },
     { k: ar ? "نقد" : "cash", v: cashS, c: "#C98300" },
   ].filter((x) => x.v > 0.004);
+
+  // Orders and average order per channel — from days that have the POS counts (and, for the apps, the app split).
+  const CH = [
+    { key: "card", label: ar ? "بطاقة" : "Card", c: "#0F1C2B" },
+    { key: "talabat", label: ar ? "طلبات" : "Talabat", c: "#F26B1D" },
+    { key: "beanz", label: "Beanz", c: "#8A5A3B" },
+    { key: "keeta", label: ar ? "كيتا" : "Keeta", c: "#7C83A6" },
+    { key: "cash", label: ar ? "نقد" : "Cash", c: "#C98300" },
+  ] as const;
+  const amountOf = (r: Closing, k: (typeof CH)[number]["key"]): Num =>
+    k === "card" ? r.card_total : k === "cash" ? r.cash_total : k === "talabat" ? r.talabat_total : k === "keeta" ? r.keeta_total : r.beanz_total;
+  const chStats = CH.map((ch) => {
+    let orders = 0, sales = 0;
+    for (const r of splitRows) {
+      const n = r.transactions_by_method?.[ch.key];
+      const amt = amountOf(r, ch.key);
+      if (n == null || amt == null) continue;
+      orders += Number(n) || 0;
+      sales += N(amt);
+    }
+    return { ...ch, orders, sales, avg: orders > 0 ? sales / orders : 0 };
+  })
+    .filter((x) => x.orders > 0)
+    .sort((a, b) => b.orders - a.orders);
 
   // Average day by weekday (last 120 days)
   const byDow = new Map<number, { sum: number; n: number }>();
@@ -335,6 +359,22 @@ export default async function PulsePage() {
                   ))}
                 </div>
                 <span className="text-xs text-neutral-500">{monthRows.length ? (ar ? "هذا الشهر" : "This month") : ar ? "آخر 30 يوماً" : "Last 30 days"}</span>
+                {chStats.length ? (
+                  <div className="flex flex-col border-t border-[#EDF0F3] pt-2">
+                    {chStats.map((s) => (
+                      <div key={s.key} className="flex items-center gap-2 py-1 text-[13px]">
+                        <i className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: s.c }} />
+                        <span className="min-w-0 flex-1 truncate">{s.label}</span>
+                        <span className="tabular-nums text-neutral-500">
+                          {s.orders} {ar ? "طلب" : "orders"}
+                        </span>
+                        <span className="min-w-[78px] text-end font-semibold tabular-nums">
+                          {ar ? "متوسط" : "avg"} {fmt(s.avg, 0)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </>
             ) : (
               <span className="text-sm text-neutral-500">{ar ? "لا توجد بيانات بعد" : "No sales recorded yet"}</span>
