@@ -3,6 +3,9 @@ import type { Route } from "next";
 import { createServiceClient } from "@/lib/supabase/server";
 import { ActionButtons, StatusChip } from "@/components/ai/ActionButtons";
 import { BackButton } from "@/components/pulse/BackButton";
+import { AiSpendControls } from "@/components/ai/AiSpendControls";
+import { getSettings } from "@/lib/settings";
+import { dayStartIso, monthStartIso, spendSince } from "@/lib/ai/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +44,10 @@ export default async function AiActivityPage({ searchParams }: { searchParams: P
     ...TABS.map((t) => db.from("ai_actions").select("*", { count: "exact", head: true }).in("status", [...t.statuses]).or("entity_table.is.null,entity_table.not.like.finance*")),
   ]);
   const rows = (listRes.data ?? []) as Row[];
+  const [settings, month, today] = await Promise.all([getSettings(), spendSince(monthStartIso()), spendSince(dayStartIso())]);
+  const pct = Math.min(100, Math.round((month.total / settings.aiMonthlyBudget) * 100));
+  const SRC: Record<string, string> = { chat: "Chat", finance: "Finance chat", autopilot: "Autopilot", "photo-closing": "Reading closings", "photo-bill": "Reading bills" };
+  const parts = Object.entries(month.bySource).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SRC[k] ?? k} $${v.toFixed(2)}`);
 
   return (
     <div className="page">
@@ -54,6 +61,23 @@ export default async function AiActivityPage({ searchParams }: { searchParams: P
           <p className="text-sm text-neutral-500">Everything Strow AI fixed, proposed or flagged — all undoable.</p>
         </div>
       </header>
+
+      <section className="mb-5 flex flex-col gap-3 rounded-[24px] bg-white p-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="font-display text-[17px] font-bold">AI spend</span>
+          <span className="text-[12px] text-neutral-500">today ${today.total.toFixed(2)} · {today.calls} requests</span>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="font-display text-3xl font-bold tabular-nums">${month.total.toFixed(2)}</span>
+          <span className="text-sm text-neutral-500">this month of ${settings.aiMonthlyBudget}</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-neutral-100">
+          <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: pct >= 90 ? "#9A1B12" : "#2350D0" }} />
+        </div>
+        <p className="text-[12px] text-neutral-500">{parts.length ? parts.join(" · ") : "No AI use recorded yet this month."}</p>
+        <AiSpendControls deep={settings.aiDeep} budget={settings.aiMonthlyBudget} />
+        <p className="text-[11px] text-neutral-400">Tracked from 28 Sep 2026 — spend before that isn&apos;t included. Estimates from token counts; your Anthropic console is the exact bill.</p>
+      </section>
 
       <div className="-mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-1">
         {TABS.map((t, i) => {

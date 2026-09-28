@@ -13,9 +13,13 @@ export type AppSettings = {
   autoApproveClosings: boolean;
   /** Clean purchase bills go straight into the books; flagged ones always wait. */
   autoApproveBills: boolean;
+  /** Use the most capable (and most expensive) model for chat. Off = Sonnet. */
+  aiDeep: boolean;
+  /** Monthly AI budget in USD; Autopilot pauses once it's used. */
+  aiMonthlyBudget: number;
 };
 
-const DEFAULTS: AppSettings = { autoApproveClosings: true, autoApproveBills: true };
+const DEFAULTS: AppSettings = { autoApproveClosings: true, autoApproveBills: true, aiDeep: false, aiMonthlyBudget: 20 };
 
 async function newest(): Promise<string | null> {
   const { data } = await createServiceClient().storage.from(BUCKET).list(DIR, { limit: 100, sortBy: { column: "name", order: "desc" } });
@@ -33,6 +37,8 @@ export async function getSettings(): Promise<AppSettings> {
     return {
       autoApproveClosings: typeof j.autoApproveClosings === "boolean" ? j.autoApproveClosings : DEFAULTS.autoApproveClosings,
       autoApproveBills: typeof j.autoApproveBills === "boolean" ? j.autoApproveBills : DEFAULTS.autoApproveBills,
+      aiDeep: typeof j.aiDeep === "boolean" ? j.aiDeep : DEFAULTS.aiDeep,
+      aiMonthlyBudget: typeof j.aiMonthlyBudget === "number" && j.aiMonthlyBudget > 0 ? j.aiMonthlyBudget : DEFAULTS.aiMonthlyBudget,
     };
   } catch {
     return { ...DEFAULTS };

@@ -163,3 +163,8 @@
 ## v1.0.2 — 2026-09-27 — Orders per day
 - closings.transactions (orders that day, POS "Total Transactions") + closings.transactions_by_method (orders per payment method, jsonb). 26 Sep backfilled: 36 orders (card 21, beanz 8, talabat 3, keeta 2, cash 2) → avg AED 38.92.
 - The AI reads the Transactions column/header from the POS report; the barista confirms "Orders today". Sales/Review cards: "36 orders · avg AED 38.92"; Edit window has Orders; Pulse: orders on the last close, in the day strip, and "Orders this month" / "Average order".
+
+## v1.0.3 — 2026-09-28 — AI cost fix
+- Cause of the fast credit burn: every chat step ran on Opus 5.5 and re-sent the whole prompt, tools, history and every earlier data/photo result at full price (a deep question = 0.5–1M input tokens ≈ $2–5).
+- Now: prompt caching (tools + system + rolling conversation breakpoint; cached reads 10%), Sonnet 5 by default (Opus 5.5 only in Deep mode), Haiku 4.5 for per-bill Autopilot checks, data results capped 8k chars (was 24k), history 10 messages × 1.8k chars (was 16 × 6k), chat ≤12 steps / 3 photos, Autopilot ≤6/16 steps and 1/4 photos.
+- ai_usage table: tokens + estimated USD per request (chat, finance chat, Autopilot, photo reading). AI activity shows today / month / breakdown, Deep-mode switch and a monthly budget ($10/20/40/80, default $20) that pauses Autopilot.

@@ -3,7 +3,8 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import { getOwnerSession } from "@/lib/auth/owner-session";
 import { createServiceClient } from "@/lib/supabase/server";
 import { buildSystemPrompt } from "@/lib/ai/prompt";
-import { runAgent } from "@/lib/ai/agent";
+import { MODELS, runAgent } from "@/lib/ai/agent";
+import { getSettings } from "@/lib/settings";
 import { closeOpenItem } from "@/lib/ai/ops";
 import { FINANCE_TOOLS, buildFinancePrompt, executeFinanceTool } from "@/lib/ai/finance";
 import type { ToolContext } from "@/lib/ai/tools";
@@ -40,7 +41,7 @@ function summarize(blocks: Block[]): string {
     })
     .filter(Boolean)
     .join("\n")
-    .slice(0, 6000);
+    .slice(0, 1800);
 }
 
 function friendly(msg: string): string {
@@ -97,7 +98,7 @@ export async function POST(req: Request) {
     .select("role, text")
     .eq("chat_id", cid)
     .order("created_at", { ascending: false })
-    .limit(16);
+    .limit(10);
   const history = ((hist ?? []) as { role: "user" | "assistant"; text: string | null }[])
     .reverse()
     .filter((m) => m.text && m.text.trim())
@@ -120,7 +121,7 @@ export async function POST(req: Request) {
           /* client went away */
         }
       };
-      const ctx: ToolContext = { mode: "chat", chatId: cid, emit: send, blocks: [], photosLeft: 6, actions: [] };
+      const ctx: ToolContext = { mode: "chat", chatId: cid, emit: send, blocks: [], photosLeft: 3, actions: [] };
       send({ t: "chat", chatId: cid, at: startedAt });
       send({ t: "status", text: "Thinking" });
       try {
@@ -129,8 +130,10 @@ export async function POST(req: Request) {
           system,
           messages,
           ctx,
-          maxSteps: 20,
+          maxSteps: 12,
           deadline: Date.now() + 250_000,
+          model: (await getSettings()).aiDeep ? MODELS.deep : MODELS.standard,
+          usageSource: finance ? "finance" : "chat",
           ...(finance ? { tools: FINANCE_TOOLS, execute: executeFinanceTool } : {}),
         });
         // "Ask AI" on an open item: once a fix landed, take the item off the list.

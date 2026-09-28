@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getBaristaSession } from "@/lib/auth/session";
 
+import { logResponseUsage } from "@/lib/ai/usage";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -158,6 +159,7 @@ export async function POST(request: Request) {
         },
       ],
     });
+    await logResponseUsage("photo-closing", "claude-sonnet-4-6", (response as unknown as { usage?: unknown }).usage);
 
     // Extract text from response
     const textBlock = response.content.find((b) => b.type === "text");

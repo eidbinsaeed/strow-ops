@@ -337,7 +337,7 @@ async function queryDb(i: Json): Promise<ToolOutcome> {
   if (error) return { content: `SQL error: ${error.message}`, isError: true };
   const rows = (Array.isArray(data) ? data : []) as unknown[];
   let text = JSON.stringify(rows);
-  if (text.length > 24000) text = text.slice(0, 24000) + ` … (truncated, ${rows.length} rows — aggregate more or add LIMIT)`;
+  if (text.length > 8000) text = text.slice(0, 8000) + ` … (truncated, ${rows.length} rows — aggregate in SQL or add LIMIT)`;
   return { content: `${rows.length} row(s): ${text}` };
 }
 

@@ -5,7 +5,9 @@
  */
 import { createServiceClient } from "@/lib/supabase/server";
 import { buildSystemPrompt } from "./prompt";
-import { runAgent, PRIMARY_MODEL } from "./agent";
+import { runAgent, MODELS } from "./agent";
+import { monthStartIso, spendSince } from "./usage";
+import { getSettings } from "@/lib/settings";
 import type { ToolContext } from "./tools";
 import { broadcastLive } from "@/lib/live";
 import { notifyAutopilot } from "@/lib/push";
@@ -69,16 +71,23 @@ export async function runAutopilot(
     .limit(1);
   const since = (lastDone?.[0] as { started_at?: string } | undefined)?.started_at ?? new Date(Date.now() - 7 * 86_400_000).toISOString();
 
+  // Monthly AI budget: once it's used, Autopilot waits until next month (chat still works).
+  const [settings, spent] = await Promise.all([getSettings(), spendSince(monthStartIso())]);
+  if (spent.total >= settings.aiMonthlyBudget) {
+    return { runId: "", summary: `Paused — this month's AI budget ($${settings.aiMonthlyBudget}) is used ($${spent.total.toFixed(2)}).`, applied: 0, proposed: 0, flagged: 0, skipped: true };
+  }
+  const model = trigger === "expense" ? MODELS.light : MODELS.standard;
+
   const { data: run, error: runErr } = await db
     .from("ai_runs")
-    .insert({ trigger, status: "running", model: PRIMARY_MODEL })
+    .insert({ trigger, status: "running", model })
     .select("id")
     .single();
   if (runErr || !run) throw new Error(runErr?.message ?? "Could not start run");
   const runId = (run as { id: string }).id;
 
   const single = trigger === "expense";
-  const ctx: ToolContext = { mode: "autopilot", runId, emit: () => {}, blocks: [], photosLeft: single ? 2 : 8, actions: [] };
+  const ctx: ToolContext = { mode: "autopilot", runId, emit: () => {}, blocks: [], photosLeft: single ? 1 : 4, actions: [] };
 
   const task = single
     ? `A barista just submitted purchase bill ${opts.expenseId}. Check it now: read the bill row and its line items, compare with this supplier's history and normal prices (see your memory), and look at the photo if anything looks off — quantities that are really pack sizes, unit prices far from normal, dates far from today, VAT maths, lines not adding up to the total, a duplicate invoice number, an unknown or duplicate supplier, lines not linked to an inventory item. Fix what you can prove, propose or flag the rest. Be quick: this is one bill.`
@@ -94,7 +103,9 @@ Work in batches with SQL that finds problems across many rows at once. Look at u
       system,
       messages: [{ role: "user", content: task }],
       ctx,
-      maxSteps: single ? 10 : 28,
+      maxSteps: single ? 6 : 16,
+      model,
+      usageSource: "autopilot",
       deadline: Date.now() + (opts.budgetMs ?? (single ? 110_000 : 250_000)),
     });
     const applied = ctx.actions.filter((a) => a.status === "applied").length;
