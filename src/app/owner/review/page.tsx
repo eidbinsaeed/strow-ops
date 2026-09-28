@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
-import { payParts } from "@/lib/pay-split";
+import { ordersFor, payParts } from "@/lib/pay-split";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { StatusPill as SharedStatusPill } from "@/components/owner/StatusPill";
@@ -21,6 +21,7 @@ type ClosingRow = {
   keeta_total?: number | null;
   beanz_total?: number | null;
   transactions?: number | null;
+  transactions_by_method?: Record<string, number> | null;
   grand_total: number;
   status: string;
   notes: string | null;
@@ -102,7 +103,7 @@ export default async function OwnerReviewPage() {
     supabase
       .from("closings")
       .select(
-        "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, grand_total, status, notes, photo_drive_url, baristas(name), ai_anomalies, ai_confidence",
+        "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, transactions_by_method, grand_total, status, notes, photo_drive_url, baristas(name), ai_anomalies, ai_confidence",
       )
       .in("status", ["pending_review", "flagged"])
       .order("closing_date", { ascending: false }),
@@ -193,7 +194,7 @@ function ClosingCard({ row, locale }: { row: ClosingRow; locale: import("@/lib/i
             {formatDate(row.closing_date)} - {formatAed(row.grand_total)}
           </p>
           <p className="mt-1 text-xs text-neutral-500">
-            {payParts(row).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}`).join(" - ")}{row.transactions ? ` - ${row.transactions} orders · avg ${formatAed(Number(row.grand_total) / row.transactions)}` : ""} - {tr("card.by", locale)} {row.baristas?.name ?? "-"}
+            {payParts(row).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}${ordersFor(row.transactions_by_method, p.k)}`).join(" - ")}{row.transactions ? ` - ${row.transactions} orders · avg ${formatAed(Number(row.grand_total) / row.transactions)}` : ""} - {tr("card.by", locale)} {row.baristas?.name ?? "-"}
           </p>
           {row.notes && (
             <p className="mt-2 text-xs italic text-neutral-500">{row.notes}</p>

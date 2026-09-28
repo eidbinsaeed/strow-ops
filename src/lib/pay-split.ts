@@ -20,3 +20,10 @@ export function payParts(r: PayRow): { k: "cash" | "card" | "online" | "talabat"
   if (other > 0.004) parts.push({ k: "other", v: Math.round(other * 100) / 100 });
   return parts;
 }
+
+/** " (8)" — how many orders a payment method had that day, when the POS counts are known. */
+export function ordersFor(by: Record<string, number> | null | undefined, k: string): string {
+  if (!by) return "";
+  const n = k === "online" ? ["talabat", "keeta", "beanz", "other"].reduce((a, x) => a + (Number(by[x]) || 0), 0) : by[k];
+  return n == null ? "" : ` (${n})`;
+}

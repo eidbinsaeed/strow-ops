@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
 import { OrdersScanCard } from "@/components/owner/OrdersScanCard";
-import { payParts } from "@/lib/pay-split";
+import { ordersFor, payParts } from "@/lib/pay-split";
 import { Suspense } from "react";
 import { TableFilters } from "@/components/owner/TableFilters";
 import { parseFilters } from "@/lib/filters";
@@ -23,6 +23,7 @@ type ClosingRow = {
   keeta_total?: number | null;
   beanz_total?: number | null;
   transactions?: number | null;
+  transactions_by_method?: Record<string, number> | null;
   grand_total: number;
   status: string;
   notes: string | null;
@@ -101,7 +102,7 @@ export default async function OwnerSalesPage({
   let query = supabase
     .from("closings")
     .select(
-      "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, grand_total, status, notes, photo_drive_url, baristas(name)",
+      "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, transactions_by_method, grand_total, status, notes, photo_drive_url, baristas(name)",
     )
     .order("closing_date", { ascending: false })
     .limit(200);
@@ -203,7 +204,7 @@ export default async function OwnerSalesPage({
                     {formatAed(c.grand_total)}
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    {payParts(c).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}`).join(" - ")}{c.transactions ? ` - ${c.transactions} orders · avg ${formatAed(Number(c.grand_total) / c.transactions)}` : ""} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
+                    {payParts(c).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}${ordersFor(c.transactions_by_method, p.k)}`).join(" - ")}{c.transactions ? ` - ${c.transactions} orders · avg ${formatAed(Number(c.grand_total) / c.transactions)}` : ""} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
                   </p>
                   {c.notes && (
                     <p className="mt-2 text-xs italic text-neutral-500">

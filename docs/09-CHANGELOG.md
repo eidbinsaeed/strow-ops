@@ -182,3 +182,6 @@
 - Cause: page code ran in Washington (iad1) while the database is in Singapore (ap-southeast-1): every query crossed the Pacific (~0.2 s each) and the phone reached the US first. Functions now run in Singapore (vercel.json regions: sin1), next to the database.
 - Loading screens (owner, AI chat): a tap switches instantly to an outline of the page while data loads; also lets Next prefetch the page shell.
 - Browser keeps just-visited pages for 30 s (experimental.staleTimes), so tab switching / back is instant.
+
+## v1.0.7 — 2026-09-28 — Orders per method on each day
+- Sales/Review cards show each method's order count in brackets, e.g. "Card AED 776.00 (16) - Talabat AED 364.00 (8)". Data: 113 days with per-method counts (9 May–27 Sep), 109 with app sales. The 5 July/Aug days whose POS showed one "Online payment" row were cleared from "Take a look" (no per-app split exists).
