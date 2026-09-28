@@ -194,7 +194,7 @@ function ClosingCard({ row, locale }: { row: ClosingRow; locale: import("@/lib/i
             {formatDate(row.closing_date)} - {formatAed(row.grand_total)}
           </p>
           <p className="mt-1 text-xs text-neutral-500">
-            {payParts(row).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}${ordersFor(row.transactions_by_method, p.k)}`).join(" - ")}{row.transactions ? ` - ${row.transactions} orders · avg ${formatAed(Number(row.grand_total) / row.transactions)}` : ""} - {tr("card.by", locale)} {row.baristas?.name ?? "-"}
+            {payParts(row).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: locale === "ar" ? "تطبيقات (مجمعة)" : "Apps combined", talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}${ordersFor(row.transactions_by_method, p.k)}`).join(" - ")}{row.transactions ? ` - ${row.transactions} orders · avg ${formatAed(Number(row.grand_total) / row.transactions)}` : ""} - {tr("card.by", locale)} {row.baristas?.name ?? "-"}
           </p>
           {row.notes && (
             <p className="mt-2 text-xs italic text-neutral-500">{row.notes}</p>

@@ -145,7 +145,7 @@ export default async function PulsePage() {
     { k: ar ? "طلبات" : "Talabat", v: talabat, c: "#F26B1D" },
     { k: "Beanz", v: beanz, c: "#8A5A3B" },
     { k: ar ? "كيتا" : "Keeta", v: keeta, c: "#7C83A6" },
-    { k: ar ? "أونلاين" : "online", v: otherOnline, c: "#2350D0" },
+    { k: ar ? "تطبيقات مجمعة" : "apps combined", v: otherOnline, c: "#2350D0" },
     { k: ar ? "نقد" : "cash", v: cashS, c: "#C98300" },
   ].filter((x) => x.v > 0.004);
 
@@ -172,6 +172,19 @@ export default async function PulsePage() {
   })
     .filter((x) => x.orders > 0)
     .sort((a, b) => b.orders - a.orders);
+  // Days before the POS listed each app separately: Talabat + Keeta + Beanz were one "Online payment" line.
+  let comboOrders = 0, comboSales = 0;
+  for (const r of splitRows) {
+    if (r.talabat_total != null || r.keeta_total != null || r.beanz_total != null) continue;
+    const by = r.transactions_by_method;
+    if (!by || N(r.online_total) <= 0) continue;
+    comboOrders += ["talabat", "keeta", "beanz", "other"].reduce((a, k) => a + (Number(by[k]) || 0), 0);
+    comboSales += N(r.online_total);
+  }
+  const channelRows = [
+    ...chStats,
+    ...(comboOrders > 0 ? [{ key: "apps", label: ar ? "تطبيقات (مجمعة)" : "Apps combined", c: "#2350D0", orders: comboOrders, sales: comboSales, avg: comboSales / comboOrders }] : []),
+  ].sort((a, b) => b.orders - a.orders);
 
   // Average day by weekday (last 120 days)
   const byDow = new Map<number, { sum: number; n: number }>();
@@ -359,9 +372,9 @@ export default async function PulsePage() {
                   ))}
                 </div>
                 <span className="text-xs text-neutral-500">{monthRows.length ? (ar ? "هذا الشهر" : "This month") : ar ? "آخر 30 يوماً" : "Last 30 days"}</span>
-                {chStats.length ? (
+                {channelRows.length ? (
                   <div className="flex flex-col border-t border-[#EDF0F3] pt-2">
-                    {chStats.map((s) => (
+                    {channelRows.map((s) => (
                       <div key={s.key} className="flex items-center gap-2 py-1 text-[13px]">
                         <i className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: s.c }} />
                         <span className="min-w-0 flex-1 truncate">{s.label}</span>

@@ -204,7 +204,7 @@ export default async function OwnerSalesPage({
                     {formatAed(c.grand_total)}
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">
-                    {payParts(c).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: tr("card.online", locale), talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}${ordersFor(c.transactions_by_method, p.k)}`).join(" - ")}{c.transactions ? ` - ${c.transactions} orders · avg ${formatAed(Number(c.grand_total) / c.transactions)}` : ""} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
+                    {payParts(c).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: locale === "ar" ? "تطبيقات (مجمعة)" : "Apps combined", talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}${ordersFor(c.transactions_by_method, p.k)}`).join(" - ")}{c.transactions ? ` - ${c.transactions} orders · avg ${formatAed(Number(c.grand_total) / c.transactions)}` : ""} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
                   </p>
                   {c.notes && (
                     <p className="mt-2 text-xs italic text-neutral-500">

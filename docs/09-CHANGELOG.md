@@ -185,3 +185,7 @@
 
 ## v1.0.7 — 2026-09-28 — Orders per method on each day
 - Sales/Review cards show each method's order count in brackets, e.g. "Card AED 776.00 (16) - Talabat AED 364.00 (8)". Data: 113 days with per-method counts (9 May–27 Sep), 109 with app sales. The 5 July/Aug days whose POS showed one "Online payment" row were cleared from "Take a look" (no per-app split exists).
+
+## v1.0.8 — 2026-09-28 — "Apps combined" instead of fake zeros
+- Until ~22 Sep 2026 the POS printed Talabat, Keeta and Beanz as one "Online payment" line. The photo reader had saved those days as Talabat/Keeta/Beanz = 0; 102 days (9 May–21 Sep) were set back to NULL = combined (data fix), and the reader now leaves such days combined.
+- "Online" is shown as "Apps combined" (Pulse legend, Sales/Review cards, Edit window); Pulse lists "Apps combined" with its orders and average next to the real per-app rows. Strow AI treats NULL app amounts as "not split", never zero.

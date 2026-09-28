@@ -205,7 +205,9 @@ async function readOne(row: Row, usage: Map<string, Usage>): Promise<ScanOutcome
         Math.abs(apps - Number(row.online_total ?? 0)) <= 1;
       if (!match) problems.push(`App sales on the photo (online ${aed(apps)}) don't match the saved day (online ${aed(Number(row.online_total ?? 0))})`);
       else if (!sure) problems.push(note ? `Not fully sure: ${note}` : "Not fully sure of the app amounts");
-      else {
+      else if ((sb.other ?? 0) > 1) {
+        // The POS showed one combined "Online payment" line: the apps can't be split for this day — leave it combined.
+      } else {
         patch.talabat_total = sb.talabat ?? 0;
         patch.keeta_total = sb.keeta ?? 0;
         patch.beanz_total = sb.beanz ?? 0;

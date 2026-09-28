@@ -350,7 +350,7 @@ function ClosingFormFields({ fields }: { fields: ClosingFields }) {
         {box("keeta", "Keeta", "keeta_total")}
         {box("beanz", "Beanz", "beanz_total")}
       </div>
-      {box("other", "Other online (AED)", "other_online_total")}
+      {box("other", "Apps combined / other (AED)", "other_online_total")}
       <input type="hidden" name="online_total" value={online.toFixed(2)} />
       <Label name="transactions" label="Orders (transactions)">
         <input name="transactions" type="number" step="1" min="0" defaultValue={fields.transactions ?? ""} inputMode="numeric" placeholder="0" className={inputClass()} />
