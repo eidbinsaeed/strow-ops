@@ -38,7 +38,7 @@ Read the SELLER's details (never the "Bill To" / customer block — that is Qave
 
 == LINE ITEMS ==
 Extract every line on the receipt into "line_items" (goods AND non-goods like delivery fees). For each line:
-- description: the item text as printed, normalized to Western digits.
+- description: the item text as printed on the main line, normalized to Western digits. Do NOT append the small packing sub-note under it (e.g. "4 boxes", "1Kg") — that goes into the pack/count fields.
 - quantity / unit_price / line_total: numbers. If only a line total is visible, set quantity 1 and unit_price = line_total. When the receipt separates discount and/or VAT (columns like ListVal, Disc, NetVal, VAT 5%), line_total is the NET amount — after discount and before VAT. Otherwise line_total is simply the amount shown for that line.
 - discount: the per-line discount amount if the receipt itemizes one (e.g. a "Disc" column), else 0.
 - vat_amount: the per-line VAT/tax amount if the receipt separates VAT per line, else 0. If VAT is shown only as a single total for the whole bill, keep per-line vat_amount 0 and report it in the top-level vat_amount instead.
@@ -55,7 +55,7 @@ GOODS RECEIVED — describe what physically arrived for every goods line, in thr
 - unit_size / size_uom: content of ONE individual unit — "1" + "L", "750" + "ml", "1" + "kg", "500" + "g", "1" + "gal". Read it from the description ("1 kg", "(1x6)Ltr" means 6 × 1 L, "1 X 12 LT" means 12 × 1 L). null if the item has no size (a croissant).
 - pack_qty / pack_type / units_per_pack: outer packaging if stated (e.g. "4 boxes" of 6 → 4, "box", 6). null if not stated.
 - Cross-check with the money: quantity × unit_price should equal line_total — the billed quantity column tells you what the price is per. Sub-notes under the description (e.g. "4 boxes", "4pcs", "1Kg") are the supplier's packing notes; use them to fill packs, but if they contradict the billed qty, trust the billed qty and mention the conflict in "qty_note".
-- qty_note: one short plain-English note if the quantity is ambiguous or the packing note conflicts with the billed quantity, else null.
+- qty_note: ONLY when something genuinely doesn't add up (packing note conflicts with billed qty, size unclear) — one short plain-English sentence. If everything is consistent, null. Never write a note just to say it checks out.
 - qty_confidence: "high" | "medium" | "low" — how sure you are about count/size.
 
 Examples:
@@ -267,6 +267,93 @@ ${aliasList}
 ${spendList}`;
 }
 
+// Every field the reader must return. A forced tool call only fills the
+// properties declared here, so this MUST list the full shape.
+const S = { type: ["string", "null"] };
+const N = { type: ["number", "null"] };
+const CONF = { type: "string", enum: ["high", "medium", "low"] };
+const BILL_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    supplier_name: S,
+    supplier_trn: S,
+    supplier_address: S,
+    supplier_phone: S,
+    supplier_email: S,
+    doc_type: { type: ["string", "null"], enum: ["tax_invoice", "sales_order", "receipt", "delivery_note", "quotation", "other", null] },
+    order_ref: S,
+    salesperson: S,
+    payment_terms: S,
+    expense_date: { type: ["string", "null"], description: "YYYY-MM-DD" },
+    invoice_number: S,
+    subtotal: N,
+    vat_amount: N,
+    total: N,
+    payment_method: { type: ["string", "null"], enum: ["cash", "card", "bank_transfer", "credit", null] },
+    category_hint: S,
+    notes: S,
+    line_items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          description: { type: "string" },
+          quantity: { type: "number" },
+          unit_price: { type: "number" },
+          line_total: { type: "number" },
+          discount: { type: "number" },
+          vat_amount: { type: "number" },
+          inventory_item_id: S,
+          suggested_item_name: S,
+          match_confidence: CONF,
+          line_kind: { type: "string", enum: ["goods", "fee", "discount", "deposit", "other"] },
+          brand: S,
+          uom_printed: S,
+          count_qty: N,
+          count_uom: S,
+          unit_size: N,
+          size_uom: S,
+          pack_qty: N,
+          pack_type: S,
+          units_per_pack: N,
+          vat_rate: N,
+          qty_note: S,
+          qty_confidence: CONF,
+        },
+        required: [
+          "description", "quantity", "unit_price", "line_total", "discount", "vat_amount",
+          "inventory_item_id", "suggested_item_name", "match_confidence", "line_kind", "brand",
+          "uom_printed", "count_qty", "count_uom", "unit_size", "size_uom", "pack_qty",
+          "pack_type", "units_per_pack", "vat_rate", "qty_note", "qty_confidence",
+        ],
+      },
+    },
+    confidence: {
+      type: "object",
+      properties: {
+        supplier_name: CONF, expense_date: CONF, invoice_number: CONF, subtotal: CONF,
+        vat_amount: CONF, total: CONF, payment_method: CONF,
+      },
+      required: ["supplier_name", "expense_date", "invoice_number", "subtotal", "vat_amount", "total", "payment_method"],
+    },
+    anomalies: {
+      type: "object",
+      properties: {
+        has_anomaly: { type: "boolean" },
+        flags: { type: "array", items: { type: "string" } },
+        explanation: S,
+      },
+      required: ["has_anomaly", "flags", "explanation"],
+    },
+  },
+  required: [
+    "supplier_name", "supplier_trn", "supplier_address", "supplier_phone", "supplier_email",
+    "doc_type", "order_ref", "salesperson", "payment_terms", "expense_date", "invoice_number",
+    "subtotal", "vat_amount", "total", "payment_method", "category_hint", "notes",
+    "line_items", "confidence", "anomalies",
+  ],
+};
+
 export async function POST(request: Request) {
   const session = await getBaristaSession();
   if (!session) {
@@ -367,17 +454,7 @@ export async function POST(request: Request) {
         {
           name: "record_bill",
           description: "Record the data extracted from the bill, following the schema in the instructions.",
-          input_schema: {
-            type: "object",
-            properties: {
-              supplier_name: { type: ["string", "null"] },
-              total: { type: ["number", "null"] },
-              line_items: { type: "array", items: { type: "object" } },
-              confidence: { type: "object" },
-              anomalies: { type: "object" },
-            },
-            required: ["supplier_name", "total", "line_items", "confidence", "anomalies"],
-          },
+          input_schema: BILL_SCHEMA,
         },
       ],
       tool_choice: { type: "tool", name: "record_bill" },
@@ -435,6 +512,19 @@ export async function POST(request: Request) {
           { error: "The AI couldn't read this bill. Please try again, or enter it by hand." , raw: text.slice(0, 2000) },
           { status: 502 },
         );
+      }
+    }
+
+    // Show the catalog's clean name for lines matched to a known item.
+    const invName = new Map(
+      ((inventoryRes.data ?? []) as unknown as InventoryRow[]).map((i) => [i.id, i.name]),
+    );
+    const ex = extracted as { line_items?: Array<Record<string, unknown>> };
+    if (Array.isArray(ex.line_items)) {
+      for (const li of ex.line_items) {
+        const id = typeof li.inventory_item_id === "string" ? li.inventory_item_id : "";
+        li.matched_item_name = invName.get(id) ?? null;
+        if (id && !invName.has(id)) li.inventory_item_id = null; // hallucinated id
       }
     }
 

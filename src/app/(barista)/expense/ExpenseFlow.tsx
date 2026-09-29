@@ -330,7 +330,7 @@ export function ExpenseFlow({
   const subtotalConf: Confidence = c.subtotal ?? "medium";
   const vatConf: Confidence = c.vat_amount ?? "medium";
   const invoiceConf: Confidence = c.invoice_number ?? "medium";
-  const paymentConf: Confidence = c.payment_method ?? "medium";
+  const paymentConf: Confidence = extracted?.payment_method ? (c.payment_method ?? "medium") : "medium";
 
   const hintedCategoryId = extracted?.category_hint
     ? categories.find(
@@ -621,7 +621,7 @@ export function ExpenseFlow({
                     : "text-red-600"
               }`}
             >
-              {CONFIDENCE_LABEL[paymentConf]}
+              {extracted?.payment_method ? CONFIDENCE_LABEL[paymentConf] : "Please choose"}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -700,6 +700,9 @@ function Field({
   step?: string;
   min?: string;
 }) {
+  // An empty box is never "confident" — ask for it instead.
+  const empty = !String(defaultValue ?? "").trim();
+  if (empty) confidence = "medium";
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
@@ -715,7 +718,7 @@ function Field({
                 : "text-red-600"
           }`}
         >
-          {CONFIDENCE_LABEL[confidence]}
+          {empty ? (required ? "Please fill in" : "Not on the bill") : CONFIDENCE_LABEL[confidence]}
         </span>
       </div>
       <input

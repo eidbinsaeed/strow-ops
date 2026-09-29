@@ -25,6 +25,7 @@ export type RawLine = {
   vat_amount?: number;
   inventory_item_id: string | null;
   suggested_item_name: string | null;
+  matched_item_name?: string | null;
   match_confidence?: Confidence;
   line_kind?: LineKind | null;
   brand?: string | null;
@@ -98,7 +99,7 @@ export function ItemsReceived({
 
   if (lines.length === 0) return null;
 
-  const payload = computed.map(({ key: _k, qty_note: _n, ...rest }) => rest);
+  const payload = computed.map(({ key: _k, qty_note: _n, matched_item_name: _m, ...rest }) => rest);
 
   return (
     <section className="rounded-2xl border border-neutral-200 bg-white">
@@ -124,10 +125,11 @@ export function ItemsReceived({
       <ul className="divide-y divide-neutral-100">
         {computed.map((l) => {
           const isGoods = l.line_kind === "goods";
-          const unsure = isGoods && (l.qty_confidence === "low" || l.qty_confidence === "medium" || !!l.qty_note);
+          // Amber only when the AI is genuinely unsure — not for every note.
+          const unsure = isGoods && (l.qty_confidence === "low" || l.qty_confidence === "medium");
           const perBase =
             isGoods && l.base_qty && l.base_qty > 0 ? Number(l.line_total) / l.base_qty : null;
-          const name = l.suggested_item_name || l.description;
+          const name = l.matched_item_name || l.suggested_item_name || l.description;
           const editing = open === l.key;
           return (
             <li key={l.key} className={`px-4 py-3 ${unsure ? "bg-amber-50/60" : ""}`}>
@@ -160,7 +162,9 @@ export function ItemsReceived({
                       )}
                     </p>
                   )}
-                  {l.qty_note && <p className="mt-1 text-[11px] text-amber-700">{l.qty_note}</p>}
+                  {l.qty_note && (
+                    <p className={`mt-1 text-[11px] ${unsure ? "text-amber-700" : "text-neutral-400"}`}>{l.qty_note}</p>
+                  )}
                 </div>
                 <div className="shrink-0 text-end">
                   <p className="text-sm tabular-nums">{aed(Number(l.line_total) || 0)}</p>
