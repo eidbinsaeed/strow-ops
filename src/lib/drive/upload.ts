@@ -4,7 +4,7 @@
  * Uploads a base64 JPEG (the same in-memory dataURL we send to Anthropic for
  * extraction) into the user's Drive at:
  *
- *   /Strow/<LocationSlug>/<YYYY-MM>/<closings|expenses>/<entityId>.jpg
+ *   /Strow/<LocationSlug>/<YYYY-MM>/<closings|expenses>/<entityId>.<jpg|pdf>
  *
  * Returns the Drive file id + display path + viewable URL.
  *
@@ -123,7 +123,15 @@ export async function uploadReceiptPhoto(
     );
 
     const buf = dataUrlToBuffer(params.imageDataUrl);
-    const filename = `${params.entityId}.jpg`;
+    const ext =
+      params.mediaType === "application/pdf"
+        ? "pdf"
+        : params.mediaType === "image/png"
+          ? "png"
+          : params.mediaType === "image/webp"
+            ? "webp"
+            : "jpg";
+    const filename = `${params.entityId}.${ext}`;
 
     const created = await drive.files.create({
       requestBody: {

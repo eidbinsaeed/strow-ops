@@ -25,6 +25,29 @@ export function BillPhotoModal({
 }) {
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [zoomed, setZoomed] = useState(false);
+  // Bills can be photos or PDFs (digital invoices). Fetch once, branch on type.
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [isPdf, setIsPdf] = useState(false);
+  const src = `/api/bill-photo/${fileId}`;
+
+  useEffect(() => {
+    let url: string | null = null;
+    let cancelled = false;
+    fetch(src)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        const blob = await r.blob();
+        if (cancelled) return;
+        url = URL.createObjectURL(blob);
+        setIsPdf(blob.type.includes("pdf"));
+        setBlobUrl(url);
+      })
+      .catch(() => !cancelled && setState("error"));
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [src]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -69,7 +92,7 @@ export function BillPhotoModal({
           )}
           {state === "error" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-white/70">
-              <p>This photo couldn't be loaded from Drive.</p>
+              <p>This bill couldn't be loaded from Drive.</p>
               {driveUrl && (
                 <a href={driveUrl} target="_blank" rel="noopener noreferrer" className="underline">
                   {openInDriveLabel}
@@ -77,19 +100,39 @@ export function BillPhotoModal({
               )}
             </div>
           )}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`/api/bill-photo/${fileId}`}
-            alt={title}
-            onLoad={() => setState("ok")}
-            onError={() => setState("error")}
-            onClick={() => setZoomed((z) => !z)}
-            className={`transition-opacity duration-300 ${state === "ok" ? "opacity-100" : "opacity-0"} ${
-              zoomed ? "max-w-none cursor-zoom-out" : "max-h-full max-w-full cursor-zoom-in object-contain"
-            }`}
-          />
+          {blobUrl && isPdf && (
+            <div className="flex h-full w-full flex-col">
+              <iframe
+                src={blobUrl}
+                title={title}
+                onLoad={() => setState("ok")}
+                className="min-h-0 w-full flex-1 bg-white"
+              />
+              <a
+                href={src}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mx-auto my-3 rounded-full bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20"
+              >
+                Open PDF
+              </a>
+            </div>
+          )}
+          {blobUrl && !isPdf && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={blobUrl}
+              alt={title}
+              onLoad={() => setState("ok")}
+              onError={() => setState("error")}
+              onClick={() => setZoomed((z) => !z)}
+              className={`transition-opacity duration-300 ${state === "ok" ? "opacity-100" : "opacity-0"} ${
+                zoomed ? "max-w-none cursor-zoom-out" : "max-h-full max-w-full cursor-zoom-in object-contain"
+              }`}
+            />
+          )}
         </div>
-        {state === "ok" && (
+        {state === "ok" && !isPdf && (
           <p className="py-2 text-center text-[11px] text-white/40">{zoomed ? "Tap to fit" : "Tap to zoom"}</p>
         )}
       </div>

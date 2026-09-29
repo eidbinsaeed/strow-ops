@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { submitExpense } from "./actions";
 import { enqueueSubmission } from "@/lib/offline/queue";
-import { compressImage } from "@/lib/image";
+import { prepareBillFile } from "@/lib/image";
 import { DayPicker } from "@/components/barista/DayPicker";
 import { shortDay, todayDubai } from "@/lib/dates";
 
@@ -91,6 +91,7 @@ export function ExpenseFlow({
   const [formDate, setFormDate] = useState<string>(pickedDate);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageMediaType, setImageMediaType] = useState<string>("image/jpeg");
+  const [fileName, setFileName] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, startSubmitTransition] = useTransition();
@@ -98,26 +99,30 @@ export function ExpenseFlow({
     "existing",
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const isPdf = imageMediaType === "application/pdf";
 
   async function handleFile(file: File) {
     setErrorMsg(null);
     setStage("processing");
 
-    // Downscale + re-encode to JPEG before upload. Full-res phone photos are
-    // too large for the extract API and slow over café wifi.
+    // Photos: downscale + re-encode to JPEG (full-res phone photos are too
+    // large for the extract API). PDFs: sent as-is, Claude reads them natively.
     let dataUrl: string;
     let mediaType: string;
     try {
-      const prepared = await compressImage(file);
+      const prepared = await prepareBillFile(file);
       dataUrl = prepared.dataUrl;
       mediaType = prepared.mediaType;
+      setFileName(prepared.fileName);
     } catch (e) {
       setErrorMsg(
         e instanceof Error
           ? e.message
-          : "Could not read that photo. Please try again.",
+          : "Could not read that file. Please try again.",
       );
       setStage("capture");
+      resetInputs();
       return;
     }
     setImageDataUrl(dataUrl);
@@ -190,13 +195,20 @@ export function ExpenseFlow({
     });
   }
 
+  function resetInputs() {
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (uploadInputRef.current) uploadInputRef.current.value = "";
+  }
+
   function reset() {
     setStage("capture");
     setImageDataUrl(null);
+    setImageMediaType("image/jpeg");
+    setFileName(null);
     setExtracted(null);
     setErrorMsg(null);
     setSupplierMode("existing");
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    resetInputs();
   }
 
   if (stage === "capture") {
@@ -230,7 +242,7 @@ export function ExpenseFlow({
           <div>
             <p className="text-base font-medium">Take photo</p>
             <p className="mt-1 text-xs text-neutral-500">
-              Or pick a photo from your gallery
+              Opens the camera
             </p>
           </div>
         </label>
@@ -246,6 +258,35 @@ export function ExpenseFlow({
             if (file) handleFile(file);
           }}
         />
+
+        {/* Digital copies: PDF from email/WhatsApp, or a screenshot/gallery
+            photo. No `capture` attribute, so iPhone offers Photo Library,
+            Take Photo, and Choose File (Files app). */}
+        <label
+          htmlFor="expense-upload"
+          className="mt-3 flex items-center gap-4 rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-start transition active:scale-[0.99]"
+        >
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xl">
+            📎
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Upload photo or file</p>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              Gallery, screenshot, or PDF invoice (up to 3 MB)
+            </p>
+          </div>
+        </label>
+        <input
+          id="expense-upload"
+          ref={uploadInputRef}
+          type="file"
+          accept="image/*,application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFile(file);
+          }}
+        />
       </div>
     );
   }
@@ -253,7 +294,7 @@ export function ExpenseFlow({
   if (stage === "processing") {
     return (
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center gap-6 py-12">
-        {imageDataUrl && (
+        {imageDataUrl && !isPdf && (
           <div className="overflow-hidden rounded-2xl border border-neutral-200">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -263,9 +304,10 @@ export function ExpenseFlow({
             />
           </div>
         )}
+        {isPdf && <PdfChip name={fileName} />}
         <div className="flex items-center gap-3 text-sm text-neutral-600">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-200 border-t-strow-ink" />
-          Reading your receipt...
+          {isPdf ? "Reading your PDF..." : "Reading your receipt..."}
         </div>
         <p className="text-xs text-neutral-400">Usually takes 5-10 seconds</p>
       </div>
@@ -304,11 +346,16 @@ export function ExpenseFlow({
           onClick={reset}
           className="text-sm text-neutral-500 underline"
         >
-          Retake
+          {isPdf ? "Change file" : "Retake"}
         </button>
       </header>
 
-      {imageDataUrl && (
+      {imageDataUrl && isPdf && (
+        <div className="mb-4">
+          <PdfChip name={fileName} />
+        </div>
+      )}
+      {imageDataUrl && !isPdf && (
         <details className="mb-4 rounded-xl border border-neutral-200 bg-white">
           <summary className="cursor-pointer px-4 py-3 text-sm text-neutral-600">
             View your photo
@@ -636,6 +683,20 @@ function Field({
         inputMode={type === "number" ? "decimal" : undefined}
         className={`w-full rounded-xl border-2 px-3 py-2.5 text-base focus:outline-none ${CONFIDENCE_BORDER[confidence]} focus:border-strow-ink`}
       />
+    </div>
+  );
+}
+
+/** Small file card shown instead of an image preview when the bill is a PDF. */
+function PdfChip({ name }: { name: string | null }) {
+  return (
+    <div className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[11px] font-semibold text-red-600">
+        PDF
+      </div>
+      <p className="min-w-0 truncate text-sm text-neutral-700">
+        {name ?? "Invoice.pdf"}
+      </p>
     </div>
   );
 }

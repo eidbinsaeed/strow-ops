@@ -436,6 +436,17 @@ async function viewPhoto(i: Json, ctx: ToolContext): Promise<ToolOutcome> {
   if (!fileId) return { content: "This record has no photo.", isError: true };
   const file = await downloadDriveFile(fileId);
   if (!file) return { content: "Could not download the photo from Drive.", isError: true };
+  if (file.mimeType.toLowerCase().includes("pdf")) {
+    if (file.bytes.length > 4_800_000) return { content: "PDF too large to view.", isError: true };
+    ctx.photosLeft -= 1;
+    return {
+      content: [
+        { type: "text", text: `PDF bill of ${table} ${id}:` },
+        // Document block — pinned SDK 0.30 lacks the type; the API accepts it.
+        { type: "document", source: { type: "base64", media_type: "application/pdf", data: file.bytes.toString("base64") } } as unknown as ImageBlockParam,
+      ],
+    };
+  }
   const mt = mediaType(file.mimeType);
   if (!mt) return { content: `Unsupported photo type ${file.mimeType}.`, isError: true };
   if (file.bytes.length > 4_800_000) return { content: "Photo too large to view.", isError: true };

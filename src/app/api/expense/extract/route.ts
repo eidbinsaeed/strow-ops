@@ -13,7 +13,7 @@ export const maxDuration = 60;
 // recent spend) is appended to the user message, not the system prompt.
 const SYSTEM_PROMPT = `You extract structured data from photos of supplier invoices and cash receipts for Qave Cafe in Al Ain, UAE.
 
-The photo is an expense receipt — a printed VAT invoice, a handwritten cash receipt, a delivery note, or a screenshot from a payment app.
+The photo is an expense receipt — a printed VAT invoice, a handwritten cash receipt, a delivery note, or a screenshot from a payment app. It may also be a digital PDF invoice (possibly several pages): read every page, take header fields (supplier, invoice number, date, totals) from wherever they appear, and collect line items across all pages without double-counting a carried-forward subtotal.
 
 == EXTRACTION RULES ==
 - The photo may be English, Arabic, or a mix. Numbers may be Western digits (0-9) OR Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩). Always normalize to Western digits in the output.
@@ -103,6 +103,7 @@ const VALID_MEDIA_TYPES = [
 ] as const;
 
 type ValidMediaType = (typeof VALID_MEDIA_TYPES)[number];
+const PDF_MEDIA_TYPE = "application/pdf";
 
 type CategoryRow = { id: string; name: string };
 type SupplierRow = { id: string; name: string; trn: string | null };
@@ -236,9 +237,15 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!mediaType || !VALID_MEDIA_TYPES.includes(mediaType as ValidMediaType)) {
+  const isPdf = mediaType === PDF_MEDIA_TYPE;
+  if (
+    !mediaType ||
+    (!isPdf && !VALID_MEDIA_TYPES.includes(mediaType as ValidMediaType))
+  ) {
     return NextResponse.json(
-      { error: `mediaType must be one of: ${VALID_MEDIA_TYPES.join(", ")}` },
+      {
+        error: `mediaType must be one of: ${[...VALID_MEDIA_TYPES, PDF_MEDIA_TYPE].join(", ")}`,
+      },
       { status: 400 }
     );
   }
@@ -306,17 +313,28 @@ export async function POST(request: Request) {
         {
           role: "user",
           content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mediaType as ValidMediaType,
-                data: base64Data,
-              },
-            },
+            isPdf
+              ? // PDF document block. The pinned SDK (0.30) predates the
+                // non-beta type, but the API accepts it — cast for TS only.
+                ({
+                  type: "document",
+                  source: {
+                    type: "base64",
+                    media_type: PDF_MEDIA_TYPE,
+                    data: base64Data,
+                  },
+                } as unknown as Anthropic.ImageBlockParam)
+              : {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: mediaType as ValidMediaType,
+                    data: base64Data,
+                  },
+                },
             {
               type: "text",
-              text: `Extract the receipt data from this photo. Use the context below to match line items to inventory, pick a category, and judge anomalies. Return JSON only.\n\n${contextBlock}`,
+              text: `Extract the receipt data from this ${isPdf ? "PDF" : "photo"}. Use the context below to match line items to inventory, pick a category, and judge anomalies. Return JSON only.\n\n${contextBlock}`,
             },
           ],
         },

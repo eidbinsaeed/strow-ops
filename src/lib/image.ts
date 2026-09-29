@@ -123,3 +123,54 @@ export async function compressImage(file: File, maxDimension = MAX_DIMENSION, qu
     URL.revokeObjectURL(objectUrl);
   }
 }
+
+// ─── Bills: photo OR digital file ──────────────────────────────────────────
+//
+// Suppliers sometimes send the invoice digitally (PDF by email/WhatsApp, or a
+// screenshot). Images go through compressImage as before; PDFs are sent as-is
+// because Claude reads PDFs natively (every page, real text — no OCR loss).
+//
+// Size cap: the PDF travels base64-encoded (+33%) to the extract API and again
+// in the submit action, and Vercel rejects request bodies over ~4.5 MB. 3 MB
+// raw keeps us safely under that. Supplier invoice PDFs are usually < 500 KB.
+
+export const MAX_PDF_BYTES = 3 * 1024 * 1024;
+
+export type PreparedBill = {
+  dataUrl: string;
+  mediaType: "image/jpeg" | "application/pdf";
+  fileName: string | null;
+};
+
+export function isPdfFile(file: File): boolean {
+  return file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+}
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error("Could not read that file. Please try again."));
+    r.readAsDataURL(file);
+  });
+}
+
+export async function prepareBillFile(file: File): Promise<PreparedBill> {
+  if (isPdfFile(file)) {
+    if (file.size > MAX_PDF_BYTES) {
+      throw new Error(
+        `That PDF is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 3 MB. Take a screenshot of the invoice and upload that instead.`,
+      );
+    }
+    const raw = await readAsDataUrl(file);
+    // Some phones report an empty/odd MIME type — normalise the data-URL header.
+    const comma = raw.indexOf(",");
+    const dataUrl = `data:application/pdf;base64,${raw.slice(comma + 1)}`;
+    return { dataUrl, mediaType: "application/pdf", fileName: file.name || "invoice.pdf" };
+  }
+  if (file.type && !file.type.startsWith("image/")) {
+    throw new Error("Please upload a photo, screenshot, or PDF of the bill.");
+  }
+  const img = await compressImage(file);
+  return { ...img, fileName: null };
+}

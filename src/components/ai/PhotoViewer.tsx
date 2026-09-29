@@ -35,7 +35,7 @@ export function PhotoViewer({ src, caption, onClose }: { src: string; caption?: 
       <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-2" style={{ touchAction: "pinch-zoom pan-x pan-y" }} onClick={(e) => e.stopPropagation()}>
         {!loaded && !failed ? <span className="ai-dots absolute" aria-hidden><i /><i /><i /></span> : null}
         {failed ? (
-          <p className="text-sm text-white/70">Couldn&apos;t load this photo from Drive.</p>
+          <p className="px-6 text-center text-sm text-white/70">No preview here (it may be a PDF). Tap &ldquo;Open full size&rdquo; below.</p>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={src} alt={caption ?? "Bill photo"} onLoad={() => setLoaded(true)} onError={() => setFailed(true)} className={`max-h-full max-w-full object-contain transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`} />
@@ -60,7 +60,7 @@ export function BillCard({ table, id, caption }: { table: string; id: string; ca
     <>
       <button type="button" onClick={() => setOpen(true)} className="group block w-full overflow-hidden rounded-2xl border border-neutral-200 bg-white text-start">
         {failed ? (
-          <div className="flex h-32 items-center justify-center text-sm text-neutral-400">Photo not available</div>
+          <div className="flex h-32 items-center justify-center text-sm text-neutral-400">No preview — tap to open (PDF)</div>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={src} alt={caption ?? "Bill"} loading="lazy" onError={() => setFailed(true)} className="h-52 w-full bg-neutral-100 object-cover object-top transition group-active:scale-[.99]" />
