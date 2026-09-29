@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { reconcileVat } from "@/lib/vat";
 import {
   baseOf,
   COUNT_UNITS,
@@ -38,6 +39,7 @@ export type RawLine = {
   pack_type?: string | null;
   units_per_pack?: number | null;
   vat_rate?: number | null;
+  set_parts?: string[] | null;
   qty_note?: string | null;
   qty_confidence?: Confidence | null;
 };
@@ -73,9 +75,19 @@ const aed = (n: number) =>
 export function ItemsReceived({
   initial,
   subtotal,
+  vat,
+  total,
+  rounding,
+  pricesIncludeVat = null,
+  goodsReceived = true,
 }: {
   initial: RawLine[];
   subtotal: number | null;
+  vat: number | null;
+  total: number | null;
+  rounding: number | null;
+  pricesIncludeVat?: boolean | null;
+  goodsReceived?: boolean;
 }) {
   const [lines, setLines] = useState<Line[]>(() => prepare(initial));
   const [open, setOpen] = useState<number | null>(null);
@@ -89,9 +101,15 @@ export function ItemsReceived({
     [lines],
   );
 
-  const goods = computed.filter((l) => l.line_kind === "goods");
-  const linesSum = computed.reduce((s, l) => s + (Number(l.line_total) || 0), 0);
-  const sumOk = subtotal == null || Math.abs(linesSum - subtotal) < 0.05;
+  // Works out on its own whether the printed prices include VAT, then gives
+  // every line its net amount + VAT share (what's saved) and a paid price.
+  const vr = useMemo(
+    () => reconcileVat(computed, { subtotal, vat, total, rounding, pricesIncludeVat }),
+    [computed, subtotal, vat, total, rounding, pricesIncludeVat],
+  );
+  const shown = vr.lines;
+  const goods = shown.filter((l) => l.line_kind === "goods");
+  const paidSum = shown.reduce((s, l) => s + l.line_total + l.vat_amount, 0);
 
   function patch(key: number, p: Partial<Line>) {
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...p } : l)));
@@ -99,7 +117,7 @@ export function ItemsReceived({
 
   if (lines.length === 0) return null;
 
-  const payload = computed.map(({ key: _k, qty_note: _n, matched_item_name: _m, ...rest }) => rest);
+  const payload = shown.map(({ key: _k, qty_note: _n, matched_item_name: _m, ...rest }) => rest);
 
   return (
     <section className="rounded-2xl border border-neutral-200 bg-white">
@@ -112,23 +130,34 @@ export function ItemsReceived({
             {goods.length} {goods.length === 1 ? "item" : "items"}
             {goods.length > 0 && sumByBase(goods) ? ` · ${sumByBase(goods)}` : ""}
           </p>
+          <p className="mt-0.5 text-[11px] text-neutral-400">
+            {vr.message}
+            {vr.rounding ? ` · rounding ${vr.rounding > 0 ? "+" : ""}${vr.rounding.toFixed(2)}` : ""}
+            {!goodsReceived ? " · not added to stock" : ""}
+          </p>
         </div>
         <span
           className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-            sumOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+            vr.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
           }`}
         >
-          {sumOk ? `Adds up ✓ ${aed(linesSum)}` : `Lines ${aed(linesSum)} ≠ ${aed(subtotal ?? 0)}`}
+          {vr.ok ? `Adds up ✓ ${aed(total ?? paidSum)}` : `Lines ${aed(paidSum)} ≠ ${aed(total ?? 0)}`}
         </span>
       </header>
 
       <ul className="divide-y divide-neutral-100">
-        {computed.map((l) => {
+        {shown.map((l) => {
           const isGoods = l.line_kind === "goods";
           // Amber only when the AI is genuinely unsure — not for every note.
           const unsure = isGoods && (l.qty_confidence === "low" || l.qty_confidence === "medium");
-          const perBase =
-            isGoods && l.base_qty && l.base_qty > 0 ? Number(l.line_total) / l.base_qty : null;
+          const paid = l.line_total + l.vat_amount;
+          // Sets (cup + lid) are priced per set; everything else per L / kg / pc.
+          const isSet = (l.set_parts?.length ?? 0) > 1;
+          const perDen = isSet ? Number(l.count_qty) : l.base_qty;
+          const perBase = isGoods && perDen && perDen > 0 ? paid / perDen : null;
+          const perUnit = isSet ? "set" : l.base_uom;
+          const desc = isGoods ? describeQty(l) : "";
+          const baseTxt = l.base_qty != null ? fmtQty(l.base_qty, l.base_uom) : "";
           const name = l.matched_item_name || l.suggested_item_name || l.description;
           const editing = open === l.key;
           return (
@@ -152,12 +181,12 @@ export function ItemsReceived({
                   )}
                   {isGoods && (
                     <p className="mt-1 text-xs text-neutral-700">
-                      {describeQty(l)}
-                      {l.base_qty != null && (
+                      {desc}
+                      {l.base_qty != null && baseTxt !== desc && (
                         <>
                           {" "}
                           <span className="text-neutral-400">→</span>{" "}
-                          <span className="font-semibold">{fmtQty(l.base_qty, l.base_uom)}</span>
+                          <span className="font-semibold">{baseTxt}</span>
                         </>
                       )}
                     </p>
@@ -167,12 +196,13 @@ export function ItemsReceived({
                   )}
                 </div>
                 <div className="shrink-0 text-end">
-                  <p className="text-sm tabular-nums">{aed(Number(l.line_total) || 0)}</p>
+                  <p className="text-sm tabular-nums">{aed(paid)}</p>
                   {perBase != null && (
                     <p className="text-[11px] tabular-nums text-neutral-400">
-                      {aed(perBase)} / {l.base_uom}
+                      {aed(perBase)} / {perUnit}
                     </p>
                   )}
+                  {l.vat_amount > 0 && <p className="text-[10px] text-neutral-400">incl. VAT</p>}
                   <p className="mt-1 text-[10px] text-neutral-400 underline">{editing ? "Done" : "Edit"}</p>
                 </div>
               </button>
@@ -221,6 +251,17 @@ export function ItemsReceived({
                             onChange={(v) => patch(l.key, { size_uom: v })}
                           />
                         </div>
+                      </Row>
+                      <Row label="Set of">
+                        <input
+                          value={(l.set_parts ?? []).join(" + ")}
+                          placeholder="e.g. cup + lid (leave empty if single)"
+                          onChange={(e) => {
+                            const parts = e.target.value.split("+").map((x) => x.trim()).filter(Boolean);
+                            patch(l.key, { set_parts: parts.length ? parts : null, ...(parts.length > 1 ? { count_uom: "set" } : {}) });
+                          }}
+                          className={inputCls}
+                        />
                       </Row>
                       <Row label="Packed as">
                         <div className="flex items-center gap-2">

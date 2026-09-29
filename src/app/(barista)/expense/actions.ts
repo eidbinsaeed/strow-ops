@@ -13,7 +13,9 @@ import { writeAudit } from "@/lib/audit/log";
 import { uploadReceiptPhoto } from "@/lib/drive/upload";
 import { todayDubai } from "@/lib/dates";
 import { normalizeItemText, looksLikeRealItem } from "@/lib/inventory-match";
-import { baseOf, num, type LineKind } from "@/lib/units";
+import { baseOf, measureOf, num, type LineKind } from "@/lib/units";
+import { headerAddsUp, reconcileVat } from "@/lib/vat";
+import { checkTrn, isOwnEmail, scrubPhones, type OwnContacts } from "@/lib/supplier-info";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -61,6 +63,7 @@ type LineItem = {
   base_qty: number | null;
   base_uom: string | null;
   vat_rate: number | null;
+  set_parts: string[] | null;
 };
 
 const KINDS: LineKind[] = ["goods", "fee", "discount", "deposit", "other"];
@@ -102,11 +105,15 @@ function parseLineItems(raw: string | null): LineItem[] {
         const line_kind: LineKind = KINDS.includes(li.line_kind as LineKind)
           ? (li.line_kind as LineKind)
           : "goods";
+        const set_parts = Array.isArray(li.set_parts)
+          ? (li.set_parts as unknown[]).map((x) => txt(x, 30)).filter((x): x is string => !!x).slice(0, 6)
+          : [];
         const q = {
           count_qty: num(li.count_qty),
           count_uom: txt(li.count_uom, 30),
           unit_size: num(li.unit_size),
           size_uom: txt(li.size_uom, 30),
+          set_parts: set_parts.length ? set_parts : null,
         };
         // Recomputed here — never trust a client-sent base quantity.
         const b = line_kind === "goods" ? baseOf(q) : { base_qty: null, base_uom: null };
@@ -170,10 +177,8 @@ function deriveStatus(args: {
   // Something looks off → flagged: held for the owner, never auto-approved.
   if (anomalies?.has_anomaly) return "flagged";
 
-  if (subtotal != null && vat != null) {
-    const sum = subtotal + vat;
-    if (Math.abs(sum - total) > 0.02) return "flagged";
-  }
+  // Small rounding (≤ 0.25, e.g. "Rounding -0.20") is normal, not a problem.
+  if (!headerAddsUp(subtotal, vat, total)) return "flagged";
 
   const fields: (keyof ConfidenceMap)[] = [
     "supplier_name",
@@ -206,12 +211,32 @@ export async function submitExpense(formData: FormData) {
   }
 
   // Supplier details read off the bill (TRN digits only).
+  const { data: locRow } = await supabase
+    .from("locations")
+    .select("own_contacts")
+    .eq("id", session.lid)
+    .maybeSingle();
+  const own = (locRow?.own_contacts ?? null) as OwnContacts | null;
+  const rawEmail = txt(formData.get("supplier_email"), 120);
   const supplierInfo = {
-    trn: (txt(formData.get("supplier_trn"), 40) ?? "").replace(/\D/g, "") || null,
-    phone: txt(formData.get("supplier_phone"), 60),
-    email: txt(formData.get("supplier_email"), 120),
+    trn: checkTrn(txt(formData.get("supplier_trn"), 40)).trn, // 15 digits or nothing
+    phone: scrubPhones(txt(formData.get("supplier_phone"), 60), own), // never Qave's own
+    email: isOwnEmail(rawEmail, own) ? null : rawEmail,
     address: txt(formData.get("supplier_address"), 300),
   };
+
+  // Same TRN = same company, whatever name is printed → reuse that supplier.
+  if (!supplier_id && supplierInfo.trn) {
+    const { data: sameTrn } = await supabase
+      .from("suppliers")
+      .select("id")
+      .eq("location_id", session.lid)
+      .eq("trn", supplierInfo.trn)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    if (sameTrn?.id) supplier_id = sameTrn.id as string;
+  }
 
   if (!supplier_id && new_supplier_name) {
     const { data: created, error: supplierError } = await supabase
@@ -324,6 +349,22 @@ export async function submitExpense(formData: FormData) {
     }
   }
 
+  // Work out whether printed line prices include VAT; store every line as
+  // NET + its VAT share so cost per unit is consistent across all suppliers.
+  const printedRounding = parseNumberOrNull(formData.get("rounding") as string | null);
+  const vr = reconcileVat(lineItems, {
+    subtotal,
+    vat: vat_amount,
+    total,
+    rounding: printedRounding,
+    pricesIncludeVat: String(formData.get("prices_include_vat") ?? "") === "1" ? true : null,
+  });
+  vr.lines.forEach((l, i) => {
+    lineItems[i].line_total = l.line_total;
+    lineItems[i].vat_amount = l.vat_amount;
+  });
+  const goodsReceived = String(formData.get("goods_received") ?? "1") !== "0";
+
   const unmatchedSuggestions = lineItems
     .filter((li) => li.line_kind === "goods" && !li.inventory_item_id && li.suggested_item_name)
     .map((li) => ({
@@ -353,8 +394,9 @@ export async function submitExpense(formData: FormData) {
       category_id,
       expense_date,
       invoice_number,
-      subtotal: finalSubtotal,
-      vat_amount: finalVat,
+      // Header figures missing on the bill → use the worked-out VAT split.
+      subtotal: subtotal ?? (lineItems.length && vr.ok ? vr.subtotal : null) ?? finalSubtotal,
+      vat_amount: vat_amount ?? (lineItems.length && vr.ok ? vr.vat : null) ?? finalVat,
       total,
       payment_method,
       notes,
@@ -362,6 +404,9 @@ export async function submitExpense(formData: FormData) {
       order_ref: txt(formData.get("order_ref"), 80),
       salesperson: txt(formData.get("salesperson"), 80),
       payment_terms: txt(formData.get("payment_terms"), 80),
+      goods_received: goodsReceived,
+      vat_mode: lineItems.length ? vr.mode : null,
+      rounding: vr.rounding || printedRounding || null,
       ai_confidence: confidence,
       ai_anomalies: finalAnomalies,
       status,
@@ -489,16 +534,26 @@ export async function submitExpense(formData: FormData) {
       base_qty: li.base_qty,
       base_uom: li.base_uom,
       vat_rate: li.vat_rate,
+      set_parts: li.set_parts,
     }));
 
-    // Teach each matched item its base unit the first time we see it.
+    // Teach each matched item its base unit and usual pack size the first
+    // time we see them, so bills that don't print a size still count right.
     for (const li of lineItems) {
-      if (li.line_kind === "goods" && li.inventory_item_id && validInvIds.has(li.inventory_item_id) && li.base_uom) {
+      if (li.line_kind !== "goods" || !li.inventory_item_id || !validInvIds.has(li.inventory_item_id)) continue;
+      if (li.base_uom) {
         await supabase
           .from("inventory_items")
           .update({ base_uom: li.base_uom, ...(li.brand ? { brand: li.brand } : {}) })
           .eq("id", li.inventory_item_id)
           .is("base_uom", null);
+      }
+      if (li.unit_size && measureOf(li.size_uom) && !(li.set_parts && li.set_parts.length > 1)) {
+        await supabase
+          .from("inventory_items")
+          .update({ default_unit_size: li.unit_size, default_size_uom: li.size_uom })
+          .eq("id", li.inventory_item_id)
+          .is("default_unit_size", null);
       }
     }
 

@@ -28,7 +28,8 @@ type LineRow = {
   base_qty: number | null;
   base_uom: string | null;
   inventory_items: { name: string; kind: string | null; unit: string | null; base_uom: string | null; brand: string | null } | null;
-  expenses: { expense_date: string; photo_drive_url: string | null; suppliers: { name: string } | null } | null;
+  expenses: { expense_date: string; photo_drive_url: string | null; goods_received: boolean | null; suppliers: { name: string } | null } | null;
+  set_parts: string[] | null;
 };
 
 type Line = {
@@ -48,6 +49,8 @@ type Line = {
   base: number | null;
   baseUom: string | null;
   packDesc: string;
+  count: number | null;
+  isSet: boolean;
 };
 
 type SupplierStat = {
@@ -148,7 +151,7 @@ export default async function OwnerItemsPage() {
   const { data, error } = await supabase
     .from("expense_line_items")
     .select(
-      "id, quantity, unit_price, line_total, vat_amount, discount, description, inventory_item_id, line_kind, count_qty, count_uom, unit_size, size_uom, pack_qty, pack_type, units_per_pack, base_qty, base_uom, inventory_items(name, kind, unit, base_uom, brand), expenses(expense_date, photo_drive_url, suppliers(name))",
+      "id, quantity, unit_price, line_total, vat_amount, discount, description, inventory_item_id, line_kind, count_qty, count_uom, unit_size, size_uom, pack_qty, pack_type, units_per_pack, base_qty, base_uom, set_parts, inventory_items(name, kind, unit, base_uom, brand), expenses(expense_date, photo_drive_url, goods_received, suppliers(name))",
     )
     .limit(2000);
 
@@ -166,6 +169,8 @@ export default async function OwnerItemsPage() {
   let feesTotal = 0;
 
   for (const r of rows) {
+    // Quotes marked "not delivered" never count as stock.
+    if (r.expenses?.goods_received === false) continue;
     // Delivery fees, discounts and deposits are money, not goods.
     if (r.line_kind && r.line_kind !== "goods") {
       feesTotal += (Number(r.line_total) || 0) + (Number(r.vat_amount) || 0);
@@ -190,6 +195,8 @@ export default async function OwnerItemsPage() {
       base: r.base_qty != null ? Number(r.base_qty) : null,
       baseUom: r.base_uom,
       packDesc: r.count_qty != null ? describeQty({ ...r, count_qty: Number(r.count_qty) }) : "",
+      count: r.count_qty != null ? Number(r.count_qty) : null,
+      isSet: (r.set_parts?.length ?? 0) > 1,
     };
     if (!r.inventory_item_id || !r.inventory_items) {
       unmapped.push(line);
@@ -242,7 +249,12 @@ export default async function OwnerItemsPage() {
     const withBase = it.lines.filter((l) => l.base != null && l.baseUom);
     it.received = sumByBase(withBase.map((l) => ({ base_qty: l.base, base_uom: l.baseUom })));
     const uoms = new Set(withBase.map((l) => l.baseUom));
-    if (withBase.length && uoms.size === 1) {
+    const setLines = it.lines.filter((l) => l.isSet && l.count);
+    if (setLines.length && setLines.length === withBase.length) {
+      const sets = setLines.reduce((s2, l) => s2 + (l.count ?? 0), 0);
+      const paid = setLines.reduce((s2, l) => s2 + l.paid, 0);
+      if (sets > 0) it.perBase = { price: paid / sets, uom: "set" };
+    } else if (withBase.length && uoms.size === 1) {
       const b = withBase.reduce((s2, l) => s2 + (l.base ?? 0), 0);
       const paid = withBase.reduce((s2, l) => s2 + l.paid, 0);
       if (b > 0) it.perBase = { price: paid / b, uom: withBase[0].baseUom! };

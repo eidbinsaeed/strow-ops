@@ -4,6 +4,7 @@ import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
 
 import { logResponseUsage } from "@/lib/ai/usage";
+import { checkTrn, isOwnEmail, scrubPhones, type OwnContacts } from "@/lib/supplier-info";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -24,6 +25,10 @@ The photo is an expense receipt — a printed VAT invoice, a handwritten cash re
 - Invoice number: any unique identifier on the receipt ("Invoice No", "Receipt #", "Ref", etc.).
 - Payment method: infer from the receipt — "cash", "card", "bank_transfer", or "credit" (marked unpaid / on account).
 - If a field is not visible or you cannot read it, return null. Do NOT guess.
+- total is what the bill says is DUE — never the cash handed over ("Cash 10.00, Change 0.56" on a 9.44 bill → total 9.44).
+- rounding: a printed rounding adjustment (e.g. -0.20), else null.
+- prices_include_vat: true if the line prices already include VAT (typical supermarket receipt: "Tax inclusive", VAT shown only as a summary), false if lines are before VAT (typical supplier invoice with VAT added at the bottom or per line), null if the bill has no VAT at all. Keep line_total exactly as printed — the app does the VAT maths.
+- Your own café's details: QAVE CAFE and anything in the "Bill To" / "Customer" / "Ship To" / receiver block (names, phones, emails, TRN) belong to the buyer — never report them as supplier details.
 
 == SUPPLIER & DOCUMENT DETAILS ==
 Read the SELLER's details (never the "Bill To" / customer block — that is Qave Cafe itself):
@@ -39,20 +44,23 @@ Read the SELLER's details (never the "Bill To" / customer block — that is Qave
 == LINE ITEMS ==
 Extract every line on the receipt into "line_items" (goods AND non-goods like delivery fees). For each line:
 - description: the item text as printed on the main line, normalized to Western digits. Do NOT append the small packing sub-note under it (e.g. "4 boxes", "1Kg") — that goes into the pack/count fields.
-- quantity / unit_price / line_total: numbers. If only a line total is visible, set quantity 1 and unit_price = line_total. When the receipt separates discount and/or VAT (columns like ListVal, Disc, NetVal, VAT 5%), line_total is the NET amount — after discount and before VAT. Otherwise line_total is simply the amount shown for that line.
+- quantity / unit_price / line_total: numbers. If only a line total is visible, set quantity 1 and unit_price = line_total. When the receipt separates discount and/or VAT per line (columns like ListVal, Disc, NetVal, VAT 5%), line_total is the NET amount — after discount and before VAT — and vat_amount is that line's VAT. Otherwise line_total is simply the amount shown for that line (the app works out whether it includes VAT).
 - discount: the per-line discount amount if the receipt itemizes one (e.g. a "Disc" column), else 0.
 - vat_amount: the per-line VAT/tax amount if the receipt separates VAT per line, else 0. If VAT is shown only as a single total for the whole bill, keep per-line vat_amount 0 and report it in the top-level vat_amount instead.
 - inventory_item_id: if the line clearly matches one of the KNOWN INVENTORY ITEMS listed below — same product, allowing for spelling, translation, or brand variants — return that item's exact id. Also consult KNOWN ALIASES below: if the line text equals or closely matches an alias's raw text, return that alias's item id. Otherwise null.
 - suggested_item_name: when inventory_item_id is null, give a short canonical English name for the item (e.g. "Whole milk 1L", "Vanilla syrup", "Paper cups 8oz"). When you DID match an inventory item, return null.
 - match_confidence: "high" | "medium" | "low" — your confidence in the inventory match, or in the quality of the suggested name.
-- line_kind: "goods" for physical products; "fee" for delivery/shipping/service charges; "discount" for discount lines; "deposit" for bottle/crate deposits; "other" otherwise. Fees are NEVER inventory: set inventory_item_id null and suggested_item_name null for non-goods.
+- line_kind: "goods" for café stock (ingredients, drinks, coffee, milk, packaging, cups, lids, cleaning supplies); "fee" for delivery/shipping/COD/service charges; "discount" for discount lines (line_total NEGATIVE); "deposit" for bottle/crate deposits; "other" for things that are not café stock (medicine, plasters, stationery, the shop's carrier bags, staff meals, gifts). Only "goods" is inventory: set inventory_item_id null and suggested_item_name null for every other kind.
 - brand: brand name if identifiable (e.g. "Oatly", "Alpro", "Almarai"), else null.
 - uom_printed: the unit exactly as printed in the qty column ("pcs", "Lt", "Units", "CTN", "kg"), else null.
 
 GOODS RECEIVED — describe what physically arrived for every goods line, in three layers:
   pack_qty × units_per_pack = count_qty individual units, each unit_size size_uom.
 - count_qty / count_uom: how many INDIVIDUAL sellable units arrived and what they are — "carton", "bottle", "can", "bag", "pack", "tray", "jar", "tub", "loaf", "pcs"... For loose goods sold by weight/volume, count_qty is the amount and count_uom is the measure ("2.5" + "kg").
-- unit_size / size_uom: content of ONE individual unit — "1" + "L", "750" + "ml", "1" + "kg", "500" + "g", "1" + "gal". Read it from the description ("1 kg", "(1x6)Ltr" means 6 × 1 L, "1 X 12 LT" means 12 × 1 L). null if the item has no size (a croissant).
+- unit_size / size_uom: the CONTENTS of ONE unit you consume — "1" + "L", "750" + "ml", "1" + "kg", "500" + "g", "1" + "gal" (a gallon of milk). Read it from the description ("1 kg", "(1x6)Ltr" means 6 × 1 L, "1 X 12 LT" means 12 × 1 L). null if the item has no size (a croissant).
+  PACKAGING & EQUIPMENT: a size that describes CAPACITY, not contents — "6.5 OZ cup", "10 gallon rubbish bag", "12oz lid", "30x20cm freezer bag" — is part of the item's NAME. Put it in suggested_item_name (e.g. "Paper cup 6.5oz double wall", "Rubbish bag 10 gallon") and leave unit_size/size_uom null; count them in pieces. Never use plain "oz" as size_uom.
+- set_parts: when one billed unit is a SET of pieces sold together, list the pieces, e.g. "CUP WITH WHITE LID" → ["cup", "lid"]; "cup with lid & sleeve" → ["cup", "lid", "sleeve"]. Then count_qty = number of sets and count_uom = "set". null for normal items.
+  Example: "6.5 OZ D/W PAPER CUP PRINTED WITH WHITE LID", Pkg 1X500, Qty 1000 @ 0.62 → count_qty 1000, count_uom "set", set_parts ["cup","lid"], pack_qty 2, pack_type "carton", units_per_pack 500, suggested_item_name "Paper cup 6.5oz double wall printed + white lid".
 - pack_qty / pack_type / units_per_pack: outer packaging if stated (e.g. "4 boxes" of 6 → 4, "box", 6). null if not stated.
 - Cross-check with the money: quantity × unit_price should equal line_total — the billed quantity column tells you what the price is per. Sub-notes under the description (e.g. "4 boxes", "4pcs", "1Kg") are the supplier's packing notes; use them to fill packs, but if they contradict the billed qty, trust the billed qty and mention the conflict in "qty_note".
 - qty_note: ONLY when something genuinely doesn't add up (packing note conflicts with billed qty, size unclear) — one short plain-English sentence. If everything is consistent, null. Never write a note just to say it checks out.
@@ -93,6 +101,8 @@ Deliver the result by calling the record_bill tool with ONE object matching this
   "order_ref": string | null,
   "salesperson": string | null,
   "payment_terms": string | null,
+  "rounding": number | null,
+  "prices_include_vat": boolean | null,
   "expense_date": "YYYY-MM-DD" | null,
   "invoice_number": string | null,
   "subtotal": number | null,
@@ -123,6 +133,7 @@ Deliver the result by calling the record_bill tool with ONE object matching this
       "pack_type": string | null,
       "units_per_pack": number | null,
       "vat_rate": number | null,
+      "set_parts": string[] | null,
       "qty_note": string | null,
       "qty_confidence": "high" | "medium" | "low"
     }
@@ -159,7 +170,13 @@ const PDF_MEDIA_TYPE = "application/pdf";
 
 type CategoryRow = { id: string; name: string };
 type SupplierRow = { id: string; name: string; trn: string | null };
-type InventoryRow = { id: string; name: string; unit: string | null };
+type InventoryRow = {
+  id: string;
+  name: string;
+  unit: string | null;
+  default_unit_size?: number | null;
+  default_size_uom?: string | null;
+};
 type AliasRow = {
   raw_text: string;
   inventory_items: { id: string; name: string } | null;
@@ -206,7 +223,9 @@ function buildContextBlock(args: {
       ? inventory
           .map(
             (i) =>
-              `- id=${i.id} | ${i.name}${i.unit ? ` | unit: ${i.unit}` : ""}`,
+              `- id=${i.id} | ${i.name}${i.unit ? ` | unit: ${i.unit}` : ""}${
+                i.default_unit_size && i.default_size_uom ? ` | usual size: ${i.default_unit_size} ${i.default_size_uom}` : ""
+              }`,
           )
           .join("\n")
       : "- (none yet — return inventory_item_id null for every line and always provide suggested_item_name)";
@@ -284,6 +303,8 @@ const BILL_SCHEMA = {
     order_ref: S,
     salesperson: S,
     payment_terms: S,
+    rounding: N,
+    prices_include_vat: { type: ["boolean", "null"] },
     expense_date: { type: ["string", "null"], description: "YYYY-MM-DD" },
     invoice_number: S,
     subtotal: N,
@@ -317,6 +338,7 @@ const BILL_SCHEMA = {
           pack_type: S,
           units_per_pack: N,
           vat_rate: N,
+          set_parts: { type: ["array", "null"], items: { type: "string" } },
           qty_note: S,
           qty_confidence: CONF,
         },
@@ -324,7 +346,7 @@ const BILL_SCHEMA = {
           "description", "quantity", "unit_price", "line_total", "discount", "vat_amount",
           "inventory_item_id", "suggested_item_name", "match_confidence", "line_kind", "brand",
           "uom_printed", "count_qty", "count_uom", "unit_size", "size_uom", "pack_qty",
-          "pack_type", "units_per_pack", "vat_rate", "qty_note", "qty_confidence",
+          "pack_type", "units_per_pack", "vat_rate", "set_parts", "qty_note", "qty_confidence",
         ],
       },
     },
@@ -348,7 +370,7 @@ const BILL_SCHEMA = {
   },
   required: [
     "supplier_name", "supplier_trn", "supplier_address", "supplier_phone", "supplier_email",
-    "doc_type", "order_ref", "salesperson", "payment_terms", "expense_date", "invoice_number",
+    "doc_type", "order_ref", "salesperson", "payment_terms", "rounding", "prices_include_vat", "expense_date", "invoice_number",
     "subtotal", "vat_amount", "total", "payment_method", "category_hint", "notes",
     "line_items", "confidence", "anomalies",
   ],
@@ -418,7 +440,7 @@ export async function POST(request: Request) {
         .eq("location_id", session.lid),
       supabase
         .from("inventory_items")
-        .select("id, name, unit")
+        .select("id, name, unit, default_unit_size, default_size_uom")
         .eq("is_active", true)
         .eq("location_id", session.lid),
       supabase
@@ -515,17 +537,45 @@ export async function POST(request: Request) {
       }
     }
 
-    // Show the catalog's clean name for lines matched to a known item.
-    const invName = new Map(
-      ((inventoryRes.data ?? []) as unknown as InventoryRow[]).map((i) => [i.id, i.name]),
+    // ── Post-processing: clean names, remembered sizes, supplier hygiene ──
+    const inv = new Map(
+      ((inventoryRes.data ?? []) as unknown as InventoryRow[]).map((i) => [i.id, i]),
     );
-    const ex = extracted as { line_items?: Array<Record<string, unknown>> };
+    const ex = extracted as Record<string, unknown> & { line_items?: Array<Record<string, unknown>> };
     if (Array.isArray(ex.line_items)) {
       for (const li of ex.line_items) {
         const id = typeof li.inventory_item_id === "string" ? li.inventory_item_id : "";
-        li.matched_item_name = invName.get(id) ?? null;
-        if (id && !invName.has(id)) li.inventory_item_id = null; // hallucinated id
+        const item = inv.get(id);
+        if (id && !item) li.inventory_item_id = null; // hallucinated id
+        li.matched_item_name = item?.name ?? null;
+        // No size on the bill? Use the size this item came in last time.
+        if (item?.default_unit_size && item.default_size_uom && li.unit_size == null && !(Array.isArray(li.set_parts) && li.set_parts.length > 1)) {
+          li.unit_size = item.default_unit_size;
+          li.size_uom = item.default_size_uom;
+          li.qty_note = li.qty_note ?? `Size from past deliveries: ${item.default_unit_size} ${item.default_size_uom}`;
+        }
       }
+    }
+
+    // Never file Qave's own phone/email as the supplier's.
+    const { data: loc } = await supabase
+      .from("locations")
+      .select("own_contacts")
+      .eq("id", session.lid)
+      .maybeSingle();
+    const own = (loc?.own_contacts ?? null) as OwnContacts | null;
+    ex.supplier_phone = scrubPhones(ex.supplier_phone as string | null, own);
+    if (isOwnEmail(ex.supplier_email as string | null, own)) ex.supplier_email = null;
+
+    // TRN must be 15 digits; if it matches a known supplier, pick that one.
+    const t = checkTrn(ex.supplier_trn as string | null);
+    ex.supplier_trn = t.trn;
+    ex.trn_problem = t.problem;
+    if (t.trn) {
+      const hit = ((suppliersRes.data ?? []) as unknown as SupplierRow[]).find(
+        (sup) => (sup.trn ?? "").replace(/\D/g, "") === t.trn,
+      );
+      if (hit) ex.matched_supplier_id = hit.id;
     }
 
     return NextResponse.json({

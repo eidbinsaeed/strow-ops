@@ -38,6 +38,10 @@ type Extracted = {
   order_ref?: string | null;
   salesperson?: string | null;
   payment_terms?: string | null;
+  rounding?: number | null;
+  prices_include_vat?: boolean | null;
+  matched_supplier_id?: string | null;
+  trn_problem?: string | null;
   expense_date: string | null;
   invoice_number: string | null;
   subtotal: number | null;
@@ -109,6 +113,7 @@ export function ExpenseFlow({
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [goodsReceived, setGoodsReceived] = useState(true);
   const isPdf = imageMediaType === "application/pdf";
 
   async function handleFile(file: File) {
@@ -165,13 +170,16 @@ export function ExpenseFlow({
       setExtracted(ext);
       setFormDate(pickedDate);
 
-      if (ext.supplier_name) {
-        const matched = suppliers.find(
-          (s) =>
-            s.name.toLowerCase() === ext.supplier_name?.toLowerCase().trim(),
-        );
+      if (ext.supplier_name || ext.matched_supplier_id) {
+        const matched =
+          suppliers.find((s) => s.id === ext.matched_supplier_id) ??
+          suppliers.find(
+            (s) =>
+              s.name.toLowerCase() === ext.supplier_name?.toLowerCase().trim(),
+          );
         setSupplierMode(matched ? "existing" : "new");
       }
+      setGoodsReceived(ext.doc_type !== "quotation");
 
       setStage("review");
     } catch (e) {
@@ -339,12 +347,15 @@ export function ExpenseFlow({
       )?.id
     : undefined;
 
-  const matchedSupplier = extracted?.supplier_name
-    ? suppliers.find(
-        (s) =>
-          s.name.toLowerCase() === extracted.supplier_name?.toLowerCase().trim(),
-      )
-    : undefined;
+  // Same TRN = same supplier, whatever name the bill uses.
+  const matchedSupplier =
+    suppliers.find((s) => s.id === extracted?.matched_supplier_id) ??
+    (extracted?.supplier_name
+      ? suppliers.find(
+          (s) =>
+            s.name.toLowerCase() === extracted.supplier_name?.toLowerCase().trim(),
+        )
+      : undefined);
 
   return (
     <div className="mx-auto w-full max-w-md flex-1 py-8">
@@ -400,6 +411,28 @@ export function ExpenseFlow({
           <input type="hidden" name="line_items" value="[]" />
         )}
         <input type="hidden" name="doc_type" value={extracted?.doc_type ?? ""} />
+        <input type="hidden" name="goods_received" value={goodsReceived ? "1" : "0"} />
+        <input type="hidden" name="rounding" value={extracted?.rounding ?? ""} />
+        <input
+          type="hidden"
+          name="prices_include_vat"
+          value={extracted?.prices_include_vat == null ? "" : extracted.prices_include_vat ? "1" : "0"}
+        />
+
+        {extracted?.doc_type === "quotation" && (
+          <label className="flex items-start gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <input
+              type="checkbox"
+              checked={goodsReceived}
+              onChange={(e) => setGoodsReceived(e.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0"
+            />
+            <span>
+              <span className="font-medium">This is a quote / pro-forma, not a delivery.</span>{" "}
+              Tick only if the goods have actually arrived — otherwise nothing is added to stock.
+            </span>
+          </label>
+        )}
         <input
           type="hidden"
           name="ai_anomalies"
@@ -504,6 +537,9 @@ export function ExpenseFlow({
           </summary>
           <div className="space-y-2 border-t border-neutral-100 p-3">
             <MiniField label="TRN" name="supplier_trn" defaultValue={extracted?.supplier_trn} inputMode="numeric" />
+            {extracted?.trn_problem && (
+              <p className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">{extracted.trn_problem}</p>
+            )}
             <MiniField label="Phone" name="supplier_phone" defaultValue={extracted?.supplier_phone} inputMode="tel" />
             <MiniField label="Email" name="supplier_email" defaultValue={extracted?.supplier_email} inputMode="email" />
             <MiniField label="Address" name="supplier_address" defaultValue={extracted?.supplier_address} />
@@ -604,6 +640,11 @@ export function ExpenseFlow({
           <ItemsReceived
             initial={(extracted?.line_items ?? []) as RawLine[]}
             subtotal={extracted?.subtotal ?? null}
+            vat={extracted?.vat_amount ?? null}
+            total={extracted?.total ?? null}
+            rounding={extracted?.rounding ?? null}
+            pricesIncludeVat={extracted?.prices_include_vat ?? null}
+            goodsReceived={goodsReceived}
           />
         )}
 

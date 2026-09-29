@@ -24,7 +24,7 @@ export const LINE_KINDS: { v: LineKind; label: string }[] = [
   { v: "fee", label: "Fee / delivery" },
   { v: "discount", label: "Discount" },
   { v: "deposit", label: "Deposit" },
-  { v: "other", label: "Other" },
+  { v: "other", label: "Not stock" },
 ];
 
 // Measurement units → base unit + factor.
@@ -48,7 +48,8 @@ const MEASURE: Record<string, { base: BaseUom; f: number }> = {
   gram: { base: "kg", f: 0.001 },
   mg: { base: "kg", f: 0.000001 },
   lb: { base: "kg", f: 0.453592 },
-  oz: { base: "kg", f: 0.0283495 },
+  // Plain "oz" is deliberately absent: on cups it's capacity (6.5 oz cup), on
+  // food it's weight — ambiguous, so it is never converted.
 };
 
 /** Packaging words the UI offers (free text is still allowed). */
@@ -57,7 +58,7 @@ export const COUNT_UNITS = [
   "jar", "tub", "tin", "roll", "sachet", "loaf", "dozen", "kg", "g", "L", "ml",
 ] as const;
 
-export const SIZE_UNITS = ["L", "ml", "kg", "g", "gal", "oz", "lb", "pcs"] as const;
+export const SIZE_UNITS = ["L", "ml", "kg", "g", "gal", "lb", "pcs"] as const;
 
 export function measureOf(u: string | null | undefined): { base: BaseUom; f: number } | null {
   const k = (u ?? "").trim().toLowerCase().replace(/\.$/, "");
@@ -73,7 +74,13 @@ export type Qty = {
   count_uom?: string | null;
   unit_size?: number | null;
   size_uom?: string | null;
+  /** Items sold as a set, e.g. ["cup", "lid"] — each set is that many pieces. */
+  set_parts?: string[] | null;
 };
+
+export function partsOf(q: Qty): string[] {
+  return Array.isArray(q.set_parts) ? q.set_parts.map((p) => String(p).trim()).filter(Boolean) : [];
+}
 
 /**
  * Real received amount in a base unit.
@@ -85,6 +92,10 @@ export type Qty = {
 export function baseOf(q: Qty): { base_qty: number | null; base_uom: BaseUom | null } {
   const count = num(q.count_qty);
   if (count == null) return { base_qty: null, base_uom: null };
+
+  // Sets (cup + lid): 500 sets = 500 cups + 500 lids = 1,000 pieces.
+  const parts = partsOf(q);
+  if (parts.length > 1) return { base_qty: round(count * parts.length), base_uom: "pcs" };
 
   // Count itself is a measurement (loose goods sold by weight / volume).
   const m = measureOf(q.count_uom);
@@ -122,6 +133,15 @@ export function fmtQty(n: number | null | undefined, uom: string | null | undefi
 
 /** Human line: "4 box × 6 × 1 L" or "24 carton × 1 L" or "12 pcs". */
 export function describeQty(l: Qty & { pack_qty?: number | null; pack_type?: string | null; units_per_pack?: number | null }): string {
+  const setParts = partsOf(l);
+  if (setParts.length > 1 && num(l.count_qty) != null) {
+    const n = num(l.count_qty) as number;
+    const packs =
+      num(l.pack_qty) && num(l.units_per_pack) && l.pack_type
+        ? `${fmtQty(num(l.pack_qty), l.pack_type)} × ${num(l.units_per_pack)} = `
+        : "";
+    return `${packs}${fmtQty(n, "sets")} (${setParts.map((p) => fmtQty(n, p)).join(" + ")})`;
+  }
   const parts: string[] = [];
   const pq = num(l.pack_qty);
   const upp = num(l.units_per_pack);
