@@ -7,6 +7,7 @@ import { submitExpense } from "./actions";
 import { enqueueSubmission } from "@/lib/offline/queue";
 import { prepareBillFile } from "@/lib/image";
 import { DayPicker } from "@/components/barista/DayPicker";
+import { ItemsReceived, type RawLine } from "@/components/barista/ItemsReceived";
 import { shortDay, todayDubai } from "@/lib/dates";
 
 type Confidence = "high" | "medium" | "low";
@@ -29,6 +30,14 @@ type Anomalies = {
 
 type Extracted = {
   supplier_name: string | null;
+  supplier_trn?: string | null;
+  supplier_address?: string | null;
+  supplier_phone?: string | null;
+  supplier_email?: string | null;
+  doc_type?: string | null;
+  order_ref?: string | null;
+  salesperson?: string | null;
+  payment_terms?: string | null;
   expense_date: string | null;
   invoice_number: string | null;
   subtotal: number | null;
@@ -387,11 +396,10 @@ export function ExpenseFlow({
           name="ai_confidence"
           value={JSON.stringify(c)}
         />
-        <input
-          type="hidden"
-          name="line_items"
-          value={JSON.stringify(extracted?.line_items ?? [])}
-        />
+        {(extracted?.line_items ?? []).length === 0 && (
+          <input type="hidden" name="line_items" value="[]" />
+        )}
+        <input type="hidden" name="doc_type" value={extracted?.doc_type ?? ""} />
         <input
           type="hidden"
           name="ai_anomalies"
@@ -477,6 +485,37 @@ export function ExpenseFlow({
           )}
         </div>
 
+        <details
+          open={supplierMode === "new"}
+          className="rounded-xl border border-neutral-200 bg-white"
+        >
+          <summary className="cursor-pointer px-4 py-3 text-sm text-neutral-600">
+            Supplier details
+            <span className="ms-2 text-[11px] text-neutral-400">
+              {[
+                extracted?.supplier_trn && "TRN",
+                extracted?.supplier_phone && "phone",
+                extracted?.supplier_address && "address",
+                extracted?.supplier_email && "email",
+              ]
+                .filter(Boolean)
+                .join(" · ") || "none on the bill"}
+            </span>
+          </summary>
+          <div className="space-y-2 border-t border-neutral-100 p-3">
+            <MiniField label="TRN" name="supplier_trn" defaultValue={extracted?.supplier_trn} inputMode="numeric" />
+            <MiniField label="Phone" name="supplier_phone" defaultValue={extracted?.supplier_phone} inputMode="tel" />
+            <MiniField label="Email" name="supplier_email" defaultValue={extracted?.supplier_email} inputMode="email" />
+            <MiniField label="Address" name="supplier_address" defaultValue={extracted?.supplier_address} />
+            <MiniField label="Order ref" name="order_ref" defaultValue={extracted?.order_ref} />
+            <MiniField label="Salesperson" name="salesperson" defaultValue={extracted?.salesperson} />
+            <MiniField label="Terms" name="payment_terms" defaultValue={extracted?.payment_terms} />
+            <p className="text-[11px] text-neutral-400">
+              Saved to the supplier&apos;s profile. Existing details are only filled in, never overwritten.
+            </p>
+          </div>
+        </details>
+
         <div>
           <label className="mb-1 block text-xs font-medium text-neutral-600">
             Category{" "}
@@ -560,6 +599,13 @@ export function ExpenseFlow({
           confidence={totalConf}
           required
         />
+
+        {(extracted?.line_items ?? []).length > 0 && (
+          <ItemsReceived
+            initial={(extracted?.line_items ?? []) as RawLine[]}
+            subtotal={extracted?.subtotal ?? null}
+          />
+        )}
 
         <div>
           <div className="mb-1 flex items-center justify-between">
@@ -684,6 +730,30 @@ function Field({
         className={`w-full rounded-xl border-2 px-3 py-2.5 text-base focus:outline-none ${CONFIDENCE_BORDER[confidence]} focus:border-strow-ink`}
       />
     </div>
+  );
+}
+
+function MiniField({
+  label,
+  name,
+  defaultValue,
+  inputMode,
+}: {
+  label: string;
+  name: string;
+  defaultValue: string | null | undefined;
+  inputMode?: "numeric" | "tel" | "email";
+}) {
+  return (
+    <label className="grid grid-cols-[5.5rem_1fr] items-center gap-2">
+      <span className="text-[11px] font-medium text-neutral-500">{label}</span>
+      <input
+        name={name}
+        defaultValue={defaultValue ?? ""}
+        inputMode={inputMode}
+        className="w-full min-w-0 rounded-lg border border-neutral-300 bg-white px-2.5 py-2 text-sm focus:border-strow-ink focus:outline-none"
+      />
+    </label>
   );
 }
 

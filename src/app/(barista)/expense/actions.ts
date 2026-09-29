@@ -13,6 +13,7 @@ import { writeAudit } from "@/lib/audit/log";
 import { uploadReceiptPhoto } from "@/lib/drive/upload";
 import { todayDubai } from "@/lib/dates";
 import { normalizeItemText, looksLikeRealItem } from "@/lib/inventory-match";
+import { baseOf, num, type LineKind } from "@/lib/units";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -46,6 +47,26 @@ type LineItem = {
   inventory_item_id: string | null;
   suggested_item_name: string | null;
   match_confidence: Confidence | null;
+  // Goods received (see lib/units.ts)
+  line_kind: LineKind;
+  brand: string | null;
+  uom_printed: string | null;
+  pack_qty: number | null;
+  pack_type: string | null;
+  units_per_pack: number | null;
+  count_qty: number | null;
+  count_uom: string | null;
+  unit_size: number | null;
+  size_uom: string | null;
+  base_qty: number | null;
+  base_uom: string | null;
+  vat_rate: number | null;
+};
+
+const KINDS: LineKind[] = ["goods", "fee", "discount", "deposit", "other"];
+const txt = (v: unknown, max = 120): string | null => {
+  const t = typeof v === "string" ? v.trim() : "";
+  return t ? t.slice(0, max) : null;
 };
 
 function parseNumberOrNull(raw: string | null): number | null {
@@ -77,7 +98,28 @@ function parseLineItems(raw: string | null): LineItem[] {
         (li): li is Record<string, unknown> =>
           li != null && typeof li === "object",
       )
-      .map((li) => ({
+      .map((li) => {
+        const line_kind: LineKind = KINDS.includes(li.line_kind as LineKind)
+          ? (li.line_kind as LineKind)
+          : "goods";
+        const q = {
+          count_qty: num(li.count_qty),
+          count_uom: txt(li.count_uom, 30),
+          unit_size: num(li.unit_size),
+          size_uom: txt(li.size_uom, 30),
+        };
+        // Recomputed here — never trust a client-sent base quantity.
+        const b = line_kind === "goods" ? baseOf(q) : { base_qty: null, base_uom: null };
+        return {
+        line_kind,
+        brand: txt(li.brand, 60),
+        uom_printed: txt(li.uom_printed, 30),
+        pack_qty: num(li.pack_qty),
+        pack_type: txt(li.pack_type, 30),
+        units_per_pack: num(li.units_per_pack),
+        ...q,
+        ...b,
+        vat_rate: num(li.vat_rate),
         description: String(li.description ?? "").trim(),
         quantity: Number(li.quantity) || 0,
         unit_price: Number(li.unit_price) || 0,
@@ -99,7 +141,8 @@ function parseLineItems(raw: string | null): LineItem[] {
           li.match_confidence === "low"
             ? (li.match_confidence as Confidence)
             : null,
-      }));
+        };
+      });
   } catch {
     return [];
   }
@@ -162,6 +205,14 @@ export async function submitExpense(formData: FormData) {
     return { error: "Pick a supplier or enter a new one" };
   }
 
+  // Supplier details read off the bill (TRN digits only).
+  const supplierInfo = {
+    trn: (txt(formData.get("supplier_trn"), 40) ?? "").replace(/\D/g, "") || null,
+    phone: txt(formData.get("supplier_phone"), 60),
+    email: txt(formData.get("supplier_email"), 120),
+    address: txt(formData.get("supplier_address"), 300),
+  };
+
   if (!supplier_id && new_supplier_name) {
     const { data: created, error: supplierError } = await supabase
       .from("suppliers")
@@ -169,6 +220,7 @@ export async function submitExpense(formData: FormData) {
         location_id: session.lid,
         name: new_supplier_name,
         notes: "Auto-created from expense submission",
+        ...supplierInfo,
       })
       .select("id")
       .single();
@@ -188,8 +240,26 @@ export async function submitExpense(formData: FormData) {
       action: "auto_created",
       entity_type: "supplier",
       entity_id: supplier_id,
-      after_state: { name: new_supplier_name },
+      after_state: { name: new_supplier_name, ...supplierInfo },
     });
+  } else if (supplier_id) {
+    // Existing supplier: only fill details that are still empty — never
+    // overwrite what the owner already saved.
+    const { data: cur } = await supabase
+      .from("suppliers")
+      .select("trn, phone, email, address")
+      .eq("id", supplier_id)
+      .maybeSingle();
+    if (cur) {
+      const fill: Record<string, string> = {};
+      for (const k of ["trn", "phone", "email", "address"] as const) {
+        const now = (cur as Record<string, string | null>)[k];
+        if ((!now || !now.trim()) && supplierInfo[k]) fill[k] = supplierInfo[k]!;
+      }
+      if (Object.keys(fill).length) {
+        await supabase.from("suppliers").update(fill).eq("id", supplier_id);
+      }
+    }
   }
 
   const category_id = String(formData.get("category_id") ?? "").trim() || null;
@@ -246,8 +316,16 @@ export async function submitExpense(formData: FormData) {
   // recorded in ai_anomalies as suggestions for the owner's weekly inventory
   // review. They do NOT on their own pause the expense — only a model-level
   // anomaly does that (see deriveStatus).
+  // Fees, discounts and deposits are never inventory.
+  for (const li of lineItems) {
+    if (li.line_kind !== "goods") {
+      li.inventory_item_id = null;
+      li.suggested_item_name = null;
+    }
+  }
+
   const unmatchedSuggestions = lineItems
-    .filter((li) => !li.inventory_item_id && li.suggested_item_name)
+    .filter((li) => li.line_kind === "goods" && !li.inventory_item_id && li.suggested_item_name)
     .map((li) => ({
       description: li.description,
       suggested_item_name: li.suggested_item_name,
@@ -280,6 +358,10 @@ export async function submitExpense(formData: FormData) {
       total,
       payment_method,
       notes,
+      doc_type: txt(formData.get("doc_type"), 30),
+      order_ref: txt(formData.get("order_ref"), 80),
+      salesperson: txt(formData.get("salesperson"), 80),
+      payment_terms: txt(formData.get("payment_terms"), 80),
       ai_confidence: confidence,
       ai_anomalies: finalAnomalies,
       status,
@@ -320,6 +402,7 @@ export async function submitExpense(formData: FormData) {
     // so it can never undo the expense.
     const createdThisBatch = new Map<string, string>();
     for (const li of lineItems) {
+      if (li.line_kind !== "goods") continue;
       if (li.inventory_item_id && validInvIds.has(li.inventory_item_id)) continue;
       if (li.match_confidence !== "high") continue;
       if (!looksLikeRealItem(li.suggested_item_name)) continue;
@@ -348,6 +431,8 @@ export async function submitExpense(formData: FormData) {
             name,
             kind: "other",
             is_active: true,
+            base_uom: li.base_uom,
+            brand: li.brand,
           })
           .select("id")
           .maybeSingle();
@@ -391,7 +476,31 @@ export async function submitExpense(formData: FormData) {
           ? li.inventory_item_id
           : null,
       position: index,
+      line_kind: li.line_kind,
+      brand: li.brand,
+      uom_printed: li.uom_printed,
+      pack_qty: li.pack_qty,
+      pack_type: li.pack_type,
+      units_per_pack: li.units_per_pack,
+      count_qty: li.count_qty,
+      count_uom: li.count_uom,
+      unit_size: li.unit_size,
+      size_uom: li.size_uom,
+      base_qty: li.base_qty,
+      base_uom: li.base_uom,
+      vat_rate: li.vat_rate,
     }));
+
+    // Teach each matched item its base unit the first time we see it.
+    for (const li of lineItems) {
+      if (li.line_kind === "goods" && li.inventory_item_id && validInvIds.has(li.inventory_item_id) && li.base_uom) {
+        await supabase
+          .from("inventory_items")
+          .update({ base_uom: li.base_uom, ...(li.brand ? { brand: li.brand } : {}) })
+          .eq("id", li.inventory_item_id)
+          .is("base_uom", null);
+      }
+    }
 
     const { error: lineError } = await supabase
       .from("expense_line_items")

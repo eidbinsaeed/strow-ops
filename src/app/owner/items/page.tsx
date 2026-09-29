@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { LineFixer } from "@/components/owner/LineFixer";
+import { describeQty, fmtQty, sumByBase } from "@/lib/units";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,7 +17,17 @@ type LineRow = {
   discount: number;
   description: string;
   inventory_item_id: string | null;
-  inventory_items: { name: string; kind: string | null; unit: string | null } | null;
+  line_kind: string | null;
+  count_qty: number | null;
+  count_uom: string | null;
+  unit_size: number | null;
+  size_uom: string | null;
+  pack_qty: number | null;
+  pack_type: string | null;
+  units_per_pack: number | null;
+  base_qty: number | null;
+  base_uom: string | null;
+  inventory_items: { name: string; kind: string | null; unit: string | null; base_uom: string | null; brand: string | null } | null;
   expenses: { expense_date: string; photo_drive_url: string | null; suppliers: { name: string } | null } | null;
 };
 
@@ -34,6 +45,9 @@ type Line = {
   date: string;
   supplier: string;
   flags: string[];
+  base: number | null;
+  baseUom: string | null;
+  packDesc: string;
 };
 
 type SupplierStat = {
@@ -61,6 +75,9 @@ type Item = {
   lastBuy: string;
   intervalDays: number | null;
   flagCount: number;
+  received: string;
+  perBase: { price: number; uom: string } | null;
+  lastPack: string;
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -131,7 +148,7 @@ export default async function OwnerItemsPage() {
   const { data, error } = await supabase
     .from("expense_line_items")
     .select(
-      "id, quantity, unit_price, line_total, vat_amount, discount, description, inventory_item_id, inventory_items(name, kind, unit), expenses(expense_date, photo_drive_url, suppliers(name))",
+      "id, quantity, unit_price, line_total, vat_amount, discount, description, inventory_item_id, line_kind, count_qty, count_uom, unit_size, size_uom, pack_qty, pack_type, units_per_pack, base_qty, base_uom, inventory_items(name, kind, unit, base_uom, brand), expenses(expense_date, photo_drive_url, suppliers(name))",
     )
     .limit(2000);
 
@@ -146,8 +163,14 @@ export default async function OwnerItemsPage() {
 
   const byItem = new Map<string, Item>();
   const unmapped: Line[] = [];
+  let feesTotal = 0;
 
   for (const r of rows) {
+    // Delivery fees, discounts and deposits are money, not goods.
+    if (r.line_kind && r.line_kind !== "goods") {
+      feesTotal += (Number(r.line_total) || 0) + (Number(r.vat_amount) || 0);
+      continue;
+    }
     const date = r.expenses?.expense_date ?? "";
     const supplier = r.expenses?.suppliers?.name ?? "Unknown";
     const line: Line = {
@@ -164,6 +187,9 @@ export default async function OwnerItemsPage() {
       date,
       supplier,
       flags: [],
+      base: r.base_qty != null ? Number(r.base_qty) : null,
+      baseUom: r.base_uom,
+      packDesc: r.count_qty != null ? describeQty({ ...r, count_qty: Number(r.count_qty) }) : "",
     };
     if (!r.inventory_item_id || !r.inventory_items) {
       unmapped.push(line);
@@ -180,6 +206,7 @@ export default async function OwnerItemsPage() {
         buys: 0, totalQty: 0, totalSpend: 0, avgPrice: 0, medianPrice: 0,
         minPrice: 0, maxPrice: 0, suppliers: [], firstBuy: "", lastBuy: "",
         intervalDays: null, flagCount: 0,
+        received: "", perBase: null, lastPack: "",
       };
       byItem.set(key, it);
     }
@@ -209,6 +236,20 @@ export default async function OwnerItemsPage() {
     for (const l of it.lines) {
       l.flags = detectFlags(l, med, it.lines.length);
       if (l.flags.length) it.flagCount += 1;
+    }
+
+    // Goods received in real units (L / kg / pcs) and cost per unit.
+    const withBase = it.lines.filter((l) => l.base != null && l.baseUom);
+    it.received = sumByBase(withBase.map((l) => ({ base_qty: l.base, base_uom: l.baseUom })));
+    const uoms = new Set(withBase.map((l) => l.baseUom));
+    if (withBase.length && uoms.size === 1) {
+      const b = withBase.reduce((s2, l) => s2 + (l.base ?? 0), 0);
+      const paid = withBase.reduce((s2, l) => s2 + l.paid, 0);
+      if (b > 0) it.perBase = { price: paid / b, uom: withBase[0].baseUom! };
+    }
+    const latest = [...it.lines].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    if (latest?.packDesc) {
+      it.lastPack = `${latest.packDesc}${latest.base != null ? ` = ${fmtQty(latest.base, latest.baseUom)}` : ""} · ${latest.supplier}`;
     }
 
     const sup = new Map<string, SupplierStat>();
@@ -243,6 +284,7 @@ export default async function OwnerItemsPage() {
           <h1 className="text-2xl font-light tracking-tight">{tr("page.items", locale)}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             {items.length} {tr("items.tracked", locale)} - {aed(grandSpend)} {tr("items.total_spend", locale)}
+            {feesTotal > 0 ? ` - ${aed(feesTotal)} delivery & fees` : ""}
           </p>
         </div>
       </header>
@@ -345,10 +387,19 @@ export default async function OwnerItemsPage() {
                 </div>
 
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <Stat label={tr("items.qty", locale)} value={`${it.totalQty}`} />
+                  <Stat label={it.received ? "Received" : tr("items.qty", locale)} value={it.received || `${it.totalQty}`} />
                   <Stat label={tr("items.spend", locale)} value={aed(it.totalSpend)} />
-                  <Stat label={tr("items.typical_price", locale)} value={aed(it.medianPrice)} />
+                  {it.perBase ? (
+                    <Stat label={`Per ${it.perBase.uom}`} value={aed(it.perBase.price)} />
+                  ) : (
+                    <Stat label={tr("items.typical_price", locale)} value={aed(it.medianPrice)} />
+                  )}
                 </div>
+                {it.lastPack && (
+                  <p className="mt-2 text-xs text-neutral-600">
+                    <span className="text-neutral-400">Last delivery:</span> {it.lastPack}
+                  </p>
+                )}
 
                 <p className="mt-3 text-xs text-neutral-500">
                   {it.buys} {tr("items.buys", locale)}

@@ -25,8 +25,19 @@ The photo is an expense receipt — a printed VAT invoice, a handwritten cash re
 - Payment method: infer from the receipt — "cash", "card", "bank_transfer", or "credit" (marked unpaid / on account).
 - If a field is not visible or you cannot read it, return null. Do NOT guess.
 
+== SUPPLIER & DOCUMENT DETAILS ==
+Read the SELLER's details (never the "Bill To" / customer block — that is Qave Cafe itself):
+- supplier_trn: the seller's TRN / Tax Registration Number (15 digits), digits only.
+- supplier_address: seller address as printed, one line (city/emirate at least if that's all there is).
+- supplier_phone: seller phone / mobile / WhatsApp as printed (keep the + and country code). Look in footers and notes too ("Contact Number: ...").
+- supplier_email: seller email if printed (a salesperson email counts if no other).
+- doc_type: "tax_invoice" | "sales_order" | "receipt" | "delivery_note" | "quotation" | "other" — from the document title.
+- order_ref: customer reference / PO / "Ref#" if printed (NOT the invoice/order number itself), else null.
+- salesperson: salesperson name/code/email if printed, else null.
+- payment_terms: e.g. "cash", "cash on delivery", "30 days", as printed, else null.
+
 == LINE ITEMS ==
-Extract every purchased line on the receipt into "line_items". For each line:
+Extract every line on the receipt into "line_items" (goods AND non-goods like delivery fees). For each line:
 - description: the item text as printed, normalized to Western digits.
 - quantity / unit_price / line_total: numbers. If only a line total is visible, set quantity 1 and unit_price = line_total. When the receipt separates discount and/or VAT (columns like ListVal, Disc, NetVal, VAT 5%), line_total is the NET amount — after discount and before VAT. Otherwise line_total is simply the amount shown for that line.
 - discount: the per-line discount amount if the receipt itemizes one (e.g. a "Disc" column), else 0.
@@ -34,6 +45,26 @@ Extract every purchased line on the receipt into "line_items". For each line:
 - inventory_item_id: if the line clearly matches one of the KNOWN INVENTORY ITEMS listed below — same product, allowing for spelling, translation, or brand variants — return that item's exact id. Also consult KNOWN ALIASES below: if the line text equals or closely matches an alias's raw text, return that alias's item id. Otherwise null.
 - suggested_item_name: when inventory_item_id is null, give a short canonical English name for the item (e.g. "Whole milk 1L", "Vanilla syrup", "Paper cups 8oz"). When you DID match an inventory item, return null.
 - match_confidence: "high" | "medium" | "low" — your confidence in the inventory match, or in the quality of the suggested name.
+- line_kind: "goods" for physical products; "fee" for delivery/shipping/service charges; "discount" for discount lines; "deposit" for bottle/crate deposits; "other" otherwise. Fees are NEVER inventory: set inventory_item_id null and suggested_item_name null for non-goods.
+- brand: brand name if identifiable (e.g. "Oatly", "Alpro", "Almarai"), else null.
+- uom_printed: the unit exactly as printed in the qty column ("pcs", "Lt", "Units", "CTN", "kg"), else null.
+
+GOODS RECEIVED — describe what physically arrived for every goods line, in three layers:
+  pack_qty × units_per_pack = count_qty individual units, each unit_size size_uom.
+- count_qty / count_uom: how many INDIVIDUAL sellable units arrived and what they are — "carton", "bottle", "can", "bag", "pack", "tray", "jar", "tub", "loaf", "pcs"... For loose goods sold by weight/volume, count_qty is the amount and count_uom is the measure ("2.5" + "kg").
+- unit_size / size_uom: content of ONE individual unit — "1" + "L", "750" + "ml", "1" + "kg", "500" + "g", "1" + "gal". Read it from the description ("1 kg", "(1x6)Ltr" means 6 × 1 L, "1 X 12 LT" means 12 × 1 L). null if the item has no size (a croissant).
+- pack_qty / pack_type / units_per_pack: outer packaging if stated (e.g. "4 boxes" of 6 → 4, "box", 6). null if not stated.
+- Cross-check with the money: quantity × unit_price should equal line_total — the billed quantity column tells you what the price is per. Sub-notes under the description (e.g. "4 boxes", "4pcs", "1Kg") are the supplier's packing notes; use them to fill packs, but if they contradict the billed qty, trust the billed qty and mention the conflict in "qty_note".
+- qty_note: one short plain-English note if the quantity is ambiguous or the packing note conflicts with the billed quantity, else null.
+- qty_confidence: "high" | "medium" | "low" — how sure you are about count/size.
+
+Examples:
+- "OATLY Barista Edition Milk (1x6)Ltr / 4 boxes", qty 24 pcs @ 12.50 → count_qty 24, count_uom "carton", unit_size 1, size_uom "L", pack_qty 4, pack_type "box", units_per_pack 6, brand "Oatly".
+- "Frozen Blueberry Whole 1 kg", qty 1 pcs @ 60 → count_qty 1, count_uom "bag", unit_size 1, size_uom "kg".
+- "CROISSANT PLAIN", 12 Units @ 8 → count_qty 12, count_uom "pcs", unit_size null.
+- "Tomato", 2.35 KG @ 4.50 → count_qty 2.35, count_uom "kg", unit_size null.
+- "Shipping fee" 35.00 → line_kind "fee", no quantities needed (count_qty 1, count_uom null).
+
 If the receipt shows only a total with no itemized lines, return an empty array.
 
 == CONFIDENCE ==
@@ -54,6 +85,14 @@ Return ONLY valid JSON matching this schema — no markdown fences, no commentar
 
 {
   "supplier_name": string | null,
+  "supplier_trn": string | null,
+  "supplier_address": string | null,
+  "supplier_phone": string | null,
+  "supplier_email": string | null,
+  "doc_type": "tax_invoice" | "sales_order" | "receipt" | "delivery_note" | "quotation" | "other" | null,
+  "order_ref": string | null,
+  "salesperson": string | null,
+  "payment_terms": string | null,
   "expense_date": "YYYY-MM-DD" | null,
   "invoice_number": string | null,
   "subtotal": number | null,
@@ -72,7 +111,20 @@ Return ONLY valid JSON matching this schema — no markdown fences, no commentar
       "vat_amount": number,
       "inventory_item_id": string | null,
       "suggested_item_name": string | null,
-      "match_confidence": "high" | "medium" | "low"
+      "match_confidence": "high" | "medium" | "low",
+      "line_kind": "goods" | "fee" | "discount" | "deposit" | "other",
+      "brand": string | null,
+      "uom_printed": string | null,
+      "count_qty": number | null,
+      "count_uom": string | null,
+      "unit_size": number | null,
+      "size_uom": string | null,
+      "pack_qty": number | null,
+      "pack_type": string | null,
+      "units_per_pack": number | null,
+      "vat_rate": number | null,
+      "qty_note": string | null,
+      "qty_confidence": "high" | "medium" | "low"
     }
   ],
   "confidence": {
@@ -307,7 +359,7 @@ export async function POST(request: Request) {
   try {
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: SYSTEM_PROMPT,
       messages: [
         {

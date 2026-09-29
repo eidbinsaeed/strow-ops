@@ -13,6 +13,9 @@ type SupplierRow = {
   name: string;
   trn: string | null;
   contact: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
   notes: string | null;
   created_at: string;
   categories: { name: string } | null;
@@ -25,7 +28,7 @@ export default async function OwnerSuppliersPage() {
   const [suppliersResult, categoriesResult] = await Promise.all([
     supabase
       .from("suppliers")
-      .select("id, name, trn, contact, notes, created_at, categories(name)")
+      .select("id, name, trn, contact, phone, email, address, notes, created_at, categories(name)")
       .order("name", { ascending: true }),
     supabase
       .from("categories")
@@ -87,7 +90,24 @@ export default async function OwnerSuppliersPage() {
                     {s.categories?.name ?? "—"}
                   </td>
                   <td className="px-5 py-4 text-neutral-600">
-                    {s.contact ?? "—"}
+                    {s.phone || s.email || s.contact || s.address ? (
+                      <div className="space-y-0.5">
+                        {s.phone && (
+                          <a href={`tel:${s.phone.replace(/\s/g, "")}`} className="block underline">
+                            {s.phone}
+                          </a>
+                        )}
+                        {s.email && (
+                          <a href={`mailto:${s.email}`} className="block text-xs underline">
+                            {s.email}
+                          </a>
+                        )}
+                        {s.contact && <div className="text-xs">{s.contact}</div>}
+                        {s.address && <div className="text-xs text-neutral-400">{s.address}</div>}
+                      </div>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="px-5 py-4">
                     <DeleteSupplierButton id={s.id} name={s.name} />
