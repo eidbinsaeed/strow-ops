@@ -81,7 +81,7 @@ Populate "anomalies" to flag anything that should pause this expense for owner r
 - "unreadable": one or more key fields could not be read with confidence.
 Set has_anomaly to true if any flag fires. Put a one-line, plain-English explanation in "explanation" (or null if no anomaly).
 
-Return ONLY valid JSON matching this schema — no markdown fences, no commentary, no explanation outside the JSON:
+Deliver the result by calling the record_bill tool with ONE object matching this schema. Do any checking silently — put nothing outside the tool call:
 
 {
   "supplier_name": string | null,
@@ -361,6 +361,26 @@ export async function POST(request: Request) {
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       system: SYSTEM_PROMPT,
+      // Forced tool call = the answer always arrives as a parsed object, so
+      // the model's own reasoning can never break JSON parsing.
+      tools: [
+        {
+          name: "record_bill",
+          description: "Record the data extracted from the bill, following the schema in the instructions.",
+          input_schema: {
+            type: "object",
+            properties: {
+              supplier_name: { type: ["string", "null"] },
+              total: { type: ["number", "null"] },
+              line_items: { type: "array", items: { type: "object" } },
+              confidence: { type: "object" },
+              anomalies: { type: "object" },
+            },
+            required: ["supplier_name", "total", "line_items", "confidence", "anomalies"],
+          },
+        },
+      ],
+      tool_choice: { type: "tool", name: "record_bill" },
       messages: [
         {
           role: "user",
@@ -394,31 +414,28 @@ export async function POST(request: Request) {
     });
     await logResponseUsage("photo-bill", "claude-sonnet-4-6", (response as unknown as { usage?: unknown }).usage);
 
-    const textBlock = response.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      return NextResponse.json(
-        { error: "No text in model response" },
-        { status: 502 }
-      );
-    }
-
-    let extracted: unknown;
-    try {
-      const cleaned = textBlock.text
-        .trim()
-        .replace(/^```json\s*/i, "")
-        .replace(/^```\s*/i, "")
-        .replace(/\s*```$/i, "");
-      extracted = JSON.parse(cleaned);
-    } catch (e) {
-      return NextResponse.json(
-        {
-          error: "Model did not return valid JSON",
-          raw: textBlock.text,
-          parseError: e instanceof Error ? e.message : String(e),
-        },
-        { status: 502 }
-      );
+    let extracted: unknown = null;
+    const toolBlock = response.content.find((b) => b.type === "tool_use");
+    if (toolBlock && toolBlock.type === "tool_use" && toolBlock.input && typeof toolBlock.input === "object") {
+      extracted = toolBlock.input;
+    } else {
+      // Fallback: pull the outermost {...} out of any text reply.
+      const text = response.content
+        .map((b) => (b.type === "text" ? b.text : ""))
+        .join("\n");
+      const a = text.indexOf("{");
+      const z = text.lastIndexOf("}");
+      try {
+        extracted = a >= 0 && z > a ? JSON.parse(text.slice(a, z + 1)) : null;
+      } catch {
+        extracted = null;
+      }
+      if (!extracted) {
+        return NextResponse.json(
+          { error: "The AI couldn't read this bill. Please try again, or enter it by hand." , raw: text.slice(0, 2000) },
+          { status: 502 },
+        );
+      }
     }
 
     return NextResponse.json({
