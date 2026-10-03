@@ -188,7 +188,10 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
   const plannedOut = model.plannedOut(cur);
   const paidOut = model.outOf(cur);
   const left = plannedInc - plannedOut;
-  const toPay = Math.max(plannedOut - paidOut, 0);
+  // "باقي تدفعه" leaves out the weekly cash (مصروفي الشخصي) that isn't ticked yet — it's
+  // pocket money, not a bill he can miss. Once ticked it still counts in "دفعت" as before.
+  const allowanceLeft = (months[cur]?.personal ?? []).filter((r) => !r.c).reduce((a, r) => a + (+r.a || 0), 0);
+  const toPay = Math.max(plannedOut - paidOut - allowanceLeft, 0);
   const ser = model.series();
   const balance = ser[idx]?.leftover ?? 0;
   const nets = order.map((m, i) => (i <= nowIdx ? ser[i].net : model.plannedIncome(m) - model.plannedOut(m)));
@@ -197,7 +200,7 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
   const endBalance = cum[cum.length - 1] ?? 0;
   type Due = { key: string; kind: "line" | "inst"; sec: SecKey | "installment"; i: number; label: string; amount: number };
   const due: Due[] = [
-    ...OUT.flatMap((k) => (months[cur]?.[k] ?? []).map((r, i) => ({ key: `${k}-${i}`, kind: "line" as const, sec: k, i, label: r.l, amount: +r.a || 0, paid: r.c }))).filter((x) => !x.paid),
+    ...OUT.flatMap((k) => (months[cur]?.[k] ?? []).map((r, i) => ({ key: `${k}-${i}`, kind: "line" as const, sec: k, i, label: r.l, amount: +r.a || 0, paid: r.c }))).filter((x) => !x.paid && x.sec !== "personal"),
     ...model.instLines(cur).filter((l) => !l.paid).map((l) => ({ key: `inst-${l.pi}`, kind: "inst" as const, sec: "installment" as const, i: l.pi, label: `قسط ${l.name}`, amount: l.amount })),
   ].sort((a, b) => b.amount - a.amount);
 
@@ -269,12 +272,12 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
         {due.length === 0 ? <p className="py-2 text-sm text-[#2F7A5B]">كل التزامات هذا الشهر مدفوعة.</p> : null}
         {due.slice(0, 2).map((d) => (
           <label key={d.key} className="flex min-h-11 items-center gap-3 border-t border-[#EDF0F3]">
-            <input type="checkbox" checked={false} onChange={() => payDue(d)} className="h-[22px] w-[22px] accent-[#0F1C2B]" aria-label={`علّم ${d.label} مدفوع`} />
+            <input type="checkbox" checked={false} onChange={() => payDue(d)} className="h-[22px] w-[22px] accent-[#C0392B]" aria-label={`علّم ${d.label} مدفوع`} />
             <span className="flex min-w-0 flex-1 items-center gap-2 text-[14.5px]">
               <i className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: COLOR[d.sec] }} />
               <span className="truncate">{d.label}</span>
             </span>
-            {N(d.amount, "text-[15px] font-semibold")}
+            {N(d.amount, "text-[15px] font-semibold text-[#C0392B]")}
           </label>
         ))}
         {due.length > 2 ? (
@@ -288,6 +291,7 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
 
   const secCard = (k: SecKey) => {
     const rows = months[cur]?.[k] ?? [];
+    const inc = k === "income";
     const total = rows.reduce((a, r) => a + (+r.a || 0), 0);
     const done = rows.filter((r) => r.c).reduce((a, r) => a + (+r.a || 0), 0);
     return (
@@ -314,7 +318,7 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
                 type="checkbox"
                 checked={r.c}
                 onChange={() => changeMonth(cur, (s) => { s[k][i].c = !s[k][i].c; })}
-                className="h-[22px] w-[22px] shrink-0 accent-[#0F1C2B]"
+                className={`h-[22px] w-[22px] shrink-0 ${inc ? "accent-[#2F7A5B]" : "accent-[#C0392B]"}`}
                 aria-label={`${r.l} ${r.c ? "مدفوع" : "غير مدفوع"}`}
               />
               <button
@@ -323,7 +327,7 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
                 className="flex min-h-12 min-w-0 flex-1 items-center justify-between gap-3 text-start"
               >
                 <span className={`truncate text-[15px] ${r.c ? "text-neutral-500" : "text-strow-ink"}`}>{r.l || "بند"}</span>
-                {N(+r.a || 0, `text-[15px] ${r.c ? "text-neutral-500" : "font-bold"}`)}
+                {N(+r.a || 0, `text-[15px] ${inc && (+r.a || 0) >= 0 ? "text-[#2F7A5B]" : "text-[#C0392B]"} ${r.c ? "opacity-60" : "font-bold"}`)}
               </button>
             </div>
           ))}
@@ -359,9 +363,9 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
         </div>
         {lines.map((l) => (
           <label key={l.pi} className="flex min-h-12 items-center gap-3 border-t border-[#EDF0F3]">
-            <input type="checkbox" checked={l.paid} onChange={() => toggleInst(l.pi)} className="h-[22px] w-[22px] accent-[#0F1C2B]" aria-label={`قسط ${l.name}`} />
+            <input type="checkbox" checked={l.paid} onChange={() => toggleInst(l.pi)} className="h-[22px] w-[22px] accent-[#C0392B]" aria-label={`قسط ${l.name}`} />
             <span className={`min-w-0 flex-1 truncate text-[15px] ${l.paid ? "text-neutral-500" : ""}`}>{l.name}</span>
-            {N(l.amount, `text-[15px] ${l.paid ? "text-neutral-500" : "font-bold"}`)}
+            {N(l.amount, `text-[15px] text-[#C0392B] ${l.paid ? "opacity-60" : "font-bold"}`)}
           </label>
         ))}
       </div>
@@ -375,7 +379,7 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
           {[
             { l: "الدخل المستلم", v: recvInc, s: <>من {N(plannedInc)}</>, c: "" },
             { l: "دفعت", v: paidOut, s: <>من {N(plannedOut)}</>, c: "" },
-            { l: "باقي تدفعه", v: toPay, s: <>{due.length} بنود</>, c: "text-[#B26B00]" },
+            { l: "باقي تدفعه", v: toPay, s: <>{due.length} بنود{allowanceLeft > 0 ? " · بدون مصروفك" : ""}</>, c: "text-[#B26B00]" },
             { l: "يتبقى لك", v: left, s: <>بعد كل الالتزامات</>, c: left < 0 ? "text-[#9A1B12]" : "text-[#2F7A5B]" },
           ].map((x) => (
             <div key={x.l} className="flex flex-col gap-0.5">
@@ -598,7 +602,7 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
             </select>
           </Field>
           <label className="flex min-h-11 items-center gap-3 text-[15px]">
-            <input type="checkbox" checked={lineEdit.paid} onChange={(e) => setLineEdit({ ...lineEdit, paid: e.target.checked })} className="h-[22px] w-[22px] accent-[#0F1C2B]" />
+            <input type="checkbox" checked={lineEdit.paid} onChange={(e) => setLineEdit({ ...lineEdit, paid: e.target.checked })} className={`h-[22px] w-[22px] ${lineEdit.section === "income" ? "accent-[#2F7A5B]" : "accent-[#C0392B]"}`} />
             {lineEdit.section === "income" ? "مستلم" : "مدفوع"}
           </label>
           <button
