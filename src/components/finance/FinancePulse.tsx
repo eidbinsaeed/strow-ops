@@ -318,7 +318,7 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
                 type="checkbox"
                 checked={r.c}
                 onChange={() => changeMonth(cur, (s) => { s[k][i].c = !s[k][i].c; })}
-                className={`h-[22px] w-[22px] shrink-0 ${inc ? "accent-[#2F7A5B]" : "accent-[#C0392B]"}`}
+                className={`h-[22px] w-[22px] shrink-0 ${inc && (+r.a || 0) >= 0 ? "accent-[#2F7A5B]" : "accent-[#C0392B]"}`}
                 aria-label={`${r.l} ${r.c ? "مدفوع" : "غير مدفوع"}`}
               />
               <button
@@ -602,7 +602,7 @@ export function FinancePulse({ initial }: { initial: FinanceData }) {
             </select>
           </Field>
           <label className="flex min-h-11 items-center gap-3 text-[15px]">
-            <input type="checkbox" checked={lineEdit.paid} onChange={(e) => setLineEdit({ ...lineEdit, paid: e.target.checked })} className={`h-[22px] w-[22px] ${lineEdit.section === "income" ? "accent-[#2F7A5B]" : "accent-[#C0392B]"}`} />
+            <input type="checkbox" checked={lineEdit.paid} onChange={(e) => setLineEdit({ ...lineEdit, paid: e.target.checked })} className={`h-[22px] w-[22px] ${lineEdit.section === "income" && !String(lineEdit.amount).trim().startsWith("-") ? "accent-[#2F7A5B]" : "accent-[#C0392B]"}`} />
             {lineEdit.section === "income" ? "مستلم" : "مدفوع"}
           </label>
           <button
