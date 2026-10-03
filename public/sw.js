@@ -8,7 +8,7 @@
  *
  * Cache versioning: bump CACHE_VERSION to invalidate the cache on deploy.
  */
-const CACHE_VERSION = "strow-ops-v1";
+const CACHE_VERSION = "strow-ops-v2"; // v2: stop caching pages (stale pages after a deploy crashed the app)
 const PRECACHE_URLS = [
   "/manifest.webmanifest",
 ];
@@ -44,29 +44,26 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Skip auth-sensitive routes - always go to network
-  if (
-    url.pathname.startsWith("/api/") ||
-    url.pathname.startsWith("/owner/") ||
-    url.pathname === "/login" ||
-    url.pathname === "/today"
-  ) {
-    return;
-  }
+  // Only cache files whose name changes on every build (safe forever) and the
+  // icons/manifest. Pages, page data (?_rsc=) and API calls ALWAYS come from the
+  // network: serving an old cached page after a deploy points at code that no
+  // longer exists and shows "Application error: a client-side exception".
+  const immutable = url.pathname.startsWith("/_next/static/");
+  const appAsset = /^\/(icon-[\w-]+\.png|manifest\.webmanifest|brand\/.*)$/.test(url.pathname);
+  if (!immutable && !appAsset) return;
 
-  // Stale-while-revalidate for static assets and shell pages
   event.respondWith(
     caches.open(CACHE_VERSION).then(async (cache) => {
       const cached = await cache.match(req);
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.status === 200 && res.type === "basic") {
-            cache.put(req, res.clone());
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
+      if (cached && immutable) return cached;
+      try {
+        const res = await fetch(req);
+        if (res && res.status === 200 && res.type === "basic") cache.put(req, res.clone());
+        return res;
+      } catch (e) {
+        if (cached) return cached;
+        throw e;
+      }
     }),
   );
 });

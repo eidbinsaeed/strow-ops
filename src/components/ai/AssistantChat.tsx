@@ -7,6 +7,8 @@ import { Markdown } from "./Markdown";
 import { ActionCard } from "./ActionButtons";
 import { BillCard } from "./PhotoViewer";
 import { useLocale } from "@/components/owner/LocaleProvider";
+import { BlockBoundary } from "./BlockBoundary";
+import { splitChartNotes } from "@/lib/ai/chartText";
 
 export type ChatMessage = {
   id: string;
@@ -465,7 +467,9 @@ function MessageView({ m, now, fallback }: { m: ChatMessage; now: number; fallba
   return (
     <div className="space-y-3">
       {visible.map((b, i) => (
-        <BlockView key={i} b={b} />
+        <BlockBoundary key={i}>
+          <BlockView b={b} />
+        </BlockBoundary>
       ))}
       {m.pending ? (
         <div className="flex items-center gap-2.5 text-sm">
@@ -484,12 +488,23 @@ function MessageView({ m, now, fallback }: { m: ChatMessage; now: number; fallba
 
 function BlockView({ b }: { b: Block }) {
   switch (b.type) {
-    case "text":
+    case "text": {
+      // A chart written out as a text note (old history format) → draw it as a real chart.
+      const parts = splitChartNotes(String(b.text ?? ""));
+      if (parts.some((p) => p.type === "chart"))
+        return (
+          <div className="space-y-3">
+            {parts.map((p, i) => (
+              <BlockView key={i} b={p} />
+            ))}
+          </div>
+        );
       return (
         <div className="ai-rise">
-          <Markdown text={b.text} />
+          <Markdown text={String(b.text ?? "")} />
         </div>
       );
+    }
     case "chart":
       return (
         <div className="ai-rise">

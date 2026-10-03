@@ -23,14 +23,16 @@ function summarize(blocks: Block[]): string {
         case "text":
           return b.text;
         case "chart":
-          return `[Chart shown: ${b.title} — ${b.labels
+          // A record of a tool call, NOT answer text. Worded so the model doesn't copy it
+          // instead of calling show_chart (it did with the old "[Chart shown: …]" note).
+          return `(note: earlier I called the show_chart tool — "${b.title}"; data ${b.labels
             .slice(0, 24)
-            .map((l, i) => `${l}: ${b.series.map((s) => s.values[i]).join("/")}`)
-            .join(", ")}]`;
+            .map((l, i) => `${l}=${b.series.map((s) => s.values[i]).join("/")}`)
+            .join("; ")})`;
         case "table":
-          return `[Table shown: ${b.title ?? ""} (${b.rows.length} rows)]`;
+          return `(note: earlier I called the show_table tool — "${b.title ?? ""}", ${b.rows.length} rows)`;
         case "stats":
-          return `[Stats shown: ${b.items.map((i) => `${i.label} ${i.value}`).join("; ")}]`;
+          return `(note: earlier I called the show_stats tool — ${b.items.map((i) => `${i.label} ${i.value}`).join("; ")})`;
         case "action":
           return `[Change ${b.status}: ${b.title} (action ${b.id})]`;
         case "bill":
