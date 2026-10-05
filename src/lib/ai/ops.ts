@@ -30,6 +30,8 @@ export const WRITE_POLICY: Record<string, { ops: Kind[]; denyColumns?: string[] 
   leave_requests: { ops: ["update"] },
   staff_reports: { ops: ["update", "insert"] },
   payroll_adjustments: { ops: ["update", "insert"] },
+  menu_items: { ops: ["update", "insert"] },
+  recipe_lines: { ops: ["update", "insert", "delete"] },
 };
 
 const ALWAYS_DENY = new Set(["id", "created_at"]);
@@ -96,7 +98,7 @@ export async function applyOps(input: Op[]): Promise<{ ops: Op[]; before: unknow
         await writeAudit({ actor_id: null, actor_type: "system", action: "ai_updated", entity_type: op.table, entity_id: op.id, before_state: row as unknown as Record<string, unknown>, after_state: op.changes });
       } else if (op.op === "insert") {
         const values = { ...op.values };
-        if (!("location_id" in values) && ["closings", "expenses", "suppliers", "inventory_items", "item_aliases", "fixed_costs", "liabilities", "cash_events"].includes(op.table)) {
+        if (!("location_id" in values) && ["closings", "expenses", "suppliers", "inventory_items", "item_aliases", "fixed_costs", "liabilities", "cash_events", "menu_items"].includes(op.table)) {
           if (loc === undefined) loc = await locationId();
           if (loc) values.location_id = loc;
         }

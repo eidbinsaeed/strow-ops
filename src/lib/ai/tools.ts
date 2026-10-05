@@ -63,7 +63,7 @@ const CHANGE_SCHEMA = {
       type: "array",
       items: OP_ITEM,
       description:
-        "Row changes. Writable tables: closings, expenses, expense_line_items, suppliers, categories, inventory_items, item_aliases, fixed_costs, liabilities, cash_events (insert only), baristas (update only), attendance_days, leave_requests, staff_reports, payroll_adjustments. Deletes only on expense_line_items and item_aliases — to remove a bill or closing set its status to 'rejected'.",
+        "Row changes. Writable tables: closings, expenses, expense_line_items, suppliers, categories, inventory_items, item_aliases, fixed_costs, liabilities, cash_events (insert only), baristas (update only), attendance_days, leave_requests, staff_reports, payroll_adjustments, menu_items, recipe_lines. Deletes only on expense_line_items, item_aliases and recipe_lines — to remove a bill or closing set its status to 'rejected'.",
     },
     entity_table: { type: "string", description: "Main record this is about, e.g. expenses" },
     entity_id: { type: "string", description: "uuid of that record" },
