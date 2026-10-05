@@ -189,3 +189,15 @@
 ## v1.0.8 — 2026-09-28 — "Apps combined" instead of fake zeros
 - Until ~22 Sep 2026 the POS printed Talabat, Keeta and Beanz as one "Online payment" line. The photo reader had saved those days as Talabat/Keeta/Beanz = 0; 102 days (9 May–21 Sep) were set back to NULL = combined (data fix), and the reader now leaves such days combined.
 - "Online" is shown as "Apps combined" (Pulse legend, Sales/Review cards, Edit window); Pulse lists "Apps combined" with its orders and average next to the real per-app rows. Strow AI treats NULL app amounts as "not split", never zero.
+
+## v1.1.0 — 2026-10-06 — Recipes & live drink costs
+- New owner page **Recipes** (`/owner/recipes`, in Books next to Items). Three ways in, one review screen before anything saves:
+  - **Photo** of handwritten recipe cards / notebook pages (several recipes per photo, several photos at once) → `/api/recipes/extract` (Sonnet 5 → Sonnet 4.6 fallback, forced tool call, logged to AI spend as `photo-recipe`). Photo kept in Drive under `recipes/`.
+  - **Type / paste** recipes in any style, English or Arabic → same reader (`text-recipe`).
+  - **Manual** blank recipe.
+  - The reader matches ingredients to inventory items, converts café units (shot 9/18 g, pump 10 ml, tbsp/tsp, scoops, counted fruit → g) and marks converted or unclear lines amber; size variants become separate recipes ("Spanish Latte 12oz").
+- Live cost per drink from the **latest bill** of each ingredient (before VAT), profit and margin vs menu price ex VAT; ▲/▼ badge when an ingredient's price moved vs the previous bill.
+- **Finish the costs** panel: each ingredient blocking a cost, fixed once for every recipe using it — pack size ("1 bucket = 3.2 kg", pre-filled from the item name), weight per piece ("1 banana = 120 g"), g↔ml switch, manual price for items never billed, or link a free-text ingredient to a stock item.
+- Strow AI can read recipe costs (new views) and add or edit recipes from chat (`menu_items`, `recipe_lines` in the write policy, with undo). Recipes page AI bar: lowest margins, what to reprice, unpriced ingredients.
+- Migration `0018_recipes.sql` (additive): `menu_items`, `recipe_lines`, `uom_base()`, `uom_factor()`, `v_item_unit_cost`, `v_recipe_line_costs`, `v_menu_item_costs`.
+

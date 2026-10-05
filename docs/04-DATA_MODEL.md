@@ -150,6 +150,31 @@ Manual cash-control events. Cash sales (`closings.cash_total`) and cash expenses
 - `created_at` timestamptz
 - RLS: `owners_full_access_cash_events` (`is_owner()`). Index on `(location_id, event_date)`.
 
+### `menu_items` *(migration `0018`, 6 Oct 2026)*
+What the café sells. Recipe in `recipe_lines`; live cost and margin in `v_menu_item_costs`.
+- `id` uuid pk · `location_id` fk → `locations`
+- `name` text `NOT NULL` — unique per location, case-insensitive (`uniq_menu_items_location_name`)
+- `section` text — menu group (Hot coffee, V60, Bowls…)
+- `price` numeric — menu price **incl. VAT**, `CHECK (price >= 0)`
+- `method` text — preparation steps from the recipe card
+- `is_active` boolean `DEFAULT true` — false = off the menu
+- `source` text — `manual | photo | text | ai` (how it was entered)
+- `photo_drive_url` / `photo_drive_path` — the handwritten card (Drive `/Strow/<location>/<YYYY-MM>/recipes/`)
+- `pos_external_id` text — forward hook: POS item id (sales × recipe = consumption)
+- RLS `owners_full_access_menu_items` (`is_owner()`), `updated_at` trigger.
+
+### `recipe_lines` *(migration `0018`)*
+One ingredient of a menu item.
+- `menu_item_id` fk → `menu_items` `ON DELETE CASCADE`
+- `inventory_item_id` fk → `inventory_items` (no cascade: an item used in a recipe can't be deleted — repoint first)
+- `label` text — name when not linked to stock (e.g. Ice). `CHECK (inventory_item_id IS NOT NULL OR label <> '')`
+- `as_written` text — the line as written on the card / typed (audit trail of the AI read)
+- `qty` numeric `> 0` · `uom` text — `CHECK (uom_base(uom) IS NOT NULL)`: g, ml, pcs, kg, L
+- `manual_unit_cost` numeric — owner's AED per kg / L / pc, used **only** when there is no usable bill price; 0 = free
+- `position` int. RLS `owners_full_access_recipe_lines`, `updated_at` trigger.
+
+Helpers: `uom_base(text)` → `kg | L | pcs`, `uom_factor(text)` → multiplier to that base (g → 0.001). Immutable, `search_path ''`.
+
 ---
 
 ## Database views
@@ -167,6 +192,12 @@ Tz-aware to `Asia/Dubai` where dates matter. Read-only, cheap, no params.
 
 - **`v_cash_position`** — running cash-on-hand per location. `cash_on_hand` = the most recent `count` event's amount + cash sales − cash expenses − withdrawals, all dated *after* that count. Also returns `anchor_date`, `anchor_amount`, `needs_opening_count`, and today's `cash_in_today` / `cash_out_today` / `cash_withdrawn_today`. Feeds the dashboard "Cash on hand" card.
 
+**Migration `0018` (recipes, 6 Oct 2026) — all `security_invoker`:**
+
+- **`v_item_unit_cost`** — latest purchase per inventory item as AED per `base_uom` (kg / L / pcs): `unit_cost` before VAT, `unit_cost_paid` incl. VAT, `prev_unit_cost` (the buy before, same unit), `last_bought`, `supplier_name`, `buys`. Quantity = the bill line's measured `base_qty`, else billed `quantity × inventory_items.default_unit_size`; pieces convert to kg / L when the item has a pack size. Goods lines only; rejected bills and `goods_received = false` excluded.
+- **`v_recipe_line_costs`** — each recipe line with `line_cost` = qty × unit factor × unit cost; `cost_source` = `purchase | manual | no_item | no_price | unit_mismatch` (no cost for the last three).
+- **`v_menu_item_costs`** — per menu item: `cost`, `price_ex_vat`, `profit`, `margin_pct` (before VAT on both sides; NULL until a line is priced), `ingredient_count` vs `costed_count`.
+
 > Note: views were applied to production via the Supabase MCP (timestamped migration versions) and also committed as `supabase/migrations/0003_*.sql` and `0004_*.sql` — see the migration-naming mismatch in `07-KNOWN_ISSUES.md`.
 
 ---
@@ -174,7 +205,8 @@ Tz-aware to `Asia/Dubai` where dates matter. Read-only, cheap, no params.
 ## Forward hooks (intentionally unused in v1)
 
 These columns/tables exist so future features don't require a migration:
-- `inventory_item_id` on `expense_line_items` → recipe-level COGS *(now actively written when v2 extraction matches a line)*
+- `inventory_item_id` on `expense_line_items` → recipe-level COGS *(now actively written when v2 extraction matches a line; used by recipe costing since `0018`)*
+- `pos_external_id` on `menu_items` → POS item id, for consumption = sales × recipe
 - `raw_date_string` on `closings` and `expenses` → preserve the as-printed date for normalization debugging
 - `pos_external_id` on `closings` → Foodics/POS integration
 - `bank_settlement_id` on `closings` and `expenses` → bank reconciliation
