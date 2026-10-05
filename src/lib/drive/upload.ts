@@ -86,7 +86,7 @@ export type UploadParams = {
   imageDataUrl: string;
   mediaType: string; // e.g. "image/jpeg"
   locationSlug: string; // e.g. "qave_main"
-  kind: "closings" | "expenses";
+  kind: "closings" | "expenses" | "recipes";
   date: string; // YYYY-MM-DD - used to derive YYYY-MM folder
   entityId: string; // closing or expense uuid - used for filename
 };
