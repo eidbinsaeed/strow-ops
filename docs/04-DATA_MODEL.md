@@ -1,7 +1,7 @@
 # Strow Ops — Data Model
 
-**Last updated:** 2026-05-15
-**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
+**Last updated:** 2026-10-06
+**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`) and POS daily reports (`0019`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
 
 Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). All transactional tables include `location_id` FK. RLS enabled on every table.
 
@@ -219,3 +219,51 @@ These columns/tables exist so future features don't require a migration:
 - **Baristas** can SELECT/INSERT only rows where `location_id` matches their own AND `barista_id = auth.barista_id()`. No UPDATE on their own past rows after `confirmed` status. No DELETE ever.
 - **Owners** can do everything within their owned locations.
 - **Service role** (server only) bypasses RLS for system jobs (Drive sync, AI extraction callback).
+
+---
+
+## Recipes (migration 0018, 2026-10-05)
+- `menu_items`: one row per sold drink or food item. Has `pos_external_id` (POS SKU) and `pos_name` (added in 0019; the POS product name when it differs from `name`).
+- `recipe_lines`: menu_item → inventory_item with a quantity and unit. Cups, lids and straws count as lines.
+- Helpers: `uom_base(text)`, `uom_factor(text)`.
+- Views:
+  - `v_item_unit_cost`: latest unit cost per inventory item.
+  - `v_recipe_line_costs`: per line, `base_qty` and `line_cost`.
+  - `v_menu_item_costs`: per menu item, `cost`, `ingredient_count` and `costed_count`.
+
+## POS daily reports (migration 0019, 2026-10-06)
+Source: the EZI POS daily email from `ezi.pos.cloud@gmail.com` (subject "YYYY-MM-DD Report", attachment `Report Qavé Café_<date>.xlsx`). The scheduled task "Strow POS daily import" runs at 07:55 Dubai and calls `pos_import_report(jsonb)` with the statement made by `scripts/pos_report.py`.
+
+### `pos_daily_reports` — one row per `(location_id, business_date)`
+- When and where from: `generated_at` (POS report time), `source` (`email`, `upload` or `manual`), `source_message_id` (Gmail id), `file_sha256`.
+- Order counts: `orders_paid`, `orders_refunded`.
+- Amounts: `product_amount`, `addon_amount`, `discount_total` (comps and discounts given, positive), `tax_total`, `total_paid` (what the POS took in), `total_refund`, `net_sales`, `actual_sales`.
+- Payment split: `cash_total`, `card_total`, `talabat_total`, `keeta_total`, `beanz_total`, `other_total`. `orders_by_method` has the same shape as `closings.transactions_by_method`.
+- `payments`, `fees`, `staff`, `special`: the report sections as jsonb.
+- `closing_check` jsonb. `state` is one of `match`, `mismatch`, `no_closing`, `report_before_closing`. It also holds the diff, a per-method comparison, `complete`, and `filled` when blank closing fields were filled.
+- `raw`: the full parsed payload.
+
+### Detail tables
+All carry `report_id` (cascade delete), `location_id` and `business_date`.
+- `pos_product_sales`: product, variant, `is_total`, qty, gross, discount, net, tax, total, refund, position. A product sold in variants has one `is_total=true` row plus one row per variant, so skip `is_total` rows when counting.
+- `pos_category_sales`: category, qty, gross, discount, net, tax, total, refund.
+- `pos_modifier_sales`: modifier, option, qty.
+- `pos_orders`: unique per `(location_id, order_id)`.
+  - `paid_at`, `take_up_number`, `total_paid`, `product_qty`, `product_amount`, `order_discount` (negative = discount given).
+  - `payment_method`: cash, card, talabat, keeta, beanz, other, mixed or none.
+  - `payments` jsonb; `items` jsonb as `[{name, spec, qty}]`.
+  - `staff`, `order_type`, `status`.
+
+### Functions
+- `pos_norm(text)`: name key for matching (lower case, punctuation and emoji removed).
+- `pos_method(text)`: maps a POS payment name to a method family.
+- `pos_import_report(jsonb)`:
+  - Checks the checksum and the totals before writing.
+  - Newer `generated_at` replaces the stored report; the same or older is skipped.
+  - Runs the closing check, writes `audit_log` (`pos_report_imported` / `pos_report_replaced` / `filled_from_pos_report`) and `ai_actions` (mismatch over AED 1).
+  - Execute is revoked from `anon` and `authenticated`.
+
+### Views (`security_invoker`)
+- `v_pos_product_sales`: POS products matched to `menu_items` by `pos_norm(pos_name or name)`; for variants, "product + variant" is tried first. Adds `recipe_cost` = qty × current recipe cost and `cost_status` (`costed`, `partly_costed`, `no_recipe`).
+- `v_pos_ingredient_usage`: theoretical ingredient use per day (sales × recipes), with `qty_used` in base units and its cost.
+- `v_pos_daily`: daily totals, `avg_order`, payment split, `items_sold`, `recipe_coverage_pct`, `food_cost_pct` (recipe cost ÷ covered sales before VAT), `closing_state`, `diff_vs_closing`.

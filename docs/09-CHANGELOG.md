@@ -1,8 +1,37 @@
 # Strow Ops — Changelog
 
-**Last updated:** 2026-05-15
+**Last updated:** 2026-10-06
 
 ---
+
+## 2026-10-06 — POS daily reports, imported automatically
+- **Migration `0019_pos_reports`** is live. Eid ran it in the Supabase SQL Editor, so it is not in `supabase_migrations` history. After the run, production was checked against the tested build and matches it: functions, views, columns, policies, RLS, trigger and indexes.
+  - New tables: `pos_daily_reports`, `pos_product_sales`, `pos_category_sales`, `pos_modifier_sales`, `pos_orders`.
+  - New functions: `pos_norm`, `pos_method`, `pos_import_report(jsonb)`. The import function can't be called by `anon` or `authenticated`.
+  - New views: `v_pos_product_sales`, `v_pos_ingredient_usage`, `v_pos_daily`.
+  - New nullable column: `menu_items.pos_name`.
+- **`scripts/pos_report.py`**: EZI POS .xlsx (or the Gmail RAW email) → one `select public.pos_import_report(...)` statement. Python stdlib only. It reconciles the report's totals and adds a checksum (`n`, `s`, `c`, `k`) that the database re-checks.
+- **Scheduled task "Strow POS daily import"**:
+  - Runs every day at 07:55 Dubai, in the cloud, with automatic approval.
+  - Steps: Gmail search (`from:ezi.pos.cloud@gmail.com`, last 14 days, not yet labelled) → parser → Supabase `execute_sql`.
+  - Gmail labels: "Strow/POS imported" and "Strow/POS rejected".
+  - The task prompt embeds the parser and checks its sha256 (`d5ca52c8…`) before running it.
+- **Import rules:** one report per business date. A newer report replaces the stored one; the same or an older one is skipped.
+- **POS vs barista closing check:**
+  - States: `match`, `mismatch`, `no_closing`, `report_before_closing`.
+  - A mismatch over AED 1 creates a "Needs you" item (`ai_actions`): `warn`, or `critical` from AED 50 up.
+  - Blank closing fields are filled only when the totals match and the report covers the full day. Existing values are never overwritten.
+- **Strow AI** has a memory note ("POS daily reports") that points it at the new tables and views.
+- **Report address:** the POS emails the report to a strow.app address that Cloudflare Email Routing forwards to the owner's Gmail. The import matches the POS sender, so any address that reaches that Gmail works.
+- **Learned:** Supabase MCP asks for a confirm dialog on schema changes it considers destructive. In the cloud app that dialog cancels itself within about 2 seconds. Such migrations must be run by Eid in the SQL Editor.
+
+## 2026-10-05 — Recipes
+- **Migration `0018_recipes`** (applied via MCP) added:
+  - Tables: `menu_items`, `recipe_lines`.
+  - Unit helpers: `uom_base`, `uom_factor`.
+  - Cost views: `v_item_unit_cost`, `v_recipe_line_costs`, `v_menu_item_costs`.
+- **Data:** 18 menu items and 61 recipe lines imported from the POS recipe screenshots. Cups and lids were added where the POS recipes leave them out.
+- **Code:** the Recipes page (photo OCR, typed text, manual entry) is in the `recipes-page` branch commit.
 
 ## v0.0.12 — 2026-05-15 (Session 9)
 **Cash modelled as a running position; surfaced on the dashboard.**
