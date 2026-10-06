@@ -287,7 +287,13 @@ All carry `report_id` (cascade delete), `location_id` and `business_date`.
   - Calls `pos_sync_menu`.
   - Reads a boolean `quiet`. With `quiet`, a mismatch is still stored in `closing_check`, but no `ai_actions` item is made.
   - Also returns `new_menu_items` (list), `prices_filled` and `quiet`.
-- Both functions: execute revoked from `anon` and `authenticated`.
+- `pos_check_closing(report_id, quiet)`: the POS vs closing check. It is used by the import, by the backfill, and by trigger `trg_closings_pos_recheck`.
+  - That trigger runs `after insert or update of closing_date, status, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total on closings`, as a security definer function.
+  - It re-checks that day's report, quietly for days more than 2 days back.
+  - Errors are caught, so saving a closing never fails.
+  - The fill update sets the transaction-local flag `strow.pos_check` so the trigger does not re-run for it.
+  - Needs-you items for a day are closed once the state is no longer `mismatch`.
+- These functions: execute revoked from `anon` and `authenticated`.
 
 ### Views
 - `v_pos_product_sales`: a matched menu item without recipe lines gets `cost_status = 'no_recipe'` and NULL `unit_cost` / `recipe_cost`. New columns at the end: `has_recipe` and `section`.

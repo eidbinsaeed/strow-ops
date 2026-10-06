@@ -6,7 +6,9 @@
 --     keep POS prices current, older uploads never overwrite them, a price typed by hand is never touched;
 --   * old reports can be uploaded in bulk from /owner/pos-reports: the payload flag "quiet" stores the
 --     POS-vs-closing check but does not add "Needs you" items for those old days.
--- Also: a menu item that has no recipe lines no longer counts as "costed" in the POS views.
+-- Also: a menu item that has no recipe lines no longer counts as "costed" in the POS views, and the POS vs
+-- closing check also runs when the barista's closing comes in after the report (or is edited), so the
+-- report that arrives at 00:01 is checked even when the closing is submitted a few minutes later.
 -- Additive: one new column (menu_items.price_pos_date), 'pos' added to the menu_items.source check.
 
 -- ---------------------------------------------------------------- menu items
@@ -264,7 +266,169 @@ comment on function public.pos_sync_menu(uuid) is 'After a POS report is stored:
 revoke all on function public.pos_sync_menu(uuid) from public;
 revoke all on function public.pos_sync_menu(uuid) from anon, authenticated;
 
--- ---------------------------------------------------------------- import (adds: menu sync, quiet flag)
+-- ---------------------------------------------------------------- POS vs closing check
+-- One place for the check, used by the import and again whenever the day's closing is added or changed.
+create or replace function public.pos_check_closing(p_report_id uuid, p_quiet boolean default false)
+returns jsonb
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  r        record;
+  v_cl     record;
+  v_has    boolean;
+  v_apps   numeric;
+  v_diff   numeric;
+  v_check  jsonb;
+  v_fill   jsonb := '{}'::jsonb;
+  v_title  text;
+  v_detail text;
+begin
+  select id, location_id, business_date, generated_at, total_paid, orders_paid, orders_by_method,
+         cash_total, card_total, talabat_total, keeta_total, beanz_total, other_total
+    into r
+    from pos_daily_reports
+   where id = p_report_id;
+  if not found then
+    return null;
+  end if;
+
+  select id, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total,
+         transactions, transactions_by_method, created_at
+    into v_cl
+    from closings
+   where location_id = r.location_id and closing_date = r.business_date and status <> 'rejected'
+   order by created_at desc
+   limit 1;
+  v_has := found;
+  v_apps := r.talabat_total + r.keeta_total + r.beanz_total + r.other_total;
+
+  if not v_has then
+    v_check := jsonb_build_object('state', 'no_closing');
+  elsif r.generated_at < v_cl.created_at and r.generated_at < (r.business_date + 1)::timestamp at time zone 'Asia/Dubai'
+        and r.total_paid - v_cl.grand_total <= 1 then
+    -- Made before the closing: later orders may be missing from the POS report, so a lower POS total is expected.
+    -- (If the POS already shows MORE than the closing, it is a real shortfall and falls through to the check below.)
+    v_check := jsonb_build_object('state', 'report_before_closing', 'closing_id', v_cl.id,
+      'pos_total', r.total_paid, 'closing_total', v_cl.grand_total,
+      'note', 'The POS report was made before the closing was submitted, so it may not cover the whole day.');
+  else
+    v_diff := r.total_paid - v_cl.grand_total;
+    v_check := jsonb_build_object(
+      'state', case when abs(v_diff) <= 1 then 'match' else 'mismatch' end,
+      'complete', r.generated_at >= v_cl.created_at or r.generated_at >= (r.business_date + 1)::timestamp at time zone 'Asia/Dubai',
+      'closing_id', v_cl.id, 'pos_total', r.total_paid, 'closing_total', v_cl.grand_total, 'diff', v_diff,
+      'cash', jsonb_build_object('pos', r.cash_total, 'closing', v_cl.cash_total),
+      'card', jsonb_build_object('pos', r.card_total, 'closing', v_cl.card_total),
+      'apps', jsonb_build_object('pos', v_apps, 'closing', v_cl.online_total),
+      'orders', jsonb_build_object('pos', r.orders_paid, 'closing', v_cl.transactions));
+    if abs(v_diff) <= 1 and (v_check ->> 'complete')::boolean then
+      -- Same rule as the photo backfill: only fill what is blank, never overwrite.
+      if v_cl.transactions is null then
+        v_fill := v_fill || jsonb_build_object('transactions', r.orders_paid);
+      end if;
+      if v_cl.transactions_by_method is null then
+        v_fill := v_fill || jsonb_build_object('transactions_by_method', r.orders_by_method);
+      end if;
+      if v_cl.talabat_total is null and v_cl.keeta_total is null and v_cl.beanz_total is null
+         and r.other_total = 0 and abs(coalesce(v_cl.online_total, 0) - v_apps) <= 1 then
+        v_fill := v_fill || jsonb_build_object('talabat_total', r.talabat_total, 'keeta_total', r.keeta_total, 'beanz_total', r.beanz_total);
+      end if;
+      if v_fill <> '{}'::jsonb then
+        perform set_config('strow.pos_check', 'on', true);  -- tells trg_closings_pos_recheck not to re-run for this fill
+        update closings set
+          transactions = coalesce(transactions, (v_fill ->> 'transactions')::int),
+          transactions_by_method = coalesce(transactions_by_method, v_fill -> 'transactions_by_method'),
+          talabat_total = case when v_fill ? 'talabat_total' then (v_fill ->> 'talabat_total')::numeric else talabat_total end,
+          keeta_total = case when v_fill ? 'keeta_total' then (v_fill ->> 'keeta_total')::numeric else keeta_total end,
+          beanz_total = case when v_fill ? 'beanz_total' then (v_fill ->> 'beanz_total')::numeric else beanz_total end
+        where id = v_cl.id;
+        perform set_config('strow.pos_check', '', true);
+        insert into audit_log (actor_id, actor_type, action, entity_type, entity_id, before_state, after_state)
+        values (null, 'system', 'filled_from_pos_report', 'closing', v_cl.id,
+                jsonb_build_object('transactions', v_cl.transactions, 'transactions_by_method', v_cl.transactions_by_method,
+                                   'talabat_total', v_cl.talabat_total, 'keeta_total', v_cl.keeta_total, 'beanz_total', v_cl.beanz_total),
+                v_fill || jsonb_build_object('pos_report_id', r.id));
+        v_check := v_check || jsonb_build_object('filled', v_fill);
+      end if;
+    end if;
+  end if;
+
+  -- Needs you: one item per gap over AED 1 (kept up to date); no gap any more closes it.
+  if v_check ->> 'state' = 'mismatch' then
+    if not p_quiet then
+      v_title := format('POS report vs closing %s: POS AED %s, closing AED %s (%s)',
+        to_char(r.business_date, 'DD Mon'), to_char(r.total_paid, 'FM999990.00'), to_char(v_cl.grand_total, 'FM999990.00'),
+        case when v_diff > 0 then 'AED ' || to_char(v_diff, 'FM999990.00') || ' missing from the closing'
+             else 'closing AED ' || to_char(-v_diff, 'FM999990.00') || ' higher than the POS' end);
+      v_detail := format('Cash: POS %s vs closing %s. Card: POS %s vs closing %s. Apps (Talabat/Keeta/Beanz): POS %s vs closing %s. Orders: POS %s vs closing %s.',
+        r.cash_total, coalesce(v_cl.cash_total::text, '-'), r.card_total, coalesce(v_cl.card_total::text, '-'),
+        v_apps, coalesce(v_cl.online_total::text, '-'), r.orders_paid, coalesce(v_cl.transactions::text, '-'));
+      update ai_actions set title = v_title, detail = v_detail, created_at = now()
+       where entity_table = 'closings' and entity_id = v_cl.id and status = 'info' and title like 'POS report vs closing%';
+      if not found then
+        insert into ai_actions (source, status, severity, title, detail, confidence, entity_table, entity_id)
+        values ('autopilot', 'info', case when abs(v_diff) >= 50 then 'critical' else 'warn' end, v_title, v_detail, 1, 'closings', v_cl.id);
+      end if;
+    end if;
+  else
+    update ai_actions set status = 'resolved', decided_at = now()
+     where entity_table = 'closings' and status = 'info' and title like 'POS report vs closing%'
+       and entity_id in (select c.id from closings c where c.location_id = r.location_id and c.closing_date = r.business_date);
+  end if;
+
+  update pos_daily_reports set closing_check = v_check where id = r.id;
+  return v_check;
+end;
+$$;
+
+comment on function public.pos_check_closing(uuid, boolean) is 'POS report vs the barista closing of the same day: stores closing_check (match / mismatch / no_closing / report_before_closing), fills blank closing fields when the totals match, keeps one Needs-you item per gap over AED 1 (none when p_quiet) and closes it once the gap is gone.';
+revoke all on function public.pos_check_closing(uuid, boolean) from public;
+revoke all on function public.pos_check_closing(uuid, boolean) from anon, authenticated;
+
+-- The closing usually arrives around midnight, sometimes minutes after the POS report: check again
+-- whenever a closing is added or its totals, date or status change. Never blocks saving the closing.
+create or replace function public.closings_pos_recheck()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  rep      record;
+  v_old    date;
+  v_today  date := (now() at time zone 'Asia/Dubai')::date;
+begin
+  if coalesce(current_setting('strow.pos_check', true), '') = 'on' then
+    return null;
+  end if;
+  if tg_op = 'UPDATE' then
+    v_old := old.closing_date;
+  end if;
+  begin
+    for rep in
+      select id, business_date
+        from pos_daily_reports
+       where location_id = new.location_id
+         and business_date in (new.closing_date, v_old)
+    loop
+      -- Old days (more than 2 days back) are re-checked quietly, like old uploads.
+      perform public.pos_check_closing(rep.id, rep.business_date < v_today - 2);
+    end loop;
+  exception when others then
+    raise warning 'closings_pos_recheck: %', sqlerrm;
+  end;
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_closings_pos_recheck on public.closings;
+create trigger trg_closings_pos_recheck
+  after insert or update of closing_date, status, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total
+  on public.closings
+  for each row execute function public.closings_pos_recheck();
+
+-- ---------------------------------------------------------------- import (adds: menu sync, quiet flag, shared closing check)
 create or replace function public.pos_import_report(p jsonb)
 returns jsonb
 language plpgsql
@@ -281,7 +445,6 @@ declare
   v_c        bigint;
   v_k        numeric;
   v_old      record;
-  v_cl       record;
   v_id       uuid;
   v_status   text;
   v_by       jsonb;
@@ -292,12 +455,7 @@ declare
   v_bea      numeric;
   v_oth      numeric;
   v_paid     numeric;
-  v_apps     numeric;
-  v_diff     numeric;
   v_check    jsonb;
-  v_fill     jsonb := '{}'::jsonb;
-  v_title    text;
-  v_detail   text;
   v_matched  integer;
   v_lines    integer;
   v_menu     jsonb;
@@ -443,81 +601,8 @@ begin
   -- New products go to the menu, prices are filled (pos_sync_menu).
   v_menu := public.pos_sync_menu(v_id);
 
-  -- 4. POS vs the barista closing of the same day.
-  select id, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total,
-         transactions, transactions_by_method, created_at
-    into v_cl
-    from closings
-   where location_id = v_loc and closing_date = v_date and status <> 'rejected'
-   order by created_at desc
-   limit 1;
-  v_apps := v_tal + v_kee + v_bea + v_oth;
-  if not found then
-    v_check := jsonb_build_object('state', 'no_closing');
-  elsif v_gen < v_cl.created_at and v_gen < (v_date + 1)::timestamp at time zone 'Asia/Dubai'
-        and v_paid - v_cl.grand_total <= 1 then
-    -- Made before the closing: later orders may be missing from the POS report, so a lower POS total is expected.
-    -- (If the POS already shows MORE than the closing, it is a real shortfall and falls through to the check below.)
-    v_check := jsonb_build_object('state', 'report_before_closing', 'closing_id', v_cl.id,
-      'pos_total', v_paid, 'closing_total', v_cl.grand_total,
-      'note', 'The POS report was made before the closing was submitted, so it may not cover the whole day.');
-  else
-    v_diff := v_paid - v_cl.grand_total;
-    v_check := jsonb_build_object(
-      'state', case when abs(v_diff) <= 1 then 'match' else 'mismatch' end,
-      'complete', v_gen >= v_cl.created_at or v_gen >= (v_date + 1)::timestamp at time zone 'Asia/Dubai',
-      'closing_id', v_cl.id, 'pos_total', v_paid, 'closing_total', v_cl.grand_total, 'diff', v_diff,
-      'cash', jsonb_build_object('pos', v_cash, 'closing', v_cl.cash_total),
-      'card', jsonb_build_object('pos', v_card, 'closing', v_cl.card_total),
-      'apps', jsonb_build_object('pos', v_apps, 'closing', v_cl.online_total),
-      'orders', jsonb_build_object('pos', (v_sum ->> 'orders')::int, 'closing', v_cl.transactions));
-    if abs(v_diff) <= 1 and (v_check ->> 'complete')::boolean then
-      -- Same rule as the photo backfill: only fill what is blank, never overwrite.
-      if v_cl.transactions is null then
-        v_fill := v_fill || jsonb_build_object('transactions', (v_sum ->> 'orders')::int);
-      end if;
-      if v_cl.transactions_by_method is null then
-        v_fill := v_fill || jsonb_build_object('transactions_by_method', v_by);
-      end if;
-      if v_cl.talabat_total is null and v_cl.keeta_total is null and v_cl.beanz_total is null
-         and v_oth = 0 and abs(coalesce(v_cl.online_total, 0) - v_apps) <= 1 then
-        v_fill := v_fill || jsonb_build_object('talabat_total', v_tal, 'keeta_total', v_kee, 'beanz_total', v_bea);
-      end if;
-      if v_fill <> '{}'::jsonb then
-        update closings set
-          transactions = coalesce(transactions, (v_fill ->> 'transactions')::int),
-          transactions_by_method = coalesce(transactions_by_method, v_fill -> 'transactions_by_method'),
-          talabat_total = case when v_fill ? 'talabat_total' then (v_fill ->> 'talabat_total')::numeric else talabat_total end,
-          keeta_total = case when v_fill ? 'keeta_total' then (v_fill ->> 'keeta_total')::numeric else keeta_total end,
-          beanz_total = case when v_fill ? 'beanz_total' then (v_fill ->> 'beanz_total')::numeric else beanz_total end
-        where id = v_cl.id;
-        insert into audit_log (actor_id, actor_type, action, entity_type, entity_id, before_state, after_state)
-        values (null, 'system', 'filled_from_pos_report', 'closing', v_cl.id,
-                jsonb_build_object('transactions', v_cl.transactions, 'transactions_by_method', v_cl.transactions_by_method,
-                                   'talabat_total', v_cl.talabat_total, 'keeta_total', v_cl.keeta_total, 'beanz_total', v_cl.beanz_total),
-                v_fill || jsonb_build_object('pos_report_id', v_id));
-        v_check := v_check || jsonb_build_object('filled', v_fill);
-      end if;
-      update ai_actions set status = 'resolved', decided_at = now()
-       where entity_table = 'closings' and entity_id = v_cl.id and status = 'info' and title like 'POS report vs closing%';
-    elsif abs(v_diff) > 1 and not v_quiet then
-      -- Old days uploaded in bulk (quiet) keep the check on the report but do not fill Needs you.
-      v_title := format('POS report vs closing %s: POS AED %s, closing AED %s (%s)',
-        to_char(v_date, 'DD Mon'), to_char(v_paid, 'FM999990.00'), to_char(v_cl.grand_total, 'FM999990.00'),
-        case when v_diff > 0 then 'AED ' || to_char(v_diff, 'FM999990.00') || ' missing from the closing'
-             else 'closing AED ' || to_char(-v_diff, 'FM999990.00') || ' higher than the POS' end);
-      v_detail := format('Cash: POS %s vs closing %s. Card: POS %s vs closing %s. Apps (Talabat/Keeta/Beanz): POS %s vs closing %s. Orders: POS %s vs closing %s.',
-        v_cash, coalesce(v_cl.cash_total::text, '-'), v_card, coalesce(v_cl.card_total::text, '-'),
-        v_apps, coalesce(v_cl.online_total::text, '-'), v_sum ->> 'orders', coalesce(v_cl.transactions::text, '-'));
-      update ai_actions set title = v_title, detail = v_detail, created_at = now()
-       where entity_table = 'closings' and entity_id = v_cl.id and status = 'info' and title like 'POS report vs closing%';
-      if not found then
-        insert into ai_actions (source, status, severity, title, detail, confidence, entity_table, entity_id)
-        values ('autopilot', 'info', case when abs(v_diff) >= 50 then 'critical' else 'warn' end, v_title, v_detail, 1, 'closings', v_cl.id);
-      end if;
-    end if;
-  end if;
-  update pos_daily_reports set closing_check = v_check where id = v_id;
+  -- 4. POS vs the barista closing of the same day (pos_check_closing stores closing_check).
+  v_check := public.pos_check_closing(v_id, v_quiet);
 
   insert into audit_log (actor_id, actor_type, action, entity_type, entity_id, before_state, after_state)
   values (null, 'system', 'pos_report_' || v_status, 'pos_daily_report', v_id,
@@ -545,19 +630,21 @@ revoke all on function public.pos_import_report(jsonb) from public;
 revoke all on function public.pos_import_report(jsonb) from anon, authenticated;
 
 -- ---------------------------------------------------------------- backfill
--- Reports already imported: add their new products and prices, oldest first so the newest price wins.
+-- Reports already imported: add their new products and prices (oldest first so the newest price wins),
+-- and check each one against its closing again.
 do $$
 declare
   r record;
 begin
-  for r in select id from public.pos_daily_reports order by business_date, generated_at loop
+  for r in select id, business_date from public.pos_daily_reports order by business_date, generated_at loop
     perform public.pos_sync_menu(r.id);
+    perform public.pos_check_closing(r.id, r.business_date < (now() at time zone 'Asia/Dubai')::date - 2);
   end loop;
 end;
 $$;
 
 -- ---------------------------------------------------------------- Strow AI note
 update public.ai_memory
-   set note = 'The EZI POS daily report is imported automatically every morning (7:55 Dubai) from the POS email; the owner can also upload old days'' reports on the POS reports page (pos_daily_reports.source = upload; old days import quietly, without Needs-you items). Use it for sales questions instead of estimating: pos_daily_reports = one row per business_date (orders_paid, total_paid = what the POS took in, net_sales, discount_total = comps/discounts given, cash/card/talabat/keeta/beanz/other totals, orders_by_method, closing_check). v_pos_daily = daily summary (avg_order, recipe_coverage_pct, food_cost_pct before VAT, closing_state match/mismatch/no_closing/report_before_closing, diff_vs_closing). v_pos_product_sales = units and net sales per product matched to menu items (recipe_cost, cost_status costed/partly_costed/no_recipe, has_recipe, section); in raw pos_product_sales skip is_total rows (variant totals). Products sold that are not on the menu are added to menu_items automatically (source = pos, no recipe lines yet, section guessed from the name, price = POS gross / qty with price_pos_date set; a price typed by hand is never overwritten). v_pos_ingredient_usage = theoretical ingredient use per day from sales x recipes. pos_orders = every paid order (paid_at, payment_method, items, staff). A report generated before the closing can be partial (closing_state report_before_closing); a newer report for the same day replaces it. Barista closings stay the cash count of record; a POS vs closing gap over AED 1 creates a Needs-you item.',
+   set note = 'The EZI POS emails each day''s full report just after midnight and it is imported automatically at 00:05 Dubai; the owner can also upload old days'' reports on the POS reports page (pos_daily_reports.source = upload; old days import quietly, without Needs-you items). Use it for sales questions instead of estimating: pos_daily_reports = one row per business_date (orders_paid, total_paid = what the POS took in, net_sales, discount_total = comps/discounts given, cash/card/talabat/keeta/beanz/other totals, orders_by_method, closing_check). v_pos_daily = daily summary (avg_order, recipe_coverage_pct, food_cost_pct before VAT, closing_state match/mismatch/no_closing/report_before_closing, diff_vs_closing). v_pos_product_sales = units and net sales per product matched to menu items (recipe_cost, cost_status costed/partly_costed/no_recipe, has_recipe, section); in raw pos_product_sales skip is_total rows (variant totals). Products sold that are not on the menu are added to menu_items automatically (source = pos, no recipe lines yet, section guessed from the name, price = POS gross / qty with price_pos_date set; a price typed by hand is never overwritten). v_pos_ingredient_usage = theoretical ingredient use per day from sales x recipes. pos_orders = every paid order (paid_at, payment_method, items, staff). A report generated before the closing can be partial (closing_state report_before_closing); a newer report for the same day replaces it. Barista closings stay the cash count of record; the POS vs closing check also runs when the closing comes in later, and a gap over AED 1 creates a Needs-you item.',
        updated_at = now()
  where scope = 'general' and subject = 'POS daily reports';

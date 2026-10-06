@@ -4,6 +4,15 @@
 
 ---
 
+## 2026-10-07 — POS report at midnight, closing check when the closing comes later
+- The POS now emails the full-day report automatically at about 00:01. The daily import runs at **00:05 Dubai** (was 07:55).
+- The first automatic report (for 6 Oct) replaced the partial 6 Oct report imported the day before. One report per day; the newer one wins, so its orders and products replace the old ones and nothing is added twice.
+- **Migration 0020** also moves the POS vs closing check into `pos_check_closing(report_id, quiet)`. A new trigger, `trg_closings_pos_recheck`, re-runs it whenever a closing is added or its date, status or totals change.
+  - Why: baristas submit the closing around midnight, sometimes a few minutes after the 00:05 import.
+  - Fill rules: blank closing fields are still only filled when the totals match.
+  - Needs you: one item per gap over AED 1, kept up to date and closed once the gap is gone. Days more than 2 days back are re-checked quietly.
+  - Safety: a failing check never blocks saving a closing (it only logs a warning).
+
 ## 2026-10-06 — New layout: Sales, Orders, Recipes sales, POS uploads, fixed Profit & loss
 - **Navigation, grouped the way the café runs:**
   - Top: Pulse, Needs you, Approvals, ✦ Strow AI.

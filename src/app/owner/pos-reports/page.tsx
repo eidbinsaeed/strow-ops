@@ -81,8 +81,8 @@ export default async function PosReportsPage() {
       <h1 className="font-display text-[28px] font-bold tracking-[-0.6px]">{ar ? "تقارير نقاط البيع" : "POS reports"}</h1>
       <p className="text-sm text-neutral-500">
         {ar
-          ? "تصل تلقائياً كل صباح الساعة 7:55 من بريد نظام نقاط البيع. ارفع تقارير الأيام السابقة هنا، ويُقرأ التاريخ من كل ملف."
-          : "They arrive automatically every morning at 7:55 from the POS email. Upload old days here; the date is read from each file."}
+          ? "يصل تقرير كل يوم تلقائياً بعد منتصف الليل (الساعة 12:05) من بريد نظام نقاط البيع. ارفع تقارير الأيام السابقة هنا، ويُقرأ التاريخ من كل ملف."
+          : "Each day's report arrives automatically just after midnight (imported at 12:05 am) from the POS email. Upload old days here; the date is read from each file."}
       </p>
     </header>
   );
