@@ -28,6 +28,7 @@ export function OwnerNavContent({
           <OwnerNavLink href="/owner/closings" badge={badges?.missing_float_count}>{tr("nav.sales", locale)}</OwnerNavLink>
           <OwnerNavLink href="/owner/expenses" badge={badges?.uncategorized_count}>{tr("nav.purchases", locale)}</OwnerNavLink>
           <OwnerNavLink href="/owner/items">{tr("nav.items", locale)}</OwnerNavLink>
+          <OwnerNavLink href="/owner/recipes">{ar ? "الوصفات" : "Recipes"}</OwnerNavLink>
           <OwnerNavLink href="/owner/baristas">{tr("nav.staff", locale)}</OwnerNavLink>
           <OwnerNavLink href="/owner/reports">{tr("nav.reports", locale)}</OwnerNavLink>
         </div>

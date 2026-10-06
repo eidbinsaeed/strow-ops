@@ -11,6 +11,7 @@ const BOOKS: Seg[] = [
   { href: "/owner/closings", en: "Sales", ar: "المبيعات" },
   { href: "/owner/expenses", en: "Purchases", ar: "المشتريات" },
   { href: "/owner/items", en: "Items", ar: "الأصناف" },
+  { href: "/owner/recipes", en: "Recipes", ar: "الوصفات" },
   { href: "/owner/review", en: "Review", ar: "المراجعة" },
 ];
 const STAFF: Seg[] = [
@@ -37,6 +38,11 @@ const PROMPTS: P[] = [
     match: (p) => p.startsWith("/owner/items"),
     en: ["Fix the suspicious lines", "Match the unmatched lines to items", "Which items got more expensive?"],
     ar: ["أصلح البنود المشبوهة", "اربط البنود غير المطابقة بالأصناف", "ما الأصناف التي ارتفع سعرها؟"],
+  },
+  {
+    match: (p) => p.startsWith("/owner/recipes"),
+    en: ["Which drinks have the lowest margin?", "What should I reprice, and to what?", "Which ingredients still have no price?"],
+    ar: ["ما المشروبات ذات أقل هامش ربح؟", "ماذا أعيد تسعيره وبكم؟", "ما المكونات التي بدون سعر بعد؟"],
   },
   {
     match: (p) => p.startsWith("/owner/review"),

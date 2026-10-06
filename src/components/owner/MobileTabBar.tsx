@@ -23,7 +23,7 @@ export function MobileTabBar({ locale, aiBadge = 0 }: { locale: Locale; aiBadge?
       {label}
     </Link>
   );
-  const books = ["/owner/closings", "/owner/expenses", "/owner/items", "/owner/review"].some((x) => p.startsWith(x));
+  const books = ["/owner/closings", "/owner/expenses", "/owner/items", "/owner/recipes", "/owner/review"].some((x) => p.startsWith(x));
   const staff = ["/owner/baristas", "/owner/attendance"].some((x) => p.startsWith(x));
   return (
     <nav className="fixed inset-x-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-40 flex h-[68px] items-center justify-around rounded-[34px] border border-[rgba(15,28,43,0.08)] bg-white/80 px-1.5 shadow-[0_12px_32px_rgba(15,28,43,0.14)] backdrop-blur-[18px] md:hidden print:hidden">
