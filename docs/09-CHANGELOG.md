@@ -4,6 +4,42 @@
 
 ---
 
+## 2026-10-06 — New layout: Sales, Orders, Recipes sales, POS uploads, fixed Profit & loss
+- **Navigation, grouped the way the café runs:**
+  - Top: Pulse, Needs you, Approvals, ✦ Strow AI.
+  - **Sales:** Overview, Orders, Closings, POS reports. **Menu:** Recipes. **Purchases:** Bills, Items, Vendors, Recurring costs.
+  - **Team:** Staff, Attendance, Staff records. **Reports:** Profit & loss, Spending by category, VAT, Money owed. **Admin:** Chart of accounts, AI activity, Audit trail, Personal finance.
+  - Phone tabs: Pulse · Sales · ✦ Strow AI · Reports · More. Each group has a switcher at the top of its pages (`PageAiBar`).
+- **Renamed:** the Sales list → Closings; Pending approval / Review → Approvals; Purchases → Bills; Staff reports → Staff records; Liabilities → Money owed. Insights redirects to Sales › Overview.
+- **One period picker** on Sales, Orders and Recipes: Day · Week · Month · Pick dates, with ‹ › (`src/lib/period.ts`, `PeriodBar`).
+  - URL: `?p=day|week|month|custom&d=YYYY-MM-DD`, or `&from=&to=` for picked dates. Weeks run Monday to Sunday.
+  - Comparisons: a day vs the same day last week; a part week or month vs the same days of the previous one; a whole month vs the whole previous month; picked dates vs the same number of days before.
+- **Sales › Overview** (`/owner/sales`, `src/lib/sales.ts`):
+  - A day's sales = the barista's closing (any status except rejected, like Pulse). A day with only a POS report counts the POS total and is marked "POS only" until the closing comes in.
+  - Sales (vs the previous period), orders, average order, busiest 3 hours (day view) or daily average and best day.
+  - Chart by hour (POS orders), by day (up to 31 days), by week (up to 120) or by month. Payment split, top sellers (POS item sales, net), weekday averages (14+ closed days), POS vs closing per day.
+- **Sales › Orders** (`/owner/orders`): every POS order with time, items, payment and discount; filter by payment (Card, Talabat, Beanz, Keeta, Cash, Free, Split, Other) and search items. Days before the POS show the closing total. Opens on the latest day with a POS report.
+- **Sales › POS reports** (`/owner/pos-reports`): upload old EZI POS daily `.xlsx` files, many at once; the business date is read from each file.
+  - `POST /api/pos/import` (owner session; raw file bytes, `x-file-name` header, 5 MB max) parses with `src/lib/pos/parse-report.ts` and calls `pos_import_report`.
+  - `parse-report.ts` is the TypeScript twin of `scripts/pos_report.py`: same payload and checksum, verified on the sample report and 42 generated variants (including every rejection path).
+  - Reports more than 2 days old import with `quiet: true`, so long-gone days do not create Needs you items.
+  - Coverage calendar (POS report / closing only / nothing) for the last 3 months, and the list of imported reports with their closing check.
+- **Recipes:** two tabs.
+  - **Sales** (default): for the period, items sold, share of sales with a recipe, food cost on covered items, sold without a recipe; per item units, net sales, recipe cost and margin (free units shown); items with no recipe yet link to their recipe; items on the menu that did not sell.
+  - **Cost cards**: the recipe list by section in menu order, a "POS" mark on prices read from the POS, "added from the POS, no recipe yet" on new items.
+- **Profit & loss** (`/owner/reports`, `src/lib/reports/pnl.ts`) rebuilt:
+  - Net sales after VAT → bills before VAT grouped into food and drink, packaging, other (rent and salaries billed shown on their own line) → gross profit → recurring costs → net profit.
+  - Recurring costs are prorated by day: part months count only the days with sales, the first month starts at the first closing, quarterly and annual costs are spread per month.
+  - Month chips for the last 6 months plus picked dates, food cost from bills next to food cost from recipes × POS sales, a "not counted yet" card (app commissions, utilities, stock without a bill), a 6-month profit chart and CSV export. Monthly P&L redirects here.
+  - The VAT report uses the location's VAT rate instead of a fixed 5%.
+- **Closings** show the POS total next to the barista's count, with "Matches", the gap, or "report made before the closing". **Pulse** shows "Today so far" from the latest POS report until the closing comes in, and whether the POS matches the last close.
+- **Migration `0020_pos_menu_autoadd`** (see the data model):
+  - A product in a POS report that matches no menu item is added to the menu: no recipe yet, section guessed from its name, POS price.
+  - Menu prices that were not typed by hand follow the newest POS report. A price typed by hand is never overwritten, and older uploads never change a newer price.
+  - `quiet` imports skip Needs you items. A menu item without recipe lines no longer counts as costed in the POS views.
+  - Existing reports are backfilled when it runs, and it updates the Strow AI note "POS daily reports".
+- **Learned:** the Supabase MCP confirm dialog also cancels plain data writes (an `UPDATE`), not only DDL. Anything that writes goes into a migration file for the SQL Editor.
+
 ## 2026-10-06 — POS daily reports, imported automatically
 - **Migration `0019_pos_reports`** is live. Eid ran it in the Supabase SQL Editor, so it is not in `supabase_migrations` history. After the run, production was checked against the tested build and matches it: functions, views, columns, policies, RLS, trigger and indexes.
   - New tables: `pos_daily_reports`, `pos_product_sales`, `pos_category_sales`, `pos_modifier_sales`, `pos_orders`.

@@ -1,7 +1,7 @@
 # Strow Ops — Data Model
 
 **Last updated:** 2026-10-06
-**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`) and POS daily reports (`0019`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
+**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`), POS daily reports (`0019`) and POS menu sync (`0020`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
 
 Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). All transactional tables include `location_id` FK. RLS enabled on every table.
 
@@ -158,7 +158,7 @@ What the café sells. Recipe in `recipe_lines`; live cost and margin in `v_menu_
 - `price` numeric — menu price **incl. VAT**, `CHECK (price >= 0)`
 - `method` text — preparation steps from the recipe card
 - `is_active` boolean `DEFAULT true` — false = off the menu
-- `source` text — `manual | photo | text | ai` (how it was entered)
+- `source` text — `manual | photo | text | ai | pos` (how it was entered; `pos` since `0020`)
 - `photo_drive_url` / `photo_drive_path` — the handwritten card (Drive `/Strow/<location>/<YYYY-MM>/recipes/`)
 - `pos_external_id` text — forward hook: POS item id (sales × recipe = consumption)
 - RLS `owners_full_access_menu_items` (`is_owner()`), `updated_at` trigger.
@@ -267,3 +267,28 @@ All carry `report_id` (cascade delete), `location_id` and `business_date`.
 - `v_pos_product_sales`: POS products matched to `menu_items` by `pos_norm(pos_name or name)`; for variants, "product + variant" is tried first. Adds `recipe_cost` = qty × current recipe cost and `cost_status` (`costed`, `partly_costed`, `no_recipe`).
 - `v_pos_ingredient_usage`: theoretical ingredient use per day (sales × recipes), with `qty_used` in base units and its cost.
 - `v_pos_daily`: daily totals, `avg_order`, payment split, `items_sold`, `recipe_coverage_pct`, `food_cost_pct` (recipe cost ÷ covered sales before VAT), `closing_state`, `diff_vs_closing`.
+
+## POS menu sync (migration 0020, 2026-10-06)
+### `menu_items` changes
+- `source` adds `pos`: added automatically from a POS report.
+- `price_pos_date` date: the business date of the POS report the price was read from (gross ÷ qty, with VAT). NULL = typed by hand.
+- Trigger `trg_menu_items_price_typed`: a price changed by hand clears `price_pos_date`, so the POS never overwrites it.
+
+### Functions
+- `pos_clean_name(text)`: POS text without emoji or extra spaces.
+- `pos_guess_section(text)`: a section from the product name. One of Hot coffee, Iced coffee, V60, Smoothies, Hot drinks, Cold drinks, Desserts, Bakery & breakfast, Water & soft drinks or Other (English and common Arabic words).
+- `pos_sync_menu(report_id)` runs after each import. It:
+  1. Adds unmatched products as menu items: `name` = cleaned product, plus " (variant)"; `pos_name` = the POS text; section guessed; price = gross ÷ qty.
+  2. Fills or refreshes prices: an item with no price, or with a POS price from an older report, gets this report's price.
+  3. Gives sold items that have no section one.
+  - Audit actions: `created_from_pos_report`, `menu_prices_from_pos_report`.
+  - It was run once for every report already imported, oldest first.
+- `pos_import_report(jsonb)`:
+  - Calls `pos_sync_menu`.
+  - Reads a boolean `quiet`. With `quiet`, a mismatch is still stored in `closing_check`, but no `ai_actions` item is made.
+  - Also returns `new_menu_items` (list), `prices_filled` and `quiet`.
+- Both functions: execute revoked from `anon` and `authenticated`.
+
+### Views
+- `v_pos_product_sales`: a matched menu item without recipe lines gets `cost_status = 'no_recipe'` and NULL `unit_cost` / `recipe_cost`. New columns at the end: `has_recipe` and `section`.
+- `v_pos_daily`: covered sales (`items_with_recipe`, `net_with_recipe`) count only items with a recipe (`has_recipe`).
