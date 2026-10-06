@@ -4,6 +4,9 @@ import { getLocale } from "@/lib/i18n/locale";
 import { BackButton } from "@/components/pulse/BackButton";
 import { CostFixes } from "../RecipeFixes";
 import { AddLineForm, DetailsEditor, LineRow, RecipePhoto } from "../RecipeEditor";
+import { PosPriceHint } from "../PosPrice";
+import { latestPosPrices } from "@/lib/recipes-pos";
+import { dayShort } from "@/lib/period";
 import {
   NON_INGREDIENT_KINDS,
   SECTION_SUGGESTIONS,
@@ -30,14 +33,16 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
   const t = (k: Parameters<typeof rt>[0]) => rt(k, locale);
   const db = createServiceClient();
 
-  const [itemRes, costRes, linesRes, itemsRes, unitRes, sectionsRes] = await Promise.all([
+  const [itemRes, costRes, linesRes, itemsRes, unitRes, sectionsRes, posPrices] = await Promise.all([
     db.from("menu_items").select("id, name, section, price, method, is_active, source, photo_drive_url, pos_name, notes").eq("id", id).maybeSingle(),
     db.from("v_menu_item_costs").select("*").eq("menu_item_id", id).maybeSingle(),
     db.from("v_recipe_line_costs").select("*").eq("menu_item_id", id).order("position"),
     db.from("inventory_items").select("id, name, kind, unit, default_unit_size, default_size_uom, is_active").order("name"),
     db.from("v_item_unit_cost").select("inventory_item_id, base_uom"),
     db.from("menu_items").select("section"),
+    latestPosPrices(db, [id]).catch(() => new Map()),
   ]);
+  const pos = posPrices.get(id) ?? null;
   const item = itemRes.data as { id: string; name: string; section: string | null; price: number | null; method: string | null; is_active: boolean; source: string; photo_drive_url: string | null; pos_name: string | null; notes: string | null } | null;
   if (!item) notFound();
 
@@ -94,6 +99,8 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
           </span>
         </div>
       </section>
+
+      {pos ? <PosPriceHint menuItemId={item.id} posPrice={pos.unit} posDay={dayShort(pos.date, locale)} current={price} locale={locale} /> : null}
 
       {issues.length ? <CostFixes issues={issues} items={pickable} compact /> : null}
 

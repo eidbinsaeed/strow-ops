@@ -6,6 +6,8 @@ import { hrefWith, type SearchParams } from "@/lib/period";
 import { RecipeIntake } from "./RecipeIntake";
 import { CostFixes } from "./RecipeFixes";
 import { RecipesSalesTab } from "./SalesTab";
+import { FillPosPrices } from "./PosPrice";
+import { latestPosPrices, type PosPrice } from "@/lib/recipes-pos";
 import {
   NON_INGREDIENT_KINDS,
   SECTION_SUGGESTIONS,
@@ -69,7 +71,6 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
 
   // price_pos_date arrives with migration 0020; before it, read the rest.
   let extraRows = (extraRes.data ?? []) as (Extra & { id: string })[];
-  const migrated = !extraRes.error;
   if (extraRes.error) {
     const { data } = await db.from("menu_items").select("id, source, pos_name");
     extraRows = ((data ?? []) as { id: string; source: string; pos_name: string | null }[]).map((r) => ({ ...r, price_pos_date: null }));
@@ -171,8 +172,10 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
   };
   const ordered = [...groups.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
 
+  const pos: Map<string, PosPrice> = await latestPosPrices(db).catch(() => new Map<string, PosPrice>());
   const posPrices = active.filter((m) => extra.get(m.menu_item_id)?.price_pos_date).length;
   const noPrice = active.filter((m) => m.price == null).length;
+  const fillable = active.filter((m) => m.price == null && pos.has(m.menu_item_id)).length;
   const noRecipe = active.filter((m) => m.ingredient_count === 0).length;
   const autoAdded = active.filter((m) => extra.get(m.menu_item_id)?.source === "pos" && m.ingredient_count === 0).length;
 
@@ -194,15 +197,12 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
                   ? `${autoAdded} ${autoAdded === 1 ? "صنف أضيف" : "أصناف أضيفت"} تلقائياً من تقارير نقاط البيع وتحتاج وصفة.`
                   : `${autoAdded} ${autoAdded === 1 ? "item was" : "items were"} added automatically from the POS reports and ${autoAdded === 1 ? "needs a recipe" : "need recipes"}.`
                 : null,
-              noPrice
-                ? ar
-                  ? `${noPrice} بدون سعر بعد${migrated ? "؛ كل صنف يأخذ سعره من نقاط البيع أول مرة يُباع" : ""}.`
-                  : `${noPrice} still ${noPrice === 1 ? "has" : "have"} no price${migrated ? "; each gets one from the POS the first time it sells" : ""}.`
-                : null,
+              noPrice ? priceNote(noPrice, fillable, ar) : null,
             ]
               .filter(Boolean)
               .join(" ")}
           </span>
+          {fillable ? <FillPosPrices count={fillable} locale={locale} /> : null}
         </div>
       ) : null}
 
@@ -221,7 +221,7 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
             <span className="text-xs text-neutral-400">{rows.length}</span>
           </h2>
           {rows.map((m) => (
-            <RecipeRow key={m.menu_item_id} m={m} locale={locale} extra={extra.get(m.menu_item_id)} />
+            <RecipeRow key={m.menu_item_id} m={m} locale={locale} extra={extra.get(m.menu_item_id)} pos={pos.get(m.menu_item_id)} />
           ))}
         </section>
       ))}
@@ -233,7 +233,7 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
           </summary>
           <div className="-mx-[18px] md:-mx-6">
             {off.map((m) => (
-              <RecipeRow key={m.menu_item_id} m={m} locale={locale} extra={extra.get(m.menu_item_id)} />
+              <RecipeRow key={m.menu_item_id} m={m} locale={locale} extra={extra.get(m.menu_item_id)} pos={pos.get(m.menu_item_id)} />
             ))}
           </div>
         </details>
@@ -249,7 +249,7 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
   );
 }
 
-function RecipeRow({ m, locale, extra }: { m: MenuCostRow; locale: "en" | "ar"; extra?: Extra }) {
+function RecipeRow({ m, locale, extra, pos }: { m: MenuCostRow; locale: "en" | "ar"; extra?: Extra; pos?: PosPrice }) {
   const ar = locale === "ar";
   const t = (k: Parameters<typeof rt>[0]) => rt(k, locale);
   const missing = m.ingredient_count - m.costed_count;
@@ -262,7 +262,15 @@ function RecipeRow({ m, locale, extra }: { m: MenuCostRow; locale: "en" | "ar"; 
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-[15px] font-semibold">{m.name}</span>
         <span className="text-[13px] text-neutral-500">
-          {m.price != null ? aed(m.price) : ar ? "بدون سعر بعد" : "No price yet"}
+          {m.price != null ? (
+            aed(m.price)
+          ) : pos ? (
+            <span className="text-[#1A3FA8]">{ar ? `بدون سعر · نقاط البيع ${aed(pos.unit)}` : `No price · POS ${aed(pos.unit)}`}</span>
+          ) : ar ? (
+            "بدون سعر بعد"
+          ) : (
+            "No price yet"
+          )}
           {noRecipe ? (
             <span className="text-[#1A3FA8]">
               {" "}
@@ -292,4 +300,19 @@ function RecipeRow({ m, locale, extra }: { m: MenuCostRow; locale: "en" | "ar"; 
       </span>
     </Link>
   );
+}
+
+/** "N still have no price…" with what the POS can fill now and what fills later. */
+function priceNote(noPrice: number, fillable: number, ar: boolean): string {
+  const rest = noPrice - fillable;
+  if (ar) {
+    const head = `${noPrice} بدون سعر بعد`;
+    if (fillable && rest) return `${head}؛ نقاط البيع باعت ${fillable} منها. الباقي يأخذ سعره أول مرة يظهر في تقرير نقاط البيع (أو ارفع تقارير الأيام القديمة).`;
+    if (fillable) return `${head}، ونقاط البيع باعتها كلها.`;
+    return `${head}؛ كل صنف يأخذ سعره أول مرة يظهر في تقرير نقاط البيع (أو ارفع تقارير الأيام القديمة).`;
+  }
+  const head = `${noPrice} still ${noPrice === 1 ? "has" : "have"} no price`;
+  if (fillable && rest) return `${head}; the POS has sold ${fillable} of them. The rest get a price the first time they show up in a POS report (or upload old days' reports).`;
+  if (fillable) return `${head}, and the POS has sold ${noPrice === 1 ? "it" : "all of them"}.`;
+  return `${head}; each gets one the first time it shows up in a POS report (or upload old days' reports).`;
 }

@@ -245,6 +245,19 @@ begin
     into v_prices
     from upd;
 
+  -- A price that already equals the POS price (e.g. filled with "Use the POS price") follows the POS from now on.
+  update menu_items m
+     set price_pos_date = v_date
+    from (select v.menu_item_id, round(sum(v.gross) / sum(v.qty), 2) as unit
+            from v_pos_product_sales v
+           where v.report_id = p_report_id
+             and v.menu_item_id is not null
+           group by v.menu_item_id
+          having sum(v.qty) > 0 and sum(v.gross) > 0) pp
+   where m.id = pp.menu_item_id
+     and m.price_pos_date is null
+     and m.price = pp.unit;
+
   if jsonb_array_length(v_prices) > 0 then
     insert into audit_log (actor_id, actor_type, action, entity_type, entity_id, before_state, after_state)
     values (null, 'system', 'menu_prices_from_pos_report', 'pos_daily_report', p_report_id, null,

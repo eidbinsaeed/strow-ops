@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
 import { getOwnerSession } from "@/lib/auth/owner-session";
 import { baseOfUom, normUom, uomsForBase, type BaseUom, type RecipeSaveInput, type RecipeSource } from "@/lib/recipes";
+import { latestPosPrices, savePosPrices } from "@/lib/recipes-pos";
 
 type Result<T = object> = ({ ok: true } & T) | { ok?: false; error: string };
 type Db = ReturnType<typeof createServiceClient>;
@@ -377,4 +378,46 @@ export async function switchUnit(formData: FormData): Promise<Result> {
   await audit("switched_unit", "inventory_item", itemId, null, { to, lines: (lines ?? []).length });
   refresh();
   return { ok: true };
+}
+
+// ─── Selling prices from the POS ─────────────────────────────────────────────
+
+/** Use the price the POS charged on the latest day this item sold. */
+export async function applyPosPrice(menuItemId: string): Promise<Result<{ price: number }>> {
+  if (!(await owner())) return { error: "Please sign in again." };
+  if (!UUID.test(menuItemId)) return { error: "Missing recipe." };
+  const db = createServiceClient();
+  const [{ data: before }, prices] = await Promise.all([
+    db.from("menu_items").select("price").eq("id", menuItemId).maybeSingle(),
+    latestPosPrices(db, [menuItemId]),
+  ]);
+  if (!before) return { error: "Recipe not found." };
+  const pos = prices.get(menuItemId);
+  if (!pos) return { error: "The POS reports have no sale of this item yet." };
+  const res = await savePosPrices(db, [{ id: menuItemId, price: pos.unit, date: pos.date }]);
+  if (res.error) return { error: res.error };
+  await audit("price_from_pos", "menu_item", menuItemId, { price: before.price }, { price: pos.unit, pos_date: pos.date });
+  refresh(menuItemId);
+  return { ok: true, price: pos.unit };
+}
+
+/** Every menu item without a price that the POS has sold gets the POS price. */
+export async function fillPricesFromPos(): Promise<Result<{ filled: number }>> {
+  if (!(await owner())) return { error: "Please sign in again." };
+  const db = createServiceClient();
+  const [{ data: items, error }, prices] = await Promise.all([
+    db.from("menu_items").select("id, name, price").is("price", null),
+    latestPosPrices(db),
+  ]);
+  if (error) return { error: error.message };
+  const todo = ((items ?? []) as { id: string; name: string }[])
+    .filter((m) => prices.has(m.id))
+    .map((m) => ({ id: m.id, name: m.name, price: prices.get(m.id)!.unit, date: prices.get(m.id)!.date }));
+  if (!todo.length) return { ok: true, filled: 0 };
+  const res = await savePosPrices(db, todo);
+  if (res.error) return { error: res.error };
+  for (const t of todo) await audit("price_from_pos", "menu_item", t.id, { price: null }, { price: t.price, pos_date: t.date });
+  refresh();
+  for (const t of todo) revalidatePath(`/owner/recipes/${t.id}`);
+  return { ok: true, filled: todo.length };
 }

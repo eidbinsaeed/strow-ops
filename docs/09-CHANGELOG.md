@@ -1,6 +1,6 @@
 # Strow Ops — Changelog
 
-**Last updated:** 2026-10-06
+**Last updated:** 2026-10-07
 
 ---
 
@@ -12,6 +12,11 @@
   - Fill rules: blank closing fields are still only filled when the totals match.
   - Needs you: one item per gap over AED 1, kept up to date and closed once the gap is gone. Days more than 2 days back are re-checked quietly.
   - Safety: a failing check never blocks saving a closing (it only logs a warning).
+- **Prices from the POS, one tap:**
+  - A recipe with no price, or a price different from the POS, shows what the POS charged on the latest day it sold, with a "Use AED …" button.
+  - Cost cards show "No price · POS AED …" and a "Fill N prices from the POS" button.
+  - Both are server actions in `recipes/actions.ts` (`applyPosPrice`, `fillPricesFromPos`, helpers in `src/lib/recipes-pos.ts`). They work before migration 0020 too, saving the price only.
+  - Once 0020 is in, a price equal to the POS price follows the POS from then on (`pos_sync_menu` marks it with `price_pos_date`).
 
 ## 2026-10-06 — New layout: Sales, Orders, Recipes sales, POS uploads, fixed Profit & loss
 - **Navigation, grouped the way the café runs:**
