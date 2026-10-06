@@ -31,14 +31,14 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
   const db = createServiceClient();
 
   const [itemRes, costRes, linesRes, itemsRes, unitRes, sectionsRes] = await Promise.all([
-    db.from("menu_items").select("id, name, section, price, method, is_active, source, photo_drive_url").eq("id", id).maybeSingle(),
+    db.from("menu_items").select("id, name, section, price, method, is_active, source, photo_drive_url, pos_name, notes").eq("id", id).maybeSingle(),
     db.from("v_menu_item_costs").select("*").eq("menu_item_id", id).maybeSingle(),
     db.from("v_recipe_line_costs").select("*").eq("menu_item_id", id).order("position"),
     db.from("inventory_items").select("id, name, kind, unit, default_unit_size, default_size_uom, is_active").order("name"),
     db.from("v_item_unit_cost").select("inventory_item_id, base_uom"),
     db.from("menu_items").select("section"),
   ]);
-  const item = itemRes.data as { id: string; name: string; section: string | null; price: number | null; method: string | null; is_active: boolean; source: string; photo_drive_url: string | null } | null;
+  const item = itemRes.data as { id: string; name: string; section: string | null; price: number | null; method: string | null; is_active: boolean; source: string; photo_drive_url: string | null; pos_name: string | null; notes: string | null } | null;
   if (!item) notFound();
 
   const cost = costRes.data ? normMenu(costRes.data as Record<string, unknown>) : null;
@@ -66,18 +66,26 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
   return (
     <div className="page flex flex-col gap-4 md:gap-5">
       <div className="flex flex-col gap-1 px-1">
-        <BackButton fallback="/owner/recipes" label={t("back")} className="-ms-1 self-start" />
+        <BackButton fallback="/owner/recipes?tab=cards" label={t("back")} className="-ms-1 self-start" />
         <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.6px]">{item.name}</h1>
         <p className="text-sm text-neutral-500">
           {item.section ?? t("no_section")}
           {!item.is_active ? ` · ${t("off_menu")}` : ""}
         </p>
+        {item.source === "pos" && lines.length === 0 ? (
+          <p className="mt-1 rounded-[18px] bg-[#E3EAFB] px-3.5 py-2.5 text-[13px] leading-relaxed text-[#1A3FA8]">
+            {locale === "ar"
+              ? "أضيف تلقائياً من تقرير نقاط البيع. أضف مكوناته بالأسفل لترى التكلفة والهامش."
+              : `${item.notes?.startsWith("Added automatically") ? item.notes.split(".")[0] : "Added automatically from a POS report"}. Add its ingredients below to see the cost and margin.`}
+            {item.pos_name && item.pos_name !== item.name ? (locale === "ar" ? ` الاسم في نقاط البيع: ${item.pos_name}` : ` POS name: ${item.pos_name}`) : ""}
+          </p>
+        ) : null}
         {fileId ? <RecipePhoto fileId={fileId} name={item.name} /> : null}
       </div>
 
       <section className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
         <Stat label={t("price_short")} value={price != null ? aed(price) : "—"} sub={cost?.price_ex_vat != null ? `${aed(cost.price_ex_vat)} ex VAT` : undefined} />
-        <Stat label={t("cost")} value={aed(cost?.cost ?? 0)} sub={missing > 0 ? `${missing} ${t("missing")}` : undefined} warn={missing > 0} />
+        <Stat label={t("cost")} value={cost && cost.ingredient_count > 0 ? aed(cost.cost) : "—"} sub={missing > 0 ? `${missing} ${t("missing")}` : undefined} warn={missing > 0} />
         <Stat label={t("profit")} value={cost?.profit != null ? aed(cost.profit) : "—"} />
         <div className="flex flex-col justify-center rounded-[24px] bg-white px-4 py-3.5">
           <span className="text-xs text-neutral-500">{t("margin")}</span>

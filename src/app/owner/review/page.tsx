@@ -186,7 +186,7 @@ function ClosingCard({ row, locale }: { row: ClosingRow; locale: import("@/lib/i
         <div>
           <div className="flex items-center gap-2">
             <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-xs uppercase tracking-wider text-neutral-600">
-              {tr("nav.sales", locale)}
+              {locale === "ar" ? "إقفال" : "Closing"}
             </span>
             <SharedStatusPill status={row.status} locale={locale} />
           </div>

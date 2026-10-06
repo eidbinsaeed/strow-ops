@@ -5,7 +5,10 @@ import { tr } from "@/lib/i18n/tr";
 import { PushToggle } from "@/components/push/PushToggle";
 import type { Locale } from "@/lib/i18n/dict";
 
-/** Navigation shared by the desktop sidebar and the phone menu (Pulse layout). */
+/**
+ * Navigation shared by the desktop sidebar and the phone menu, grouped the way the café runs:
+ * Sales · Menu · Purchases · Team · Reports · Admin. Each page has one name everywhere.
+ */
 export function OwnerNavContent({
   signedIn,
   locale,
@@ -24,26 +27,46 @@ export function OwnerNavContent({
         <div className="flex flex-col gap-0.5">
           <OwnerNavLink href="/owner">{ar ? "النبض" : "Pulse"}</OwnerNavLink>
           <OwnerNavLink href="/owner/needs-you" badge={aiOpen}>{ar ? "يحتاجك" : "Needs you"}</OwnerNavLink>
-          <OwnerNavLink href="/owner/assistant">{ar ? "✦ اسأل Strow AI" : "✦ Ask Strow AI"}</OwnerNavLink>
-          <OwnerNavLink href="/owner/closings" badge={badges?.missing_float_count}>{tr("nav.sales", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/expenses" badge={badges?.uncategorized_count}>{tr("nav.purchases", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/items">{tr("nav.items", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/recipes">{ar ? "الوصفات" : "Recipes"}</OwnerNavLink>
-          <OwnerNavLink href="/owner/baristas">{tr("nav.staff", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/reports">{tr("nav.reports", locale)}</OwnerNavLink>
+          <OwnerNavLink href="/owner/review" badge={badges?.pending_count}>{ar ? "الموافقات" : "Approvals"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/assistant" exact>{ar ? "✦ Strow AI" : "✦ Strow AI"}</OwnerNavLink>
         </div>
-        <NavGroup label={ar ? "المزيد" : "More"}>
-          <OwnerNavLink href="/owner/review" badge={badges?.pending_count}>{tr("nav.pending", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/fixed-costs">{tr("nav.recurring", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/liabilities">{tr("nav.liabilities", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/suppliers" badge={badges?.missing_trn_count}>{tr("nav.vendors", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/categories">{tr("nav.coa", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/attendance">{tr("nav.attendance", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/attendance/log">{tr("nav.attendance_log", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/attendance/reports">{tr("nav.attendance_reports", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/insights">{tr("nav.insights", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/audit">{tr("nav.audit", locale)}</OwnerNavLink>
-          <OwnerNavLink href="/owner/finance">{tr("nav.finance", locale)}</OwnerNavLink>
+
+        <NavGroup label={ar ? "المبيعات" : "Sales"}>
+          <OwnerNavLink href="/owner/sales" also={["/owner/insights"]}>{ar ? "نظرة عامة" : "Overview"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/orders">{ar ? "الطلبات" : "Orders"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/closings" badge={badges?.missing_float_count}>{ar ? "الإقفالات" : "Closings"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/pos-reports">{ar ? "تقارير نقاط البيع" : "POS reports"}</OwnerNavLink>
+        </NavGroup>
+
+        <NavGroup label={ar ? "القائمة" : "Menu"}>
+          <OwnerNavLink href="/owner/recipes">{ar ? "الوصفات" : "Recipes"}</OwnerNavLink>
+        </NavGroup>
+
+        <NavGroup label={ar ? "المشتريات" : "Purchases"}>
+          <OwnerNavLink href="/owner/expenses" badge={badges?.uncategorized_count}>{ar ? "الفواتير" : "Bills"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/items">{ar ? "الأصناف" : "Items"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/suppliers" badge={badges?.missing_trn_count}>{ar ? "الموردون" : "Vendors"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/fixed-costs">{ar ? "المصاريف الثابتة" : "Recurring costs"}</OwnerNavLink>
+        </NavGroup>
+
+        <NavGroup label={ar ? "الفريق" : "Team"}>
+          <OwnerNavLink href="/owner/baristas">{ar ? "الموظفون" : "Staff"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/attendance" exact also={["/owner/attendance/log"]}>{ar ? "الحضور" : "Attendance"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/attendance/reports">{ar ? "سجلات الموظفين" : "Staff records"}</OwnerNavLink>
+        </NavGroup>
+
+        <NavGroup label={ar ? "التقارير" : "Reports"}>
+          <OwnerNavLink href="/owner/reports" exact also={["/owner/reports/monthly-pnl"]}>{ar ? "الأرباح والخسائر" : "Profit & loss"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/reports/category-breakdown">{ar ? "الإنفاق حسب الفئة" : "Spending by category"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/reports/vat">{ar ? "ضريبة القيمة المضافة" : "VAT"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/liabilities">{ar ? "المبالغ المستحقة" : "Money owed"}</OwnerNavLink>
+        </NavGroup>
+
+        <NavGroup label={ar ? "الإدارة" : "Admin"}>
+          <OwnerNavLink href="/owner/categories">{ar ? "دليل الحسابات" : "Chart of accounts"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/assistant/activity">{ar ? "نشاط الذكاء الاصطناعي" : "AI activity"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/audit">{ar ? "سجل التدقيق" : "Audit trail"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/finance">{ar ? "المالية الشخصية" : "Personal finance"}</OwnerNavLink>
         </NavGroup>
       </nav>
 

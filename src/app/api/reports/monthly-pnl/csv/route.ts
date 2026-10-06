@@ -1,61 +1,59 @@
 import { NextResponse } from "next/server";
-import {
-  fetchSales,
-  fetchExpenses,
-  sumSales,
-  sumExpenses,
-  groupByCategory,
-} from "@/lib/reports/queries";
 import { csvResponse, toCsv } from "@/lib/reports/csv";
-import { currentMonth, parsePeriod } from "@/lib/reports/period";
 import { getOwnerSession } from "@/lib/auth/owner-session";
+import {
+  groupLabel,
+  loadPnl,
+  loadPnlContext,
+  monthLabel,
+  rangeLabel,
+  resolvePeriod,
+  statementLines,
+  vatLabel,
+} from "@/lib/reports/pnl";
 
 export const runtime = "nodejs";
 
+const r2 = (n: number) => Math.round(n * 100) / 100 || 0;
+/** Plain ASCII so spreadsheets read it as a percentage. */
+const pct = (x: number | null) => (x == null || !Number.isFinite(x) ? "" : `${(Math.round(x * 1000) / 10 || 0).toFixed(1)}%`);
+
+/** Profit & loss statement for `m=YYYY-MM` or `from`/`to` (same lines as /owner/reports). */
 export async function GET(request: Request) {
   const sess = await getOwnerSession();
   if (!sess) return NextResponse.json({ error: "unauth" }, { status: 401 });
 
   try {
     const url = new URL(request.url);
-    const params: Record<string, string | undefined> = {};
-    url.searchParams.forEach((v, k) => (params[k] = v));
-    const period = parsePeriod(params, currentMonth());
-
-    const [sales, expenses] = await Promise.all([
-      fetchSales(period.from, period.to),
-      fetchExpenses(period.from, period.to),
-    ]);
-    const s = sumSales(sales);
-    const e = sumExpenses(expenses);
-    const byCat = groupByCategory(expenses);
-    const grossMargin = s.grand - e.total;
+    const ctx = await loadPnlContext();
+    const period = resolvePeriod(
+      { m: url.searchParams.get("m"), from: url.searchParams.get("from"), to: url.searchParams.get("to") },
+      ctx.today,
+    );
+    const p = await loadPnl(period.from, period.to, ctx);
+    const label = period.kind === "month" && period.month ? monthLabel(period.month, "en") : rangeLabel(period.from, period.to, "en", true);
 
     const rows: (string | number)[][] = [
-      ["Strow Ops - Monthly P&L"],
-      ["Period", period.label],
+      ["Strow - Profit & loss"],
+      ["Period", label],
       ["From", period.from],
       ["To", period.to],
+      ["Days counted", `${p.daysCovered} of ${p.daysInPeriod}`],
+      ["VAT rate", vatLabel(p.vatRate)],
       [],
-      ["Sales"],
-      ["Cash", s.cash],
-      ["Card", s.card],
-      ["Online", s.online],
-      ["Total sales", s.grand],
+      ["Line", "AED", "% of net sales"],
+      ...statementLines(p, "en").map((l) => [l.label, r2(l.amount), pct(l.pct)]),
       [],
-      ["Purchases by category"],
-      ...byCat.map((c) => [c.name, c.total] as (string | number)[]),
-      ["Total purchases", e.total],
+      ["Bills by category (before VAT)", "AED", "Bills", "P&L line"],
+      ...p.purchases.byCategory.map((c) => [c.name ?? "Uncategorized", r2(c.amount), c.count, groupLabel(c.group, "en")]),
       [],
-      ["Gross margin", grossMargin],
-      [
-        "Margin %",
-        s.grand > 0 ? `${((grossMargin / s.grand) * 100).toFixed(2)}%` : "n/a",
-      ],
+      ["Not counted yet"],
+      ["Sales through apps (commission not deducted)", r2(p.apps.total), pct(p.apps.share)],
     ];
 
     const filename = `strow-pnl-${period.from}-to-${period.to}.csv`;
-    return csvResponse(filename, toCsv(rows));
+    // BOM so Excel reads the Arabic category names as UTF-8.
+    return csvResponse(filename, `﻿${toCsv(rows)}`);
   } catch {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }

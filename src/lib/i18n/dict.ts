@@ -33,16 +33,16 @@ export const DICT: Record<string, Record<Locale, string>> = {
 
   // Nav links
   "nav.dashboard": { en: "Dashboard", ar: "لوحة التحكم" },
-  "nav.pending": { en: "Pending Approval", ar: "بانتظار الاعتماد" },
+  "nav.pending": { en: "Approvals", ar: "الموافقات" },
   "nav.sales": { en: "Sales", ar: "المبيعات" },
-  "nav.purchases": { en: "Purchases", ar: "المشتريات" },
-  "nav.recurring": { en: "Recurring Costs", ar: "المصاريف الثابتة" },
-  "nav.liabilities": { en: "Liabilities", ar: "الالتزامات" },
+  "nav.purchases": { en: "Bills", ar: "الفواتير" },
+  "nav.recurring": { en: "Recurring costs", ar: "المصاريف الثابتة" },
+  "nav.liabilities": { en: "Money owed", ar: "المبالغ المستحقة" },
   "nav.vendors": { en: "Vendors", ar: "الموردون" },
-  "nav.coa": { en: "Chart of Accounts", ar: "دليل الحسابات" },
+  "nav.coa": { en: "Chart of accounts", ar: "دليل الحسابات" },
   "nav.staff": { en: "Staff", ar: "الموظفون" },
   "nav.reports": { en: "Reports", ar: "التقارير" },
-  "nav.audit": { en: "Audit Trail", ar: "سجل التدقيق" },
+  "nav.audit": { en: "Audit trail", ar: "سجل التدقيق" },
   "nav.menu_open": { en: "Open menu", ar: "فتح القائمة" },
   "nav.menu_close": { en: "Close menu", ar: "إغلاق القائمة" },
 
@@ -72,16 +72,16 @@ export const DICT: Record<string, Record<Locale, string>> = {
   "filter.clear": { en: "Clear filters", ar: "مسح المرشحات" },
 
   // Page H1s
-  "page.sales": { en: "Sales", ar: "المبيعات" },
-  "page.purchases": { en: "Purchases", ar: "المشتريات" },
-  "page.pending": { en: "Pending Approval", ar: "بانتظار الاعتماد" },
+  "page.sales": { en: "Closings", ar: "الإقفالات" },
+  "page.purchases": { en: "Bills", ar: "الفواتير" },
+  "page.pending": { en: "Approvals", ar: "الموافقات" },
   "page.reports": { en: "Reports", ar: "التقارير" },
-  "page.audit": { en: "Audit Trail", ar: "سجل التدقيق" },
+  "page.audit": { en: "Audit trail", ar: "سجل التدقيق" },
   "page.vendors": { en: "Vendors", ar: "الموردون" },
-  "page.coa": { en: "Chart of Accounts", ar: "دليل الحسابات" },
+  "page.coa": { en: "Chart of accounts", ar: "دليل الحسابات" },
   "page.staff": { en: "Staff", ar: "الموظفون" },
-  "page.recurring": { en: "Recurring Costs", ar: "المصاريف الثابتة" },
-  "page.liabilities": { en: "Liabilities", ar: "الالتزامات" },
+  "page.recurring": { en: "Recurring costs", ar: "المصاريف الثابتة" },
+  "page.liabilities": { en: "Money owed", ar: "المبالغ المستحقة" },
   "page.dashboard": { en: "Dashboard", ar: "لوحة التحكم" },
 
   // Counters / summary
@@ -97,7 +97,7 @@ export const DICT: Record<string, Record<Locale, string>> = {
   "report.print_pdf": { en: "Print / Save as PDF", ar: "طباعة / حفظ PDF" },
   "report.monthly_pnl": { en: "Monthly P&L", ar: "الأرباح والخسائر الشهرية" },
   "report.category_breakdown": { en: "Category Breakdown", ar: "توزيع المصاريف حسب الفئة" },
-  "report.vat": { en: "VAT Report (5% UAE)", ar: "تقرير ضريبة القيمة المضافة (٥٪ الإمارات)" },
+  "report.vat": { en: "VAT report", ar: "تقرير ضريبة القيمة المضافة" },
   "report.section.sales": { en: "Sales", ar: "المبيعات" },
   "report.section.purchases_by_cat": { en: "Purchases by category", ar: "المشتريات حسب الفئة" },
   "report.section.gross_margin": { en: "Gross margin", ar: "هامش الربح الإجمالي" },
@@ -140,7 +140,7 @@ DICT["pay.cash"] = { en: "Cash", ar: "نقد" };
 DICT["pay.card"] = { en: "Card", ar: "بطاقة" };
 DICT["pay.bank_transfer"] = { en: "Bank transfer", ar: "حوالة بنكية" };
 DICT["pay.credit"] = { en: "Credit", ar: "آجل" };
-DICT["page.audit"] = { en: "Audit Trail", ar: "سجل التدقيق" };
+DICT["page.audit"] = { en: "Audit trail", ar: "سجل التدقيق" };
 DICT["page.audit.tagline"] = { en: "Last 200 actions across the app.", ar: "آخر ٢٠٠ عملية في النظام." };
 DICT["page.dashboard.tagline"] = { en: "Live snapshot of today's activity.", ar: "نظرة عامة على نشاط اليوم." };
 
@@ -223,7 +223,7 @@ DICT["items.price_each"] = { en: "price each", ar: "السعر للوحدة" };
 DICT["action.items"] = { en: "Items", ar: "الأصناف" };
 
 DICT["nav.group.personal"] = { en: "Personal", ar: "الشخصي" };
-DICT["nav.finance"] = { en: "Personal Finance", ar: "المالية الشخصية" };
+DICT["nav.finance"] = { en: "Personal finance", ar: "المالية الشخصية" };
 
 // Sales Insights page (analytics)
 DICT["nav.insights"] = { en: "Insights", ar: "التحليلات" };
@@ -314,8 +314,8 @@ DICT["att.col.date"] = { en: "Date", ar: "التاريخ" };
 DICT["att.col.status"] = { en: "Status", ar: "الحالة" };
 
 // Staff reports / insights
-DICT["nav.attendance_reports"] = { en: "Staff reports", ar: "تقارير الموظفين" };
-DICT["rep.title"] = { en: "Staff reports", ar: "تقارير الموظفين" };
+DICT["nav.attendance_reports"] = { en: "Staff records", ar: "سجلات الموظفين" };
+DICT["rep.title"] = { en: "Staff records", ar: "سجلات الموظفين" };
 DICT["rep.subtitle"] = { en: "Pick a staff member for their warnings, attendance and incidents — or leave on All staff for the whole team.", ar: "اختر موظفاً لعرض إنذاراته وحضوره والحوادث — أو اتركه على «كل الموظفين» لعرض الفريق كله." };
 DICT["rep.all"] = { en: "All staff", ar: "كل الموظفين" };
 DICT["rep.kpi.attendance"] = { en: "Attendance · month", ar: "الحضور · الشهر" };

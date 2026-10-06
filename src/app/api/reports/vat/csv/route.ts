@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { fetchSales, fetchExpenses, sumSales, sumExpenses } from "@/lib/reports/queries";
 import { csvResponse, toCsv } from "@/lib/reports/csv";
 import { currentQuarter, parsePeriod } from "@/lib/reports/period";
+import { fetchVatRate, vatLabel } from "@/lib/reports/pnl";
 import { getOwnerSession } from "@/lib/auth/owner-session";
 
 export const runtime = "nodejs";
-
-const VAT_RATE = 0.05;
 
 export async function GET(request: Request) {
   const sess = await getOwnerSession();
@@ -18,23 +17,24 @@ export async function GET(request: Request) {
     url.searchParams.forEach((v, k) => (params[k] = v));
     const period = parsePeriod(params, currentQuarter());
 
-    const [sales, expenses] = await Promise.all([
+    const [sales, expenses, vatRate] = await Promise.all([
       fetchSales(period.from, period.to),
       fetchExpenses(period.from, period.to),
+      fetchVatRate(),
     ]);
     const s = sumSales(sales);
     const e = sumExpenses(expenses);
-    const outputVat = s.grand - s.grand / (1 + VAT_RATE);
+    const outputVat = s.grand - s.grand / (1 + vatRate);
     const inputVat = e.vat;
     const net = outputVat - inputVat;
 
     const rows: (string | number)[][] = [
-      ["Strow Ops - VAT Report (5% UAE)"],
+      [`Strow Ops - VAT Report (${vatLabel(vatRate)} UAE)`],
       ["Period", period.label],
       [],
       ["Output VAT (sales)"],
       ["Total sales (incl. VAT)", s.grand],
-      ["VAT-exclusive base", s.grand / (1 + VAT_RATE)],
+      ["VAT-exclusive base", s.grand / (1 + vatRate)],
       ["Output VAT", outputVat],
       [],
       ["Input VAT (purchases)"],

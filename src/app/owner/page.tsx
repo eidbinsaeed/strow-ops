@@ -8,6 +8,7 @@ import { MonthStrip, type StripDay } from "@/components/pulse/MonthStrip";
 import { Sparkle } from "@/components/pulse/icons";
 import { todayDubai } from "@/lib/dates";
 import { PushToggle } from "@/components/push/PushToggle";
+import { clockLabel, dubaiClock } from "@/lib/sales";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +68,7 @@ export default async function PulsePage() {
   const monthPrefix = today.slice(0, 8);
   const monthName = ar ? MONTHS_AR[m - 1] : MONTHS[m - 1];
 
-  const [kpiRes, cashRes, closRes, lastRes, findRes, badgeRes, itemsRes] = await Promise.all([
+  const [kpiRes, cashRes, closRes, lastRes, findRes, badgeRes, itemsRes, posRes] = await Promise.all([
     db.from("v_dashboard_kpis").select("*").limit(1),
     db.from("v_cash_position").select("*").limit(1),
     db
@@ -87,6 +88,7 @@ export default async function PulsePage() {
       q: "select count(distinct li.inventory_item_id)::int as items, coalesce(sum(li.line_total),0)::float8 as spent from expense_line_items li join expenses e on e.id = li.expense_id where e.status = 'confirmed' and li.inventory_item_id is not null",
       max_rows: 1,
     }),
+    db.from("pos_daily_reports").select("business_date, generated_at, total_paid, orders_paid").order("business_date", { ascending: false }).limit(1),
   ]);
 
   const kpi = ((kpiRes.data ?? [])[0] ?? null) as Kpis | null;
@@ -218,6 +220,16 @@ export default async function PulsePage() {
   const totalFindings = findings.length + (pending > 0 ? 1 : 0);
 
   const lastAmount = last ? Math.round(N(last.grand_total)).toLocaleString("en-US") : "0";
+
+  // Latest POS report: "today so far" until the barista's closing comes in, else a check next to the last close.
+  const pos = ((posRes.data ?? [])[0] ?? null) as { business_date: string; generated_at: string; total_paid: Num; orders_paid: number } | null;
+  const posAhead = !!pos && (!last || pos.business_date > last.closing_date);
+  const posDiff = pos && last && pos.business_date === last.closing_date ? N(pos.total_paid) - N(last.grand_total) : null;
+  const posWhen = pos
+    ? pos.business_date === today
+      ? ar ? "اليوم حتى الآن" : "Today so far"
+      : `${dayLong(pos.business_date, ar)} · ${ar ? "الإقفال لم يصل بعد" : "closing not in yet"}`
+    : "";
   const projected = N(kpi?.projected_net);
 
   const FindingRows = ({ limit }: { limit: number }) => (
@@ -289,12 +301,35 @@ export default async function PulsePage() {
                   <CountUpText text={lastAmount} duration={1100} />
                 </span>
               </span>
+              {posAhead && pos ? (
+                <Link
+                  href={`/owner/sales?p=day&d=${pos.business_date}` as Route}
+                  className="mt-1.5 flex min-h-11 flex-col justify-center gap-0.5 self-start rounded-[18px] bg-[#E3EAFB] px-3.5 py-2 text-[#1A3FA8] transition active:scale-[.98]"
+                >
+                  <span className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
+                    <span className="font-semibold">{posWhen}</span>
+                    <span className="font-display text-base font-bold tabular-nums">AED {Math.round(N(pos.total_paid)).toLocaleString("en-US")}</span>
+                  </span>
+                  <span className="text-xs">
+                    {pos.orders_paid} {ar ? "طلب" : "orders"} · {ar ? "تقرير نقاط البيع" : "POS report"} {clockLabel(dubaiClock(pos.generated_at), ar)} ›
+                  </span>
+                </Link>
+              ) : null}
             </div>
             <div className="mt-2.5 flex flex-col gap-2 md:mt-0 md:w-[240px] md:items-end">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-300 md:bg-[#E3E6EA]">
                 <div className="pulse-fill h-1.5 rounded-full bg-strow-ink" style={{ width: `${progress}%` }} />
               </div>
               <span className="text-[13px] text-neutral-500 md:text-end">{progressText}</span>
+              {posDiff != null && pos ? (
+                <Link href={`/owner/sales?p=day&d=${pos.business_date}` as Route} className={`text-[13px] font-semibold md:text-end ${Math.abs(posDiff) <= 1 ? "text-[#0A6B34]" : "text-[#9A1B12]"}`}>
+                  {Math.abs(posDiff) <= 1
+                    ? ar ? "تقرير نقاط البيع مطابق لآخر إقفال ✓" : "POS report matches the last close ✓"
+                    : ar
+                      ? `نقاط البيع ${Math.round(N(pos.total_paid)).toLocaleString("en-US")} · فرق ${Math.abs(posDiff).toFixed(2)}`
+                      : `POS AED ${Math.round(N(pos.total_paid)).toLocaleString("en-US")} · gap AED ${Math.abs(posDiff).toFixed(2)}`}
+                </Link>
+              ) : null}
             </div>
           </div>
 

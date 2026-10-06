@@ -2,13 +2,12 @@ import Link from "next/link";
 import { PeriodPicker, ReportToolbar } from "@/components/owner/PeriodPicker";
 import { fetchSales, fetchExpenses, sumSales, sumExpenses } from "@/lib/reports/queries";
 import { currentQuarter, parsePeriod } from "@/lib/reports/period";
+import { fetchVatRate, vatLabel } from "@/lib/reports/pnl";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const VAT_RATE = 0.05;
 
 function aed(n: number) {
   return `AED ${n.toLocaleString("en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -23,16 +22,17 @@ export default async function VatReportPage({
   const period = parsePeriod(params, currentQuarter());
   const locale = await getLocale();
 
-  const [sales, expenses] = await Promise.all([
+  const [sales, expenses, vatRate] = await Promise.all([
     fetchSales(period.from, period.to),
     fetchExpenses(period.from, period.to),
+    fetchVatRate(),
   ]);
   const s = sumSales(sales);
   const e = sumExpenses(expenses);
 
-  // Output VAT: 5% of sales (assumed VAT-inclusive prices in UAE retail).
-  // VAT = grand_total - (grand_total / 1.05)
-  const outputVat = s.grand - s.grand / (1 + VAT_RATE);
+  // Output VAT at the location's rate (VAT-inclusive prices in UAE retail).
+  // VAT = grand_total - (grand_total / (1 + rate))
+  const outputVat = s.grand - s.grand / (1 + vatRate);
   const inputVat = e.vat;
   const netVat = outputVat - inputVat;
 
@@ -60,7 +60,7 @@ export default async function VatReportPage({
             </div>
             <div className="flex justify-between">
               <span>VAT-exclusive base</span>
-              <span className="tabular-nums">{aed(s.grand / (1 + VAT_RATE))}</span>
+              <span className="tabular-nums">{aed(s.grand / (1 + vatRate))}</span>
             </div>
             <div className="flex justify-between border-t border-neutral-200 pt-1.5 text-base font-medium">
               <span>Output VAT due</span>
@@ -110,7 +110,7 @@ export default async function VatReportPage({
         </div>
 
         <p className="text-xs text-neutral-400">
-          Assumes UAE 5% VAT-inclusive sale prices. Input VAT is taken from
+          Assumes UAE {vatLabel(vatRate)} VAT-inclusive sale prices. Input VAT is taken from
           each bill&apos;s recorded vat_amount field. Talk to your accountant
           before filing - this is an aid, not a substitute for FTA advice.
         </p>

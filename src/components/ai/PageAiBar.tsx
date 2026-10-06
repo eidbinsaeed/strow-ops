@@ -6,24 +6,54 @@ import { usePathname } from "next/navigation";
 import type { Locale } from "@/lib/i18n/dict";
 import { Sparkle } from "@/components/pulse/icons";
 
-type Seg = { href: string; en: string; ar: string; exact?: boolean };
-const BOOKS: Seg[] = [
-  { href: "/owner/closings", en: "Sales", ar: "المبيعات" },
-  { href: "/owner/expenses", en: "Purchases", ar: "المشتريات" },
-  { href: "/owner/items", en: "Items", ar: "الأصناف" },
-  { href: "/owner/recipes", en: "Recipes", ar: "الوصفات" },
-  { href: "/owner/review", en: "Review", ar: "المراجعة" },
+type Seg = { href: string; en: string; ar: string; exact?: boolean; also?: string[] };
+const SALES: Seg[] = [
+  { href: "/owner/sales", en: "Overview", ar: "نظرة عامة" },
+  { href: "/owner/orders", en: "Orders", ar: "الطلبات" },
+  { href: "/owner/closings", en: "Closings", ar: "الإقفالات" },
+  { href: "/owner/pos-reports", en: "POS reports", ar: "تقارير نقاط البيع" },
 ];
-const STAFF: Seg[] = [
-  { href: "/owner/baristas", en: "Team", ar: "الفريق" },
+const PURCHASES: Seg[] = [
+  { href: "/owner/expenses", en: "Bills", ar: "الفواتير" },
+  { href: "/owner/items", en: "Items", ar: "الأصناف" },
+  { href: "/owner/suppliers", en: "Vendors", ar: "الموردون" },
+  { href: "/owner/fixed-costs", en: "Recurring", ar: "الثابتة" },
+];
+const TEAM: Seg[] = [
+  { href: "/owner/baristas", en: "Staff", ar: "الموظفون" },
   { href: "/owner/attendance", en: "Attendance", ar: "الحضور", exact: true },
   { href: "/owner/attendance/log", en: "Log", ar: "السجل" },
-  { href: "/owner/attendance/reports", en: "Reports", ar: "التقارير" },
+  { href: "/owner/attendance/reports", en: "Staff records", ar: "سجلات الموظفين" },
 ];
+const REPORTS: Seg[] = [
+  { href: "/owner/reports", en: "Profit & loss", ar: "الأرباح والخسائر", exact: true, also: ["/owner/reports/monthly-pnl"] },
+  { href: "/owner/reports/category-breakdown", en: "Spending", ar: "الإنفاق" },
+  { href: "/owner/reports/vat", en: "VAT", ar: "الضريبة" },
+  { href: "/owner/liabilities", en: "Money owed", ar: "المستحقات" },
+];
+const GROUPS = [SALES, PURCHASES, TEAM, REPORTS];
+
+const under = (p: string, x: string) => p === x || p.startsWith(`${x}/`);
+const isOn = (p: string, s: Seg) => (s.exact ? p === s.href : under(p, s.href)) || (s.also ?? []).some((x) => under(p, x));
 
 type P = { match: (p: string) => boolean; en: string[]; ar: string[] };
 
 const PROMPTS: P[] = [
+  {
+    match: (p) => p.startsWith("/owner/sales"),
+    en: ["Compare this week with last week", "Which hours are busiest?", "What sells best on weekends?"],
+    ar: ["قارن هذا الأسبوع بالأسبوع الماضي", "ما أكثر الساعات ازدحاماً؟", "ما الأكثر مبيعاً في عطلة نهاية الأسبوع؟"],
+  },
+  {
+    match: (p) => p.startsWith("/owner/orders"),
+    en: ["Which items are ordered together?", "How many orders came through apps this week?", "List the free and discounted orders"],
+    ar: ["ما الأصناف التي تُطلب معاً؟", "كم طلباً جاء عبر التطبيقات هذا الأسبوع؟", "اعرض الطلبات المجانية والمخفّضة"],
+  },
+  {
+    match: (p) => p.startsWith("/owner/pos-reports"),
+    en: ["Which days have no POS report?", "Where do the POS totals differ from the closings?"],
+    ar: ["ما الأيام التي بدون تقرير نقاط بيع؟", "أين تختلف مجاميع نقاط البيع عن الإقفالات؟"],
+  },
   {
     match: (p) => p.startsWith("/owner/closings"),
     en: ["Chart my sales by weekday", "Which days are missing a closing?", "Best and worst days this month"],
@@ -41,8 +71,8 @@ const PROMPTS: P[] = [
   },
   {
     match: (p) => p.startsWith("/owner/recipes"),
-    en: ["Which drinks have the lowest margin?", "What should I reprice, and to what?", "Which ingredients still have no price?"],
-    ar: ["ما المشروبات ذات أقل هامش ربح؟", "ماذا أعيد تسعيره وبكم؟", "ما المكونات التي بدون سعر بعد؟"],
+    en: ["Which drinks have the lowest margin?", "What sold most this week, and what did it earn?", "Which new POS items still need a recipe?"],
+    ar: ["ما المشروبات ذات أقل هامش ربح؟", "ما الأكثر مبيعاً هذا الأسبوع وكم ربح؟", "ما أصناف نقاط البيع الجديدة التي تحتاج وصفة؟"],
   },
   {
     match: (p) => p.startsWith("/owner/review"),
@@ -65,9 +95,9 @@ const PROMPTS: P[] = [
     ar: ["لخّص ما عليّ وما لي"],
   },
   {
-    match: (p) => p.startsWith("/owner/reports") || p.startsWith("/owner/insights"),
-    en: ["Explain this month's P&L simply", "Where can I save money?", "Chart spend by category"],
-    ar: ["اشرح الأرباح والخسائر ببساطة", "أين يمكنني التوفير؟", "ارسم الإنفاق حسب الفئة"],
+    match: (p) => p.startsWith("/owner/reports"),
+    en: ["Explain this month's P&L simply", "Where can I save money?", "What daily sales do I need to break even?"],
+    ar: ["اشرح الأرباح والخسائر ببساطة", "أين يمكنني التوفير؟", "كم مبيعات يومية أحتاج للتعادل؟"],
   },
   {
     match: (p) => p.startsWith("/owner/attendance") || p.startsWith("/owner/baristas"),
@@ -93,7 +123,7 @@ export function PageAiBar({ locale }: { locale: Locale }) {
   const pathname = usePathname() ?? "";
   if (pathname === "/owner" || HIDE.some((p) => pathname.startsWith(p))) return null;
   const ar = locale === "ar";
-  const segs = BOOKS.some((s) => pathname.startsWith(s.href)) ? BOOKS : STAFF.some((s) => pathname.startsWith(s.href)) ? STAFF : null;
+  const segs = GROUPS.find((g) => g.some((s) => isOn(pathname, s))) ?? null;
   const hit = PROMPTS.find((p) => p.match(pathname));
   const prompts = hit ? (ar ? hit.ar : hit.en) : [];
   if (!segs && !prompts.length) return null;
@@ -103,12 +133,13 @@ export function PageAiBar({ locale }: { locale: Locale }) {
         <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none]">
           <div className="inline-flex gap-1 rounded-full bg-white/70 p-1">
             {segs.map((s) => {
-              const on = s.exact ? pathname === s.href : pathname.startsWith(s.href);
+              const on = isOn(pathname, s);
               return (
                 <Link
                   key={s.href}
                   href={s.href as Route}
-                  className={`shrink-0 rounded-full px-4 py-2 text-sm transition ${on ? "bg-strow-ink font-semibold text-white" : "text-neutral-600 hover:text-strow-ink"}`}
+                  aria-current={on ? "page" : undefined}
+                  className={`flex min-h-10 shrink-0 items-center rounded-full px-4 text-sm transition ${on ? "bg-strow-ink font-semibold text-white" : "text-neutral-600 hover:text-strow-ink"}`}
                 >
                   {ar ? s.ar : s.en}
                 </Link>

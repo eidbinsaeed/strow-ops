@@ -30,3 +30,9 @@ export function CheckIcon({ className = "h-[18px] w-[18px]" }: P) {
 export function BackIcon({ className = "h-5 w-5" }: P) {
   return (<svg viewBox="0 0 24 24" className={`${className} rtl:-scale-x-100`} {...base} aria-hidden><path d="M15 5l-7 7 7 7" /></svg>);
 }
+export function SalesIcon({ className = "h-[22px] w-[22px]" }: P) {
+  return (<svg viewBox="0 0 24 24" className={className} {...base} aria-hidden><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>);
+}
+export function ReportsIcon({ className = "h-[22px] w-[22px]" }: P) {
+  return (<svg viewBox="0 0 24 24" className={className} {...base} aria-hidden><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></svg>);
+}

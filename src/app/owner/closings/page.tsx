@@ -9,6 +9,7 @@ import { parseFilters } from "@/lib/filters";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { StatusPill } from "@/components/owner/StatusPill";
+import { POS_DAY_COLUMNS, posDayOf, type PosDay } from "@/lib/sales";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -124,6 +125,14 @@ export default async function OwnerSalesPage({
     );
   }
 
+  // POS report of the same day, to show next to the barista's count.
+  const posDates = [...new Set(closings.map((c) => c.closing_date))];
+  const posByDate = new Map<string, PosDay>();
+  if (posDates.length) {
+    const { data: posRows } = await supabase.from("pos_daily_reports").select(POS_DAY_COLUMNS).in("business_date", posDates);
+    for (const r of (posRows ?? []) as Parameters<typeof posDayOf>[0][]) posByDate.set(r.business_date, posDayOf(r));
+  }
+
   const grandSum = closings.reduce(
     (sum, c) => sum + Number(c.grand_total ?? 0),
     0,
@@ -206,6 +215,7 @@ export default async function OwnerSalesPage({
                   <p className="mt-1 text-xs text-neutral-500">
                     {payParts(c).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: locale === "ar" ? "تطبيقات (مجمعة)" : "Apps combined", talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}${ordersFor(c.transactions_by_method, p.k)}`).join(" - ")}{c.transactions ? ` - ${c.transactions} orders · avg ${formatAed(Number(c.grand_total) / c.transactions)}` : ""} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
                   </p>
+                  <PosLine pos={posByDate.get(c.closing_date)} closingTotal={Number(c.grand_total)} locale={locale} />
                   {c.notes && (
                     <p className="mt-2 text-xs italic text-neutral-500">
                       {c.notes}
@@ -243,5 +253,31 @@ export default async function OwnerSalesPage({
         </Link>
       </p>
     </div>
+  );
+}
+
+function PosLine({ pos, closingTotal, locale }: { pos: PosDay | undefined; closingTotal: number; locale: import("@/lib/i18n/dict").Locale }) {
+  if (!pos) return null;
+  const ar = locale === "ar";
+  const diff = pos.total - closingTotal;
+  const before = pos.check.state === "report_before_closing" && diff < 0;
+  const chip =
+    Math.abs(diff) <= 1
+      ? { t: ar ? "مطابق" : "Matches", c: "bg-[#E7F6EC] text-[#0A6B34]" }
+      : before
+        ? { t: ar ? "التقرير قبل الإقفال" : "Report made before the closing", c: "bg-[#FFF4E0] text-[#6E4200]" }
+        : {
+            t: ar
+              ? `فرق ${formatAed(Math.abs(diff))} ${diff > 0 ? "(نقاط البيع أعلى)" : "(الإقفال أعلى)"}`
+              : `Gap ${formatAed(Math.abs(diff))} ${diff > 0 ? "(POS higher)" : "(closing higher)"}`,
+            c: "bg-[#FBE9E7] text-[#9A1B12]",
+          };
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+      <span className="tabular-nums">
+        {ar ? "نقاط البيع" : "POS"} {formatAed(pos.total)} · {pos.orders} {ar ? "طلب" : "orders"}
+      </span>
+      <span className={`rounded-full px-2 py-0.5 font-semibold ${chip.c}`}>{chip.t}</span>
+    </p>
   );
 }
