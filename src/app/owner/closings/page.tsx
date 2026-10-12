@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
 import { OrdersScanCard } from "@/components/owner/OrdersScanCard";
 import { ordersFor, payParts } from "@/lib/pay-split";
+import { AppFeeLine } from "@/components/owner/AppFeeLine";
 import { Suspense } from "react";
 import { TableFilters } from "@/components/owner/TableFilters";
 import { parseFilters } from "@/lib/filters";
@@ -215,6 +216,7 @@ export default async function OwnerSalesPage({
                   <p className="mt-1 text-xs text-neutral-500">
                     {payParts(c).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: locale === "ar" ? "تطبيقات (مجمعة)" : "Apps combined", talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}${ordersFor(c.transactions_by_method, p.k)}`).join(" - ")}{c.transactions ? ` - ${c.transactions} orders · avg ${formatAed(Number(c.grand_total) / c.transactions)}` : ""} - {tr("card.by", locale)} {c.baristas?.name ?? "-"}
                   </p>
+                  <AppFeeLine row={c} locale={locale} />
                   <PosLine pos={posByDate.get(c.closing_date)} closingTotal={Number(c.grand_total)} locale={locale} />
                   {c.notes && (
                     <p className="mt-2 text-xs italic text-neutral-500">

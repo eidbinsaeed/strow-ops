@@ -9,11 +9,12 @@ import { Sparkle } from "@/components/pulse/icons";
 import { todayDubai } from "@/lib/dates";
 import { PushToggle } from "@/components/push/PushToggle";
 import { clockLabel, dubaiClock } from "@/lib/sales";
+import { appSalesOfClosing, feesForDay, sumFees } from "@/lib/app-fees";
 
 export const dynamic = "force-dynamic";
 
 type Num = number | string | null;
-type Kpis = { projected_net: Num; revenue_mtd: Num; fixed_monthly: Num };
+type Kpis = { projected_net: Num; revenue_mtd: Num; fixed_monthly: Num; days_closed_mtd: Num; days_in_month: Num };
 type CashPos = {
   cash_on_hand: Num;
   cash_in_today: Num;
@@ -22,7 +23,7 @@ type CashPos = {
   anchor_date: string | null;
   needs_opening_count: boolean | number | null;
 };
-type Closing = { closing_date: string; grand_total: Num; cash_total: Num; card_total: Num; online_total: Num; talabat_total: Num; keeta_total: Num; beanz_total: Num; transactions: number | null; transactions_by_method: Record<string, number> | null };
+type Closing = { closing_date: string; status: string; grand_total: Num; cash_total: Num; card_total: Num; online_total: Num; talabat_total: Num; keeta_total: Num; beanz_total: Num; transactions: number | null; transactions_by_method: Record<string, number> | null };
 type Finding = { id: string; status: string; severity: string; title: string; detail: string | null; ops: unknown[] | null };
 
 const N = (v: unknown) => {
@@ -73,7 +74,7 @@ export default async function PulsePage() {
     db.from("v_cash_position").select("*").limit(1),
     db
       .from("closings")
-      .select("closing_date, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, transactions_by_method")
+      .select("closing_date, status, grand_total, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, transactions_by_method")
       .gte("closing_date", addDays(today, -120))
       .lte("closing_date", today)
       .neq("status", "rejected")
@@ -141,6 +142,8 @@ export default async function PulsePage() {
   const beanz = sumOf((r) => r.beanz_total);
   const otherOnline = Math.max(0, onlineAll - talabat - keeta - beanz);
   const tot = card + cashS + onlineAll;
+  // Delivery-app fees on the same days (src/lib/app-fees.ts): what the apps keep and what reaches the café.
+  const appFees = sumFees(splitRows.map((r) => feesForDay(r.closing_date, appSalesOfClosing(r))));
   const pct = (x: number) => (tot > 0 ? Math.round((x / tot) * 100) : 0);
   const split = [
     { k: ar ? "بطاقة" : "card", v: card, c: "#0F1C2B" },
@@ -230,7 +233,12 @@ export default async function PulsePage() {
       ? ar ? "اليوم حتى الآن" : "Today so far"
       : `${dayLong(pos.business_date, ar)} · ${ar ? "الإقفال لم يصل بعد" : "closing not in yet"}`
     : "";
-  const projected = N(kpi?.projected_net);
+  // v_dashboard_kpis projects confirmed closings to month end; take the app fees off at the same pace.
+  const feesConfirmedMtd = sumFees(
+    monthRows.filter((r) => r.status === "confirmed").map((r) => feesForDay(r.closing_date, appSalesOfClosing(r))),
+  ).fees.total;
+  const daysClosedMtd = N(kpi?.days_closed_mtd);
+  const projected = N(kpi?.projected_net) - (daysClosedMtd > 0 ? (feesConfirmedMtd / daysClosedMtd) * N(kpi?.days_in_month) : 0);
 
   const FindingRows = ({ limit }: { limit: number }) => (
     <>
@@ -407,6 +415,22 @@ export default async function PulsePage() {
                   ))}
                 </div>
                 <span className="text-xs text-neutral-500">{monthRows.length ? (ar ? "هذا الشهر" : "This month") : ar ? "آخر 30 يوماً" : "Last 30 days"}</span>
+                {appFees.sales.total >= 0.5 ? (
+                  <div className="flex flex-col gap-0.5 rounded-2xl bg-[#F4F5F7] px-3 py-2.5 text-[13px]">
+                    <span className="flex justify-between gap-2">
+                      <span className="text-neutral-500">{ar ? "التطبيقات" : "Apps"}</span>
+                      <span className="tabular-nums">{fmt(appFees.sales.total, 0)}</span>
+                    </span>
+                    <span className="flex justify-between gap-2">
+                      <span className="text-neutral-500">{ar ? "رسوم التطبيقات" : "App fees"}</span>
+                      <span className="tabular-nums text-[#9A1B12]">−{fmt(appFees.fees.total, 0)}</span>
+                    </span>
+                    <span className="flex justify-between gap-2 font-semibold">
+                      <span>{ar ? "يبقى لك" : "You keep"}</span>
+                      <span className="tabular-nums">{fmt(appFees.keep, 0)}</span>
+                    </span>
+                  </div>
+                ) : null}
                 {channelRows.length ? (
                   <div className="flex flex-col border-t border-[#EDF0F3] pt-2">
                     {channelRows.map((s) => (
@@ -466,7 +490,7 @@ export default async function PulsePage() {
         <div className="grid grid-cols-2 gap-3 md:col-start-1 md:row-start-3 md:grid-cols-3 md:gap-[18px]">
           {[
             { l: ar ? "مبيعات هذا الشهر" : "Sales this month", v: fmt(N(kpi?.revenue_mtd), 0), red: false },
-            { l: ar ? "صافي متوقع" : "Projected net", v: fmt(projected, 0), red: projected < 0 },
+            { l: ar ? "صافي متوقع بعد رسوم التطبيقات" : "Projected net after app fees", v: fmt(projected, 0), red: projected < 0 },
             { l: ar ? "تكاليف ثابتة شهرياً" : "Fixed costs a month", v: fmt(N(kpi?.fixed_monthly), 0), red: false },
             { l: ar ? "طلبات هذا الشهر" : "Orders this month", v: fmt(monthOrders, 0), red: false },
             { l: ar ? "متوسط الطلب" : "Average order", v: monthOrders > 0 ? fmt(monthOrderSales / monthOrders) : "—", red: false },

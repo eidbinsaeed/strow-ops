@@ -132,7 +132,7 @@ export default async function ProfitAndLossPage({ searchParams }: { searchParams
         </Tile>
         <Tile label={ar ? "الربح الإجمالي" : "Gross profit"} value={fmtSigned(p.gross)}>
           <Num>{fmtPct(p.grossPct)}</Num>
-          {ar ? " من الصافي، بعد الفواتير" : " of net, after bills"}
+          {ar ? " من الصافي، بعد الفواتير ورسوم التطبيقات" : " of net, after bills and app fees"}
         </Tile>
         <Tile label={ar ? "صافي الربح" : "Net profit"} value={fmtSigned(p.netProfit)} tone={p.netProfit < 0 ? RED : ""}>
           <Num>{fmtPct(p.netPct)}</Num>
@@ -366,7 +366,7 @@ function NotCountedCard({ p, locale }: { p: Pnl; locale: PnlLocale }) {
     const hasSplit = p.apps.talabat + p.apps.keeta + p.apps.beanz >= 0.5;
     items.push({
       key: "apps",
-      title: ar ? "عمولات التطبيقات" : "App commissions",
+      title: ar ? "العروض الترويجية في التطبيقات" : "App promotions",
       body: (
         <>
           <Num>AED {fmtAed(p.apps.total)}</Num> = <Num>{fmtPct(p.apps.share)}</Num>
@@ -383,9 +383,11 @@ function NotCountedCard({ p, locale }: { p: Pnl; locale: PnlLocale }) {
               {")"}
             </>
           ) : null}
+          {ar ? ". رسومها محسوبة في البيان (" : ". Their fees are counted in the statement ("}
+          <Num>{fmtAed(p.appFees.fees.total)}</Num>
           {ar
-            ? ". عمولاتها غير مسجلة في Strow بعد، لذلك الربح الحقيقي أقل."
-            : ". Their commissions aren't in Strow yet, so real profit is lower."}
+            ? ")، لكن العروض الترويجية التي تطلقها في التطبيقات غير محسوبة."
+            : "), but promotions you run on the apps aren't."}
         </>
       ),
     });

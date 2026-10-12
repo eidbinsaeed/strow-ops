@@ -4,6 +4,7 @@ import { getLocale } from "@/lib/i18n/locale";
 import { todayDubai } from "@/lib/dates";
 import { createServiceClient } from "@/lib/supabase/server";
 import { PeriodBar } from "@/components/owner/PeriodBar";
+import { APP_KEYS, appName, rateLabel } from "@/lib/app-fees";
 import {
   addDays,
   dayMonth,
@@ -321,6 +322,35 @@ export default async function SalesOverviewPage({ searchParams }: { searchParams
                 ? "بعض الإقفالات لا تفصل مبيعات التطبيقات حسب التطبيق، لذا تظهر كـ«تطبيقات غير مفصّلة»."
                 : "Some closings don't split app sales by app, so those show as \"Apps, not split\"."}
             </p>
+          ) : null}
+          {cur.appFees.sales.total > 0.004 ? (
+            <div className="mt-1 flex flex-col gap-1.5 rounded-[18px] bg-[#F4F5F7] px-3.5 py-3">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-0.5 text-sm">
+                <span className="font-semibold">{ar ? "بعد رسوم التطبيقات" : "After app fees"}</span>
+                <span className="tabular-nums">
+                  {aed0(cur.appFees.sales.total)} − {num0(cur.appFees.fees.total)} = <strong>{aed0(cur.appFees.keep)}</strong>
+                </span>
+              </div>
+              {APP_KEYS.filter((k) => cur.appFees.sales[k] > 0.004).map((k) => {
+                const sales = cur.appFees.sales[k];
+                const fee = cur.appFees.fees[k];
+                return (
+                  <div key={k} className="flex flex-wrap justify-between gap-x-3 text-[13px] text-neutral-600">
+                    <span>
+                      {appName(k, ar)} · {rateLabel(fee / sales)}
+                    </span>
+                    <span className="tabular-nums">
+                      {ar ? "رسوم" : "fees"} {num0(fee)} · {ar ? "يبقى لك" : "you keep"} {num0(sales - fee)}
+                    </span>
+                  </div>
+                );
+              })}
+              <span className="text-xs leading-snug text-neutral-500">
+                {ar
+                  ? "تقدير من مبيعات التطبيقات في كل يوم · بدون العروض الترويجية"
+                  : "Worked out from each day's app sales · promotions not included"}
+              </span>
+            </div>
           ) : null}
         </section>
 

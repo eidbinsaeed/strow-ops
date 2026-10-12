@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { csvResponse, toCsv } from "@/lib/reports/csv";
 import { getOwnerSession } from "@/lib/auth/owner-session";
+import { APP_KEYS, appName } from "@/lib/app-fees";
 import {
   groupLabel,
   loadPnl,
@@ -47,8 +48,18 @@ export async function GET(request: Request) {
       ["Bills by category (before VAT)", "AED", "Bills", "P&L line"],
       ...p.purchases.byCategory.map((c) => [c.name ?? "Uncategorized", r2(c.amount), c.count, groupLabel(c.group, "en")]),
       [],
+      ["Delivery app fees", "App sales", "Rate", "Fee", "You keep"],
+      ...APP_KEYS.filter((k) => p.appFees.sales[k] >= 0.005).map((k) => [
+        appName(k),
+        r2(p.appFees.sales[k]),
+        pct(p.appFees.sales[k] > 0 ? p.appFees.fees[k] / p.appFees.sales[k] : null),
+        r2(p.appFees.fees[k]),
+        r2(p.appFees.sales[k] - p.appFees.fees[k]),
+      ]),
+      ["All apps", r2(p.appFees.sales.total), pct(p.appFees.sales.total > 0 ? p.appFees.fees.total / p.appFees.sales.total : null), r2(p.appFees.fees.total), r2(p.appFees.keep)],
+      [],
       ["Not counted yet"],
-      ["Sales through apps (commission not deducted)", r2(p.apps.total), pct(p.apps.share)],
+      ["Promotions run on the apps (Talabat marketing etc.)"],
     ];
 
     const filename = `strow-pnl-${period.from}-to-${period.to}.csv`;

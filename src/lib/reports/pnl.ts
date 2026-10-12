@@ -5,7 +5,9 @@
  *   Net sales    sales / (1 + the location's VAT rate)
  *   Bills        confirmed expenses before VAT (subtotal), grouped by category name:
  *                food and drink · packaging · rent and salaries billed · cleaning and other
- *   Gross profit net sales − bills
+ *   App fees     delivery-app fees on each day's app sales (src/lib/app-fees.ts: Talabat 35.8%,
+ *                Keeta 30%, Beanz 30%, apps combined 33%) — promotions run on the apps are not counted
+ *   Gross profit net sales − bills − app fees
  *   Recurring    active fixed_costs as a monthly amount (monthly + quarterly/3 + annual/12),
  *                charged by the day: each calendar month's amount × (days of that month
  *                counted ÷ days in that month). Days count from the first confirmed closing
@@ -18,6 +20,7 @@
  */
 import { createServiceClient } from "@/lib/supabase/server";
 import { todayDubai } from "@/lib/dates";
+import { emptyFees, feesForDay, addFees, ratesText, rateLabel, currentRates, type AppFees } from "@/lib/app-fees";
 
 export type PnlLocale = "en" | "ar";
 
@@ -336,6 +339,8 @@ export type Pnl = {
   netProfit: number;
   netPct: number | null;
   apps: { total: number; talabat: number; keeta: number; beanz: number; unsplit: number; share: number | null };
+  /** Delivery-app fees on the app sales above, at each day's rates. */
+  appFees: AppFees;
   /** Food and drink bills ÷ net sales. */
   foodCostBills: number | null;
   /** Recipe cost of what the POS sold ÷ those sales before VAT; null = no POS reports in the period. */
@@ -364,6 +369,7 @@ export function computePnl(i: PnlInput): Pnl {
   let talabat = 0;
   let keeta = 0;
   let beanz = 0;
+  let appFees = emptyFees();
   const closed = new Set<string>();
   for (const c of i.closings) {
     if (!inRange(c.closing_date)) continue;
@@ -372,6 +378,16 @@ export function computePnl(i: PnlInput): Pnl {
     talabat += c.talabat_total;
     keeta += c.keeta_total;
     beanz += c.beanz_total;
+    // App columns read NULL as 0, so a day before the split has all of online in "combined".
+    appFees = addFees(
+      appFees,
+      feesForDay(c.closing_date, {
+        talabat: c.talabat_total,
+        keeta: c.keeta_total,
+        beanz: c.beanz_total,
+        combined: Math.max(0, c.online_total - c.talabat_total - c.keeta_total - c.beanz_total),
+      }),
+    );
     closed.add(c.closing_date);
   }
   const net = sales / (1 + rate);
@@ -397,7 +413,7 @@ export function computePnl(i: PnlInput): Pnl {
     cats.set(key, cur);
   }
   const purchasesTotal = sums.food + sums.packaging + sums.overhead + sums.other;
-  const gross = net - purchasesTotal;
+  const gross = net - purchasesTotal - appFees.fees.total;
 
   const counted = costWindow(i.from, i.to, i.firstClosing, i.asOf);
   const months = monthSlices(counted);
@@ -448,6 +464,7 @@ export function computePnl(i: PnlInput): Pnl {
       unsplit: Math.max(0, online - talabat - keeta - beanz),
       share: sales > 0 ? online / sales : null,
     },
+    appFees,
     foodCostBills: ofNet(sums.food),
     foodCostRecipes,
     utilityBills,
@@ -488,6 +505,19 @@ export function statementLines(p: Pnl, locale: PnlLocale = "en"): StatementLine[
       note: ar
         ? "عادةً تُحسب أيضاً ضمن المصاريف الثابتة — تأكد أنها غير مكررة."
         : "Usually in recurring costs too — check they aren't counted twice.",
+    });
+  }
+  if (p.appFees.fees.total >= 0.005) {
+    const combined = p.appFees.sales.combined >= 0.5 ? ` · ${ar ? "تطبيقات مجمعة" : "apps combined"} ${rateLabel(currentRates().combined)}` : "";
+    out.push({
+      key: "appfees",
+      label: ar ? "رسوم تطبيقات التوصيل" : "Delivery app fees",
+      amount: -p.appFees.fees.total,
+      pct: ofNet(p.appFees.fees.total),
+      kind: "line",
+      note: ar
+        ? `${ratesText(true)}${combined} من مبيعاتها · بدون العروض الترويجية`
+        : `${ratesText(false)}${combined} of their sales · promotions not included`,
     });
   }
   out.push({ key: "gross", label: ar ? "الربح الإجمالي" : "Gross profit", amount: p.gross, pct: p.grossPct, kind: "total" });

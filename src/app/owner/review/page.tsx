@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
 import { ordersFor, payParts } from "@/lib/pay-split";
+import { AppFeeLine } from "@/components/owner/AppFeeLine";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { StatusPill as SharedStatusPill } from "@/components/owner/StatusPill";
@@ -196,6 +197,7 @@ function ClosingCard({ row, locale }: { row: ClosingRow; locale: import("@/lib/i
           <p className="mt-1 text-xs text-neutral-500">
             {payParts(row).map((p) => `${({ cash: tr("card.cash", locale), card: tr("card.card", locale), online: locale === "ar" ? "تطبيقات (مجمعة)" : "Apps combined", talabat: "Talabat", keeta: "Keeta", beanz: "Beanz", other: "Other online" } as Record<string, string>)[p.k]} ${formatAed(p.v)}${ordersFor(row.transactions_by_method, p.k)}`).join(" - ")}{row.transactions ? ` - ${row.transactions} orders · avg ${formatAed(Number(row.grand_total) / row.transactions)}` : ""} - {tr("card.by", locale)} {row.baristas?.name ?? "-"}
           </p>
+          <AppFeeLine row={row} locale={locale} />
           {row.notes && (
             <p className="mt-2 text-xs italic text-neutral-500">{row.notes}</p>
           )}

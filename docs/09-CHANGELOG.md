@@ -1,8 +1,22 @@
 # Strow Ops — Changelog
 
-**Last updated:** 2026-10-07
+**Last updated:** 2026-10-12
 
 ---
+
+## 2026-10-12 — Delivery-app fees: what the café keeps from Talabat, Keeta and Beanz
+- **Rates (set by the owner):** Talabat **35.8%**, Keeta **30%**, Beanz **30%** of each day's app sales; days before ~22 Sep (apps combined, NULL split) **33%**, the blend by the app mix since the split started (32.98%).
+  - Talabat's 35.8% comes from invoice 15622709 (3–5 Oct 2026, 26 orders): commission 360.11 (33.3%) + payment fees 27.37 (2.5%) on gross sales 1,081.29. Talabat calls it "30%".
+  - Promotions / marketing the owner runs on the apps are **not** counted (his choice). No invoices are entered: Strow does the maths from the closing (or the POS report until the closing comes in).
+  - Rates live in `src/lib/app-fees.ts` (`APP_FEE_SCHEDULE`): to change one, add a row with the day it starts; older days keep their rate.
+- **Closings and Approvals:** each card shows "Apps 781 → fees −263 → you keep 518 (Talabat −175 · Keeta −45 · Beanz −43)" (`AppFeeLine`).
+- **Sales › Overview:** "After app fees" under How customers paid — app sales − fees = what you keep, per app with its rate.
+- **Pulse:** the same apps / fees / you keep block for the month; "Projected net" is now "Projected net after app fees" (the view's projection minus month-to-date fees on confirmed closings, projected at the same pace).
+- **Profit & loss:** new line **Delivery app fees** before gross profit (gross = net sales − bills − app fees), so net profit, the 6-month chart and the CSV all include them. "Not counted yet" now lists app promotions instead of app commissions. CSV gets a per-app table (sales, rate, fee, you keep).
+- **Strow AI** knows the rates (data rules in `src/lib/ai/prompt.ts`, generated from the same constants) and is told never to assume 30% for Talabat.
+- **Checked on production data:** 5 Oct = apps 781, fees 262.66, keep 518.34. September 2026: app sales 14,522 → fees 4,794 (Talabat 856, Keeta 155, Beanz 494, apps combined 3,290) → net profit **−2,165** (was +2,629 before fees). 1–11 Oct: app sales 8,751 → fees 2,883.
+- Known gap: for the 3–5 Oct invoice orders the POS recorded 1,327 vs Talabat's 1,138.20 (with VAT), most likely promotion discounts the POS doesn't see, so while promotions run the Talabat fee estimate (475 vs 387 actual) runs a little high and "you keep" a little high too.
+- No database change.
 
 ## 2026-10-07 — POS report at midnight, closing check when the closing comes later
 - The POS now emails the full-day report automatically at about 00:01. The daily import runs at **00:05 Dubai** (was 07:55).

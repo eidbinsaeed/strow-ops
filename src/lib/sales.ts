@@ -7,6 +7,7 @@
  * days can be uploaded on /owner/pos-reports).
  */
 import { createServiceClient } from "@/lib/supabase/server";
+import { addFees, emptyFees, feesForDay, type AppFees } from "@/lib/app-fees";
 
 type Db = ReturnType<typeof createServiceClient>;
 type Page<T> = { data: T[] | null; error: { message: string } | null };
@@ -270,10 +271,17 @@ export type Totals = {
   posOnly: number;
   waiting: number;
   best: SalesDay | null;
+  /** Delivery-app fees on the app sales, at each day's rates (src/lib/app-fees.ts). */
+  appFees: AppFees;
 };
 
+/** One day's app fees: Talabat, Keeta, Beanz, and "apps combined" for days before the split. */
+export function dayAppFees(d: Pick<SalesDay, "date" | "talabat" | "keeta" | "beanz" | "appsUnsplit">): AppFees {
+  return feesForDay(d.date, { talabat: d.talabat, keeta: d.keeta, beanz: d.beanz, combined: d.appsUnsplit });
+}
+
 export function totalsOf(days: Iterable<SalesDay>): Totals {
-  const t: Totals = { total: 0, cash: 0, card: 0, talabat: 0, keeta: 0, beanz: 0, appsUnsplit: 0, other: 0, orders: 0, orderSales: 0, days: 0, daysWithOrders: 0, posOnly: 0, waiting: 0, best: null };
+  const t: Totals = { total: 0, cash: 0, card: 0, talabat: 0, keeta: 0, beanz: 0, appsUnsplit: 0, other: 0, orders: 0, orderSales: 0, days: 0, daysWithOrders: 0, posOnly: 0, waiting: 0, best: null, appFees: emptyFees() };
   for (const d of days) {
     t.days++;
     t.total += d.total;
@@ -284,6 +292,7 @@ export function totalsOf(days: Iterable<SalesDay>): Totals {
     t.beanz += d.beanz;
     t.appsUnsplit += d.appsUnsplit;
     t.other += d.other;
+    t.appFees = addFees(t.appFees, dayAppFees(d));
     if (d.orders != null && d.orders > 0) {
       t.orders += d.orders;
       t.orderSales += d.total;
