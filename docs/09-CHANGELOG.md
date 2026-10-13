@@ -1,8 +1,18 @@
 # Strow Ops — Changelog
 
-**Last updated:** 2026-10-12
+**Last updated:** 2026-10-14
 
 ---
+
+## 2026-10-14 — POS import: split payments no longer reject a report
+- **Bug:** the 9 Oct report was rejected (upload and the 00:05 email import): "orders per payment method add up to paid orders (47 vs 45)".
+  - Cause: two orders were split between two methods (#2142 card 8 + cash 20, #2143 card 1 + cash 38). The POS counts a split order once under each method, so the Payment Method Report says 47 while there were 45 paid orders. The report itself was correct.
+- **Fix** (`scripts/pos_report.py` and its twin `src/lib/pos/parse-report.ts`): the method quantities are now checked against the **payment lines in the order list** (47), not the paid orders. "Order list count equals paid orders" still checks the 45.
+  - Checked on all 12 reports already stored (1–13 Oct): per method, the order list matches the report on both count and amount, so nothing that imported before is rejected now.
+  - Both parsers give the identical payload and checksum for 9 Oct. Variants with a wrong method count or a missing split line are still rejected with the same message in both.
+- **9 Oct imported** (quiet, source `upload`): 45 orders, AED 1,973, closing check **match**. #2142 and #2143 are stored with `payment_method = 'mixed'` (the Split filter on Orders).
+- The 9 Oct closing has `transactions = 47` (the POS's per-method count); the true order count is 45.
+- No database change.
 
 ## 2026-10-12 — Delivery-app fees: what the café keeps from Talabat, Keeta and Beanz
 - **Rates (set by the owner):** Talabat **35.8%**, Keeta **30%**, Beanz **30%** of each day's app sales; days before ~22 Sep (apps combined, NULL split) **33%**, the blend by the app mix since the split started (32.98%).

@@ -835,9 +835,15 @@ function parse(xlsx: Buffer, msgId: string | null): PosParseResult {
 
   // Reconcile every total, exactly as pos_report.py does (Decimal, tolerance 0.01).
   const leaf = prods.filter((p) => !p[2]);
+  // A split order (e.g. card 8 + cash 20) counts once under each method, so the method
+  // quantities add up to the payment lines in the order list, not to the paid orders.
   const checks: [string, Dec, Dec][] = [
     ["payment methods add up to total paid", decSum(pay.map((p) => D(p[1]))), D(summ.paid)],
-    ["orders per payment method add up to paid orders", decSum(pay.map((p) => D(p[2]))), D(summ.orders)],
+    [
+      "orders per payment method add up to payments in the order list",
+      decSum(pay.map((p) => D(p[2]))),
+      D(orders.reduce((t, o) => t + o[7].length, 0)),
+    ],
     ["order list count equals paid orders", D(orders.length), D(summ.orders)],
     ["order totals add up to total paid", decSum(orders.map((o) => D(o[3]))), D(summ.paid)],
     ["category gross equals product amount", decSum(cats.map((c) => D(c[2]))), D(summ.product)],

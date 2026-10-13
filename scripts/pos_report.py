@@ -211,9 +211,11 @@ def main():
         return Decimal(str(x or 0))
 
     leaf = [p for p in prods if not p[2]]
+    # A split order (e.g. card 8 + cash 20) counts once under each method, so the method
+    # quantities add up to the payment lines in the order list, not to the paid orders.
     checks = [
         ("payment methods add up to total paid", sum(D(p[1]) for p in pay), D(summ["paid"])),
-        ("orders per payment method add up to paid orders", sum(D(p[2]) for p in pay), D(summ["orders"])),
+        ("orders per payment method add up to payments in the order list", sum(D(p[2]) for p in pay), D(sum(len(o[7]) for o in orders))),
         ("order list count equals paid orders", D(len(orders)), D(summ["orders"])),
         ("order totals add up to total paid", sum(D(o[3]) for o in orders), D(summ["paid"])),
         ("category gross equals product amount", sum(D(c[2]) for c in cats), D(summ["product"])),
