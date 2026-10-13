@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-10-14 — Team WhatsApp chat audit: 27 missing bills and the car wash IOU
+- The "Qavé Team" WhatsApp export (11 Apr – 14 Oct, 3,330 messages) was read by AI into 1,720 records and checked against Strow. Findings page: artifact "Qavé Team Chat Audit".
+- **27 bills added to Approvals** (status `pending_review`, 3,401.25 AED, 9 May – 3 Oct): payments staff posted in the chat with no bill in Strow within 10 days (amount ±1 AED, then ±5%).
+  - Each has the poster as barista (Shahid 13, Kayran 13, Danny 1), the chat quote in `notes`, `raw_date_string` = "WhatsApp <timestamp>", and `ai_anomalies.flags` = `from_team_chat`, `no_bill`, so Approvals shows why it is waiting.
+  - 24 are `cash` (2,307.25, from the till / float); 3 paid by the car wash are `credit` (1,094: fruit shop Aug tab 260, Amazonas açaí inv. 16201 364, condensed milk 470).
+  - One `ai_actions` row (source `chat`, applied, 27 insert ops) so the whole batch can be undone from AI activity; 27 `audit_log` rows `ai_created`.
+- **Money owed:** liability "Car wash (makshala)", `iou`, 4,737.24 AED from 3 Aug: 19 loans or supplier payments by the car wash staff (Mr Hamid/Hameed/Hakeem, Mr Kerala, Mr Shaukat) up to 6 Oct, breakdown in `notes`; 3 more (7–9 Oct) had no amount. No repayment appears in the chat. Own `ai_actions` row for undo.
+  - Several bills the car wash paid were already in Strow as `cash` (Golden Grains 3 Aug, La Marquise 7 and 25 Aug, Amazonas 28 Sep, Blink and Montone 6 Oct, likely SIDCO 8 Oct); left unchanged.
+- Side effect: `v_cash_position` counts pending cash bills, so cash on hand fell by 2,307.25 to −4,287.46. It was already −1,980.21: the only cash count is the 15 May opening balance, so a recount is needed.
+- No code or schema change.
+
 ## 2026-10-14 — POS import: split payments no longer reject a report
 - **Bug:** the 9 Oct report was rejected (upload and the 00:05 email import): "orders per payment method add up to paid orders (47 vs 45)".
   - Cause: two orders were split between two methods (#2142 card 8 + cash 20, #2143 card 1 + cash 38). The POS counts a split order once under each method, so the Payment Method Report says 47 while there were 45 paid orders. The report itself was correct.
