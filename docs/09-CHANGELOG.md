@@ -11,6 +11,7 @@
   - Checked on all 12 reports already stored (1–13 Oct): per method, the order list matches the report on both count and amount, so nothing that imported before is rejected now.
   - Both parsers give the identical payload and checksum for 9 Oct. Variants with a wrong method count or a missing split line are still rejected with the same message in both.
 - **9 Oct imported** (quiet, source `upload`): 45 orders, AED 1,973, closing check **match**. #2142 and #2143 are stored with `payment_method = 'mixed'` (the Split filter on Orders).
+- **Scheduled task "Strow POS daily import"** updated with the same parser; its embedded copy is now checked against sha256 `d591258a…` (was `d5ca52c8…`). Nothing else in its prompt changed.
 - The 9 Oct closing has `transactions = 47` (the POS's per-method count); the true order count is 45.
 - No database change.
 
