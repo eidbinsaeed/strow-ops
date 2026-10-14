@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { useMemo, useState } from "react";
-import { saveStockCount } from "./actions";
+import { saveStockCount, type RestockSummary } from "./actions";
 import { fmtQty, roundToStep, type Place, type WasteReason } from "@/lib/stock";
+import { CopyText } from "@/components/stock/CopyText";
+import { WhatsAppButton } from "@/components/stock/WhatsAppButton";
 
 export type CountItem = {
   id: string;
@@ -59,7 +62,9 @@ export function StockCountForm({
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [saved, setSaved] = useState<{ label: string; low: string[] } | null>(initial ? { label: initial.savedLabel, low: [] } : null);
+  const [saved, setSaved] = useState<{ label: string; low: string[]; restock: RestockSummary | null } | null>(
+    initial ? { label: initial.savedLabel, low: [], restock: null } : null,
+  );
   const [dirty, setDirty] = useState(false);
 
   const shop = place === "shop";
@@ -106,7 +111,7 @@ export function StockCountForm({
       });
       if (!r.ok) return setErr(r.error);
       const at = new Date(r.savedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Dubai" });
-      setSaved({ label: `${r.updated ? "Updated" : "Saved"} at ${at}`, low: r.low });
+      setSaved({ label: `${r.updated ? "Updated" : "Saved"} at ${at}`, low: r.low, restock: r.restock });
       setDirty(false);
       window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
     } catch (e) {
@@ -304,6 +309,26 @@ export function StockCountForm({
                 : "Everything is above its minimum."}
           </span>
           <span className="text-xs text-[#C9D2DE]">Change a number and save again to update today&apos;s count.</span>
+          {saved.restock ? (
+            <div className="mt-2 flex flex-col gap-2 rounded-xl bg-white/10 p-3">
+              <span className="text-sm font-semibold">
+                Order list ready
+                <span className="font-normal text-[#C9D2DE]">
+                  {" "}
+                  · {saved.restock.moves ? `${saved.restock.moves} to bring from the store room` : ""}
+                  {saved.restock.moves && saved.restock.orders ? ", " : ""}
+                  {saved.restock.orders ? `${saved.restock.orders} to order` : ""}
+                </span>
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                <WhatsAppButton text={saved.restock.text} label="Send on WhatsApp" />
+                <CopyText text={saved.restock.text} label="Copy list" done="Copied ✓" />
+              </div>
+              <Link href={"/stock/order" as Route} className="text-center text-xs font-semibold text-[#C9D2DE] underline">
+                See the full order list
+              </Link>
+            </div>
+          ) : null}
           <Link href="/home" className="mt-2 flex min-h-12 items-center justify-center rounded-xl bg-white text-[15px] font-semibold text-strow-ink">
             Back to home
           </Link>

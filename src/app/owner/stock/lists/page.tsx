@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/i18n/locale";
-import { ListEditor, type EditItem } from "./ListEditor";
+import { ListEditor, type EditItem } from "@/components/stock/ListEditor";
+import { removeStockItem, saveStockItem } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -10,22 +11,24 @@ export default async function StockListsPage({ searchParams }: { searchParams: P
   const ar = (await getLocale()) === "ar";
   const t = (en: string, arText: string) => (ar ? arText : en);
   const db = createServiceClient();
-  const [itemsRes, suppliersRes, invRes, costRes] = await Promise.all([
+  const [itemsRes, suppliersRes, invRes, costRes, staffRes] = await Promise.all([
     db
       .from("stock_items")
-      .select("id, place, name, unit_label, step, min_qty, reorder_qty, grp, sort, supplier_id, inventory_item_id, base_per_unit")
+      .select("id, place, name, unit_label, step, min_qty, reorder_qty, grp, sort, supplier_id, inventory_item_id, base_per_unit, source")
       .eq("is_active", true)
       .order("sort"),
     db.from("suppliers").select("id, name").order("name"),
     db.from("inventory_items").select("id, name, base_uom").eq("is_active", true).order("name"),
     // Bill prices are per kg / L / pc; use that unit where the item has none of its own.
     db.from("v_item_unit_cost").select("inventory_item_id, base_uom"),
+    db.from("baristas").select("name").eq("is_active", true).eq("can_edit_stock_lists", true).order("name"),
   ]);
   const costUom = new Map(((costRes.data ?? []) as { inventory_item_id: string; base_uom: string | null }[]).map((c) => [c.inventory_item_id, c.base_uom]));
   const inventory = ((invRes.data ?? []) as { id: string; name: string; base_uom: string | null }[]).map((i) => ({
     ...i,
     base_uom: i.base_uom ?? costUom.get(i.id) ?? null,
   }));
+  const editors = ((staffRes.data ?? []) as { name: string }[]).map((s) => s.name);
 
   const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
   const items: EditItem[] = ((itemsRes.data ?? []) as Record<string, unknown>[]).map((r) => ({
@@ -41,6 +44,7 @@ export default async function StockListsPage({ searchParams }: { searchParams: P
     supplier_id: (r.supplier_id as string | null) ?? null,
     inventory_item_id: (r.inventory_item_id as string | null) ?? null,
     base_per_unit: num(r.base_per_unit),
+    source: String(r.source ?? "manual"),
   }));
 
   return (
@@ -52,9 +56,17 @@ export default async function StockListsPage({ searchParams }: { searchParams: P
         <h1 className="font-display text-[28px] font-bold tracking-[-0.6px]">{t("Count lists", "قوائم العدّ")}</h1>
         <p className="text-sm text-neutral-500">
           {t(
-            "What staff count, in what unit, and the minimum. Below the minimum, an item is brought from the store room or goes on the order list with the usual order.",
-            "ما يعدّه الموظفون وبأي وحدة والحد الأدنى. تحت الحد الأدنى يُنقل الصنف من المخزن أو يدخل قائمة الطلب بالكمية المعتادة.",
+            "What staff count, in what unit, and the minimum. Below the minimum, an item is brought from the store room or goes on the order list with the usual order. Every item on a scanned bill is added here by itself.",
+            "ما يعدّه الموظفون وبأي وحدة والحد الأدنى. تحت الحد الأدنى يُنقل الصنف من المخزن أو يدخل قائمة الطلب بالكمية المعتادة. كل صنف في فاتورة ممسوحة يُضاف هنا تلقائياً.",
           )}
+        </p>
+        <p className="mt-1 text-xs text-neutral-500">
+          {editors.length
+            ? `${t("Staff who may edit these lists", "الموظفون المسموح لهم بتعديل القوائم")}: ${editors.join(", ")}`
+            : t("Only you can edit these lists. Allow a staff member on the Staff page.", "أنت وحدك تعدّل هذه القوائم. يمكنك السماح لموظف من صفحة الموظفين.")}{" "}
+          <Link href="/owner/baristas" className="font-semibold text-strow-blue">
+            {t("Staff", "الموظفون")} ›
+          </Link>
         </p>
       </header>
       {itemsRes.error ? (
@@ -66,6 +78,8 @@ export default async function StockListsPage({ searchParams }: { searchParams: P
           items={items}
           suppliers={(suppliersRes.data ?? []) as { id: string; name: string }[]}
           inventory={inventory}
+          save={saveStockItem}
+          remove={removeStockItem}
         />
       )}
     </div>

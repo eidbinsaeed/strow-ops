@@ -4,20 +4,10 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/i18n/locale";
 import { getSettings } from "@/lib/settings";
 import { shortDay, todayDubai } from "@/lib/dates";
-import {
-  daysOfCover,
-  fmtQty,
-  NO_SUPPLIER,
-  planRestock,
-  restockText,
-  storeCountDue,
-  toLevel,
-  WEEKDAYS_AR,
-  WEEKDAYS_EN,
-  type StockLevel,
-} from "@/lib/stock";
+import { daysOfCover, fmtQty, NO_SUPPLIER, storeCountDue, toLevel, WEEKDAYS_AR, WEEKDAYS_EN, type StockLevel } from "@/lib/stock";
+import { loadRestock } from "@/lib/stock-plan";
 import { StockSwitches } from "./StockSwitches";
-import { CopyText } from "./CopyText";
+import { CopyText } from "@/components/stock/CopyText";
 
 export const dynamic = "force-dynamic";
 
@@ -50,10 +40,11 @@ export default async function OwnerStockPage() {
   const since = addDays(today, -COVER_WINDOW);
   const weekAgo = addDays(today, -6);
 
-  const [settings, levelsRes, suppliersRes, countsRes, reportsRes] = await Promise.all([
+  const { data: loc } = await db.from("locations").select("id").eq("is_active", true).limit(1).maybeSingle();
+  const locationId = (loc as { id: string } | null)?.id ?? "";
+  const [settings, restock, countsRes, reportsRes] = await Promise.all([
     getSettings(),
-    db.from("v_stock_levels").select("*").order("sort"),
-    db.from("suppliers").select("id, name"),
+    loadRestock(locationId, today).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) })),
     db.from("stock_counts").select("id, place, counted_on, counted_at, notes, baristas(name)").order("counted_at", { ascending: false }).limit(14),
     db.from("pos_daily_reports").select("business_date").gt("business_date", since).lte("business_date", today),
   ]);
@@ -71,33 +62,23 @@ export default async function OwnerStockPage() {
     </header>
   );
 
-  if (levelsRes.error) {
+  if ("error" in restock) {
     return (
       <div className="page flex flex-col gap-4 md:gap-5">
         {header}
         <p className="rounded-[28px] bg-[#FBE9E7] px-[18px] py-5 text-sm text-[#9A1B12] md:p-[22px]">
-          {t("Stock tables are not in the database yet", "جداول المخزون غير موجودة في قاعدة البيانات بعد")} — 0021_stock_counts.sql. ({levelsRes.error.message})
+          {t("Stock tables are not in the database yet", "جداول المخزون غير موجودة في قاعدة البيانات بعد")} — 0021_stock_counts.sql. ({restock.error})
         </p>
       </div>
     );
   }
 
-  const levels: StockLevel[] = ((levelsRes.data ?? []) as Record<string, unknown>[]).map(toLevel);
-  const supplierName = new Map(((suppliersRes.data ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name]));
+  const { levels, costs, plan, message } = restock;
   const invIds = [...new Set(levels.map((l) => l.inventory_item_id).filter(Boolean))] as string[];
 
-  const [costRes, usageRes] = invIds.length
-    ? await Promise.all([
-        db.from("v_item_unit_cost").select("inventory_item_id, unit_cost, supplier_name").in("inventory_item_id", invIds),
-        db.from("v_pos_ingredient_usage").select("inventory_item_id, ingredient, base_uom, qty_used").in("inventory_item_id", invIds).gt("business_date", since).lte("business_date", today),
-      ])
-    : [{ data: [] }, { data: [] }];
-  const costs = new Map(
-    ((costRes.data ?? []) as { inventory_item_id: string; unit_cost: number | string | null; supplier_name: string | null }[]).map((c) => [
-      c.inventory_item_id,
-      { cost: c.unit_cost === null ? null : Number(c.unit_cost), supplier: c.supplier_name },
-    ]),
-  );
+  const usageRes = invIds.length
+    ? await db.from("v_pos_ingredient_usage").select("inventory_item_id, ingredient, base_uom, qty_used").in("inventory_item_id", invIds).gt("business_date", since).lte("business_date", today)
+    : { data: [] };
   const usageMap = new Map<string, { inventory_item_id: string; name: string; uom: string; used: number }>();
   for (const u of (usageRes.data ?? []) as { inventory_item_id: string; ingredient: string; base_uom: string; qty_used: number | string }[]) {
     const cur = usageMap.get(u.inventory_item_id) ?? { inventory_item_id: u.inventory_item_id, name: u.ingredient, uom: u.base_uom, used: 0 };
@@ -105,12 +86,6 @@ export default async function OwnerStockPage() {
     usageMap.set(u.inventory_item_id, cur);
   }
   const reportDays = new Set(((reportsRes.data ?? []) as { business_date: string }[]).map((r) => r.business_date)).size;
-
-  const plan = planRestock(
-    levels,
-    (l) => (l.supplier_id ? supplierName.get(l.supplier_id) ?? null : null) ?? (l.inventory_item_id ? costs.get(l.inventory_item_id)?.supplier ?? null : null),
-    (id) => costs.get(id)?.cost ?? null,
-  );
   const cover = daysOfCover(levels, [...usageMap.values()], reportDays);
 
   const counts = (countsRes.data ?? []) as CountRow[];
@@ -152,10 +127,11 @@ export default async function OwnerStockPage() {
   });
   const wasteTotal = waste.reduce((s, w) => s + (w.cost ?? 0), 0);
 
-  const message = restockText(plan, shortDay(today));
   const shopItems = levels.filter((l) => l.place === "shop").length;
   const storeItems = levels.filter((l) => l.place === "store").length;
   const neverCounted = !counts.length;
+  // Added from scanned bills (migration 0022) and still without a minimum: counted, never ordered.
+  const { count: fromBillsNoMin } = await db.from("stock_items").select("id", { count: "exact", head: true }).eq("is_active", true).eq("source", "bill").is("min_qty", null);
 
   const reasonLabel: Record<string, string> = ar
     ? { expired: "منتهي", spoiled: "تالف", broken: "مكسور", other: "أخرى" }
@@ -392,6 +368,11 @@ export default async function OwnerStockPage() {
           <span className="block text-xs text-neutral-500">
             {shopItems} {t("shop items", "صنف في المحل")} · {storeItems} {t("store items", "صنف في المخزن")} · {t("store count every", "جرد المخزن كل")} {days[settings.storeCountDay]}
           </span>
+          {fromBillsNoMin ? (
+            <span className="mt-1 block text-xs font-semibold text-strow-amber">
+              {fromBillsNoMin} {t("items added from bills have no minimum yet", "صنفاً أُضيفت من الفواتير وبلا حد أدنى بعد")}
+            </span>
+          ) : null}
         </span>
         <span aria-hidden="true" className="text-xl text-neutral-400">
           ›

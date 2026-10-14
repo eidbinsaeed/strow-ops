@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
-import { getOwnerActor } from "@/lib/auth/owner-session";
+import { getOwnerActor, getOwnerSession } from "@/lib/auth/owner-session";
 import { nextEmployeeCode } from "@/lib/hr/codes";
 
 /**
@@ -244,5 +244,26 @@ export async function reactivateBarista(id: string) {
   });
 
   revalidatePath("/owner/baristas");
+  return { ok: true };
+}
+
+/** Lets a staff member change the count lists (items, units, minimums) from the staff app. */
+export async function setCanEditStockLists(id: string, on: boolean) {
+  if (!(await getOwnerSession())) return { error: "Sign in again" };
+  const supabase = createServiceClient();
+  const { error } = await supabase.from("baristas").update({ can_edit_stock_lists: !!on }).eq("id", id);
+  if (error) return { error: error.message };
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: on ? "stock_lists_allowed" : "stock_lists_revoked",
+    entity_type: "barista",
+    entity_id: id,
+    after_state: { can_edit_stock_lists: !!on },
+  });
+
+  for (const p of ["/owner/baristas", "/owner/stock/lists", "/home", "/stock/lists"]) revalidatePath(p);
   return { ok: true };
 }

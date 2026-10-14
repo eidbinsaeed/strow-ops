@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { removeStockItem, saveStockItem } from "../actions";
 import { fmtQty, groupItems, type Place } from "@/lib/stock";
 
 export type EditItem = {
@@ -18,12 +17,30 @@ export type EditItem = {
   supplier_id: string | null;
   inventory_item_id: string | null;
   base_per_unit: number | null;
+  /** manual | seed | bill — bill = Strow added it from a scanned bill. */
+  source: string;
 };
 
-type Inv = { id: string; name: string; base_uom: string | null };
-type Draft = Record<"name" | "unit_label" | "step" | "min_qty" | "reorder_qty" | "grp" | "supplier_id" | "inventory_item_id" | "base_per_unit", string>;
+export type EditInput = {
+  id: string | null;
+  place: Place;
+  name: string;
+  unit_label: string;
+  step: number | null;
+  min_qty: number | null;
+  reorder_qty: number | null;
+  grp: string;
+  supplier_id: string | null;
+  inventory_item_id: string | null;
+  base_per_unit: number | null;
+};
+export type EditResult = { ok: true } | { error: string };
 
-const toDraft = (i: EditItem | null, grp: string): Draft => ({
+type Inv = { id: string; name: string; base_uom: string | null };
+type Draft = Record<"place" | "name" | "unit_label" | "step" | "min_qty" | "reorder_qty" | "grp" | "supplier_id" | "inventory_item_id" | "base_per_unit", string>;
+
+const toDraft = (i: EditItem | null, grp: string, place: Place): Draft => ({
+  place: i?.place ?? place,
   name: i?.name ?? "",
   unit_label: i?.unit_label ?? "pieces",
   step: i ? fmtQty(i.step) : "1",
@@ -44,12 +61,17 @@ export function ListEditor({
   items,
   suppliers,
   inventory,
+  save: saveAction,
+  remove: removeAction,
 }: {
   ar: boolean;
   initialPlace: Place;
   items: EditItem[];
   suppliers: { id: string; name: string }[];
   inventory: Inv[];
+  /** Server actions of whoever is editing (owner, or staff with the permission). */
+  save: (input: EditInput) => Promise<EditResult>;
+  remove: (id: string) => Promise<EditResult>;
 }) {
   const t = (en: string, arText: string) => (ar ? arText : en);
   const router = useRouter();
@@ -64,11 +86,12 @@ export function ListEditor({
   const groupNames = [...new Set(list.map((i) => i.grp))];
   const supplierName = new Map(suppliers.map((s) => [s.id, s.name]));
   const invById = new Map(inventory.map((i) => [i.id, i]));
+  const fromBills = items.filter((i) => i.source === "bill" && i.min_qty === null);
 
   function start(id: string | null) {
     const item = id ? items.find((i) => i.id === id) ?? null : null;
     setOpen(id ?? "new");
-    setDraft(toDraft(item, groupNames[groupNames.length - 1] ?? "Other"));
+    setDraft(toDraft(item, groupNames.filter((g) => g !== "New from bills").pop() ?? "Other", place));
     setErr(null);
   }
   function close() {
@@ -84,9 +107,9 @@ export function ListEditor({
     setBusy(true);
     setErr(null);
     try {
-      const r = await saveStockItem({
+      const r = await saveAction({
         id,
-        place,
+        place: draft.place === "store" ? "store" : "shop",
         name: draft.name,
         unit_label: draft.unit_label,
         step: n(draft.step),
@@ -111,7 +134,7 @@ export function ListEditor({
     if (!window.confirm(t(`Take "${name}" off the list? Past counts stay.`, `إزالة "${name}" من القائمة؟ تبقى عمليات العدّ السابقة.`))) return;
     setBusy(true);
     try {
-      const r = await removeStockItem(id);
+      const r = await removeAction(id);
       if ("error" in r) return setErr(r.error);
       close();
       router.refresh();
@@ -129,6 +152,23 @@ export function ListEditor({
           {t("Name", "الاسم")}
           <input className={INPUT} value={draft.name} maxLength={80} onChange={(e) => set("name", e.target.value)} autoFocus={!id} />
         </label>
+        <div className={LABEL} role="radiogroup" aria-label={t("Which list", "أي قائمة")}>
+          {t("Which list", "أي قائمة")}
+          <div className="flex gap-2">
+            {(["shop", "store"] as Place[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                role="radio"
+                aria-checked={draft.place === p}
+                onClick={() => set("place", p)}
+                className={`min-h-11 flex-1 rounded-xl text-[15px] font-semibold ${draft.place === p ? "bg-strow-ink text-white" : "border border-neutral-300 bg-white text-strow-ink"}`}
+              >
+                {p === "shop" ? t("Shop · daily", "المحل · يومي") : t("Store room · weekly", "المخزن · أسبوعي")}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <label className={LABEL}>
             {t("Counted in", "وحدة العدّ")}
@@ -207,6 +247,20 @@ export function ListEditor({
 
   return (
     <>
+      {fromBills.length ? (
+        <p className="rounded-[24px] border border-[#F1D9A8] bg-[#FFF7E8] px-4 py-3 text-sm">
+          <span className="font-semibold">
+            {fromBills.length} {t("items came from bills and have no minimum yet", "صنفاً جاءت من الفواتير وبلا حد أدنى بعد")}
+          </span>
+          <span className="text-neutral-600">
+            {" "}
+            {t(
+              "— under “New from bills”. Set a minimum so they go on the order list, move them to the right list and heading, or remove the ones nobody needs to count.",
+              "— تحت «جديد من الفواتير». ضع حداً أدنى ليدخل الصنف قائمة الطلب، أو انقله للقائمة والعنوان الصحيحين، أو أزل ما لا يحتاج عدّاً.",
+            )}
+          </span>
+        </p>
+      ) : null}
       <div className="flex gap-2" role="tablist">
         {(["shop", "store"] as Place[]).map((p) => (
           <button

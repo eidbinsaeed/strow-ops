@@ -10,6 +10,8 @@ import { sendPush } from "@/lib/push";
 import { getSettings } from "@/lib/settings";
 import { todayDubai } from "@/lib/dates";
 import { fmtQty, WASTE_REASONS, type Place, type WasteReason } from "@/lib/stock";
+import { loadRestock } from "@/lib/stock-plan";
+import { deactivateStockItem, staffCanEditLists, upsertStockItem, type Result, type StockItemInput } from "@/lib/stock-items";
 
 export type CountInput = {
   place: Place;
@@ -18,8 +20,11 @@ export type CountInput = {
   notes: string;
 };
 
+/** The order list after this count, ready to send: null when nothing is below its minimum. */
+export type RestockSummary = { text: string; moves: number; orders: number };
+
 export type CountResult =
-  | { ok: true; updated: boolean; savedAt: string; low: string[] }
+  | { ok: true; updated: boolean; savedAt: string; low: string[]; restock: RestockSummary | null }
   | { ok: false; error: string };
 
 const MAX_QTY = 100_000;
@@ -156,6 +161,44 @@ export async function saveStockCount(input: CountInput): Promise<CountResult> {
 
   revalidatePath("/home");
   revalidatePath(`/stock/${place}`);
+  revalidatePath("/stock/order");
   revalidatePath("/owner/stock");
-  return { ok: true, updated, savedAt: now, low };
+
+  // What to bring and what to order now, so staff can send it on WhatsApp straight away.
+  let restock: RestockSummary | null = null;
+  try {
+    const r = await loadRestock(session.lid, today);
+    if (r.plan.moves.length || r.plan.orders.length) {
+      restock = { text: r.message, moves: r.plan.moves.length, orders: r.plan.orders.reduce((n, g) => n + g.lines.length, 0) };
+    }
+  } catch {
+    restock = null;
+  }
+  return { ok: true, updated, savedAt: now, low, restock };
+}
+
+function refreshLists(place?: Place) {
+  for (const p of ["/home", "/stock/lists", "/stock/order", "/owner/stock", "/owner/stock/lists"]) revalidatePath(p);
+  if (place) revalidatePath(`/stock/${place}`);
+  else for (const p of ["/stock/shop", "/stock/store"]) revalidatePath(p);
+}
+
+/** Adds or changes a count-list item — staff the owner has allowed to edit the lists. */
+export async function saveStockItemAsStaff(input: StockItemInput): Promise<Result> {
+  const session = await getBaristaSession();
+  if (!session) return { error: "Please log in again." };
+  if (!(await staffCanEditLists(session.bid))) return { error: "The owner has not allowed you to edit the lists." };
+  const r = await upsertStockItem(input, { id: session.bid, type: "barista" }, session.lid);
+  if ("ok" in r) refreshLists();
+  return r;
+}
+
+/** Takes an item off a count list — staff the owner has allowed to edit the lists. */
+export async function removeStockItemAsStaff(id: string): Promise<Result> {
+  const session = await getBaristaSession();
+  if (!session) return { error: "Please log in again." };
+  if (!(await staffCanEditLists(session.bid))) return { error: "The owner has not allowed you to edit the lists." };
+  const r = await deactivateStockItem(id, { id: session.bid, type: "barista" }, session.lid);
+  if ("ok" in r) refreshLists();
+  return r;
 }

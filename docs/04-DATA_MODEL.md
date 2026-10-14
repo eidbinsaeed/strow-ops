@@ -308,7 +308,14 @@ Staff count two lists on the staff app: the **shop** (fridge, shelves, bar) ever
 - `supplier_id`: usual supplier (NULL = whoever sold it last, from `v_item_unit_cost`).
 - `inventory_item_id` + `base_per_unit`: the matching bill / recipe item and how many recipe base units (kg / L / pc) are in one counted unit (a 2 L bottle = 2). Used for order prices and days of stock left.
 - `is_active`: removing an item sets it false; its past counts stay.
+- `source` (migration `0022`): `manual` | `seed` | `bill`. `bill` = added by the trigger below from a scanned bill, with no minimum (counted, never ordered until someone sets one).
 - Seeded with 22 shop and 22 store items (store list from Shahid's daily store-room messages in the team chat).
+
+### Every bought item on a list (migration `0022_stock_lists_from_bills`, 2026-10-14)
+- `stock_ensure_item(inventory_item_id, count_uom, units_per_pack)`: puts an inventory item on a count list if it is on none (by link or by the same name): fresh and bar kinds (`dairy`, `plant_milk`, `produce`, `bakery`, `food`, `beverage`, `ingredient`, `base`, `frozen_fruit`, `pantry`) on the **shop** list, everything else on the **store** list, heading **"New from bills"**, `unit_label` from how the bill counted it (`stock_unit_label`: carton → cartons, can → tins…), `base_per_unit` only when unambiguous (kg / L counted directly, or a single pack of a known size), `min_qty` NULL. Skips fees, charges, deposits, samples and unlabelled till codes. Never raises.
+- Trigger `trg_stock_from_line` on `expense_line_items` (after insert, and after update of `inventory_item_id`) calls it for every goods line linked to an inventory item — a staff scan, an owner fix in Needs you, Strow AI. So a bill can never fail because of the lists.
+- Backfill at migration time: every item bought in the last 90 days or on two or more bills (50 added: 27 shop, 23 store). Older one-off buys stay off.
+- `baristas.can_edit_stock_lists` (default false): staff the owner allows (Staff page) may add, change, move and remove list items from the staff app (`/stock/lists`); read fresh on every action.
 
 ### `stock_counts` and `stock_count_lines`
 - `stock_counts`: `location_id`, `place`, `barista_id`, `counted_on` (Dubai day), `counted_at`, `notes`. One per list per day: saving again the same day replaces that day's lines.

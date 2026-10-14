@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-10-14 — Stock: staff order list on WhatsApp, who may edit the lists, every bought item on a list
+- **Migration `0022_stock_lists_from_bills`** (applied via MCP, additive): `baristas.can_edit_stock_lists`; `stock_items.source`; `stock_ensure_item()` + trigger `trg_stock_from_line` on `expense_line_items`; backfill. See the data model.
+- **Every item on a scanned bill lands on a count list by itself.** The trigger fires when a bill line is linked to an inventory item (staff scan with a confident match, an owner fix in Needs you, Strow AI): fresh and bar items go on the daily shop list, packaging and cleaning on the store-room list, all under "New from bills" with the unit the bill used and no minimum — counted from the next count, ordered only once someone sets a minimum. Backfill put 50 bought items on the lists (27 shop, 23 store); 38 old one-off buys (May–July, bought once) were left off.
+- **Staff can send the order list on WhatsApp.** After saving a count, the saved panel shows "Order list ready · N to bring, N to order" with Send on WhatsApp / Copy list. New `/stock/order` page (home button "Order list"): what to bring from the store room and what to order, by supplier, no prices. Same message as the owner's page.
+- **Who may edit the count lists.** Staff page › new "Count lists" switch per staff member (`Can edit` / `View only`, off for everyone). Allowed staff get a "Count lists" home button and `/stock/lists`, the same editor as the owner (add, change units / minimum / usual order / supplier / bill-item link, move between shop and store room, remove); every change is in the audit log with the barista as actor. The owner's Count lists page says who is allowed.
+- **Count lists editor:** items can now be moved between the shop and store-room lists ("Which list"); a banner counts items from bills that still have no minimum; the owner's Stock page shows the same count under "Count lists & minimums".
+- Code: `src/lib/stock-items.ts` (shared add / change / remove with audit), `src/lib/stock-plan.ts` (the order list for the owner page, the staff page and the count action), `src/components/stock/{ListEditor,CopyText,WhatsAppButton}.tsx`.
+- Strow AI prompt: knows the trigger and the permission; told not to insert duplicate list items.
+- Checked: `tsc`, `next build`.
+
 ## 2026-10-14 — Stock: daily shop count, weekly store-room count, order list
 - **Migration `0021_stock_counts`** (applied via MCP; written without drops so the MCP runs it): `stock_items`, `stock_counts`, `stock_count_lines`, view `v_stock_levels`. See the data model.
   - Seeded 22 shop items and 22 store-room items, linked to bill/recipe items and usual suppliers where they match.
