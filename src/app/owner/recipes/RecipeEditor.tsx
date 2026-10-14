@@ -13,6 +13,16 @@ const dark = "rounded-full bg-strow-ink px-4 py-2.5 text-sm font-semibold text-w
 
 type Res = { ok?: boolean; error?: string };
 
+/** The server actions behind the editor: the owner's by default, or the staff ones (src/app/(barista)/recipes/actions.ts). */
+export type RecipeActions = {
+  updateMenuItem: (fd: FormData) => Promise<Res>;
+  deleteMenuItem?: (id: string) => Promise<Res>;
+  addRecipeLine: (fd: FormData) => Promise<Res>;
+  updateRecipeLine: (fd: FormData) => Promise<Res>;
+  deleteRecipeLine: (id: string) => Promise<Res>;
+};
+const OWNER_ACTIONS: RecipeActions = { updateMenuItem, deleteMenuItem, addRecipeLine, updateRecipeLine, deleteRecipeLine };
+
 function useAction() {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -44,24 +54,32 @@ export function RecipePhoto({ fileId, name }: { fileId: string; name: string }) 
 export function DetailsEditor({
   item,
   sections,
+  actions = OWNER_ACTIONS,
+  mode = "owner",
+  open = false,
 }: {
   item: { id: string; name: string; section: string | null; price: number | null; method: string | null; is_active: boolean };
   sections: string[];
+  actions?: RecipeActions;
+  /** staff: name, section and method only — no price, no on/off menu, no delete. */
+  mode?: "owner" | "staff";
+  open?: boolean;
 }) {
   const locale = useLocale();
   const t = (k: Parameters<typeof rt>[0]) => rt(k, locale);
   const router = useRouter();
   const { error, pending, run } = useAction();
+  const staff = mode === "staff";
   return (
-    <details className="rounded-[28px] bg-white px-[18px] py-2 md:px-[22px]">
+    <details className="rounded-[28px] bg-white px-[18px] py-2 md:px-[22px]" open={open}>
       <summary className="min-h-11 cursor-pointer py-3 font-display text-lg font-semibold">{t("details")}</summary>
-      <form action={(fd) => run(() => updateMenuItem(fd))} className="flex flex-col gap-2.5 pb-4">
+      <form action={(fd) => run(() => actions.updateMenuItem(fd))} className="flex flex-col gap-2.5 pb-4">
         <input type="hidden" name="id" value={item.id} />
         <label className="text-xs text-neutral-500">
           {t("name")}
           <input name="name" defaultValue={item.name} required dir="auto" className={`${field} mt-1 w-full`} />
         </label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className={`grid gap-2 ${staff ? "grid-cols-1" : "grid-cols-2"}`}>
           <label className="text-xs text-neutral-500">
             {t("section")}
             <input name="section" list="detail-sections" defaultValue={item.section ?? ""} className={`${field} mt-1 w-full`} />
@@ -71,32 +89,40 @@ export function DetailsEditor({
               ))}
             </datalist>
           </label>
-          <label className="text-xs text-neutral-500">
-            {t("price")}
-            <input name="price" inputMode="decimal" defaultValue={item.price ?? ""} placeholder="AED" className={`${field} mt-1 w-full`} />
-          </label>
+          {!staff ? (
+            <label className="text-xs text-neutral-500">
+              {t("price")}
+              <input name="price" inputMode="decimal" defaultValue={item.price ?? ""} placeholder="AED" className={`${field} mt-1 w-full`} />
+            </label>
+          ) : null}
         </div>
         <label className="text-xs text-neutral-500">
           {t("method")}
           <textarea name="method" rows={4} defaultValue={item.method ?? ""} dir="auto" className={`${field} mt-1 w-full`} />
         </label>
-        <label className="flex min-h-11 items-center gap-2 text-sm">
-          <input type="checkbox" name="is_active" defaultChecked={item.is_active} />
-          {t("on_menu")}
-        </label>
+        {!staff ? (
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" name="is_active" defaultChecked={item.is_active} />
+            {t("on_menu")}
+          </label>
+        ) : null}
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              if (!window.confirm(t("confirm_delete"))) return;
-              run(() => deleteMenuItem(item.id), () => router.push("/owner/recipes"));
-            }}
-            className="rounded-full border border-red-200 px-4 py-2.5 text-sm text-red-600 disabled:opacity-50"
-          >
-            {t("delete_recipe")}
-          </button>
+          {!staff && actions.deleteMenuItem ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                if (!window.confirm(t("confirm_delete"))) return;
+                run(() => actions.deleteMenuItem!(item.id), () => router.push("/owner/recipes"));
+              }}
+              className="rounded-full border border-red-200 px-4 py-2.5 text-sm text-red-600 disabled:opacity-50"
+            >
+              {t("delete_recipe")}
+            </button>
+          ) : (
+            <span />
+          )}
           <button disabled={pending} className={dark}>
             {pending ? t("saving") : t("set")}
           </button>
@@ -106,7 +132,7 @@ export function DetailsEditor({
   );
 }
 
-export function LineRow({ line, items }: { line: LineCostRow; items: ItemOption[] }) {
+export function LineRow({ line, items, actions = OWNER_ACTIONS, showCost = true }: { line: LineCostRow; items: ItemOption[]; actions?: RecipeActions; showCost?: boolean }) {
   const locale = useLocale();
   const t = (k: Parameters<typeof rt>[0]) => rt(k, locale);
   const [editing, setEditing] = useState(false);
@@ -129,7 +155,7 @@ export function LineRow({ line, items }: { line: LineCostRow; items: ItemOption[
   if (editing) {
     return (
       <form
-        action={(fd) => run(() => updateRecipeLine(fd), () => setEditing(false))}
+        action={(fd) => run(() => actions.updateRecipeLine(fd), () => setEditing(false))}
         className="flex flex-col gap-2 border-t border-[#EDF0F3] py-3"
       >
         <input type="hidden" name="id" value={line.id} />
@@ -167,13 +193,15 @@ export function LineRow({ line, items }: { line: LineCostRow; items: ItemOption[
             {line.as_written ? <span className="text-neutral-400"> · “{line.as_written}”</span> : null}
           </p>
         </div>
-        <div className="shrink-0 text-end">
-          <p className={`text-[15px] font-semibold tabular-nums ${line.line_cost == null ? "text-amber-700" : ""}`}>
-            {line.line_cost == null ? t("missing") : aed(line.line_cost)}
-          </p>
-        </div>
+        {showCost ? (
+          <div className="shrink-0 text-end">
+            <p className={`text-[15px] font-semibold tabular-nums ${line.line_cost == null ? "text-amber-700" : ""}`}>
+              {line.line_cost == null ? t("missing") : aed(line.line_cost)}
+            </p>
+          </div>
+        ) : null}
       </div>
-      {source ? (
+      {showCost && source ? (
         <p className="mt-0.5 text-xs text-neutral-500">
           {source}
           {Math.abs(change) >= 0.02 ? (
@@ -193,7 +221,7 @@ export function LineRow({ line, items }: { line: LineCostRow; items: ItemOption[
           disabled={pending}
           onClick={() => {
             if (!window.confirm(t("confirm_remove_line"))) return;
-            run(() => deleteRecipeLine(line.id));
+            run(() => actions.deleteRecipeLine(line.id));
           }}
           className="min-h-9 text-sm text-red-600 disabled:opacity-50"
         >
@@ -205,7 +233,7 @@ export function LineRow({ line, items }: { line: LineCostRow; items: ItemOption[
   );
 }
 
-export function AddLineForm({ menuItemId, items }: { menuItemId: string; items: ItemOption[] }) {
+export function AddLineForm({ menuItemId, items, actions = OWNER_ACTIONS }: { menuItemId: string; items: ItemOption[]; actions?: RecipeActions }) {
   const locale = useLocale();
   const t = (k: Parameters<typeof rt>[0]) => rt(k, locale);
   const [itemId, setItemId] = useState("");
@@ -216,7 +244,7 @@ export function AddLineForm({ menuItemId, items }: { menuItemId: string; items: 
     <form
       key={key}
       action={(fd) =>
-        run(() => addRecipeLine(fd), () => {
+        run(() => actions.addRecipeLine(fd), () => {
           setItemId("");
           setKey((k) => k + 1);
         })

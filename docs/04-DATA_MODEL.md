@@ -316,6 +316,7 @@ Staff count two lists on the staff app: the **shop** (fridge, shelves, bar) ever
 - Trigger `trg_stock_from_line` on `expense_line_items` (after insert, and after update of `inventory_item_id`) calls it for every goods line linked to an inventory item — a staff scan, an owner fix in Needs you, Strow AI. So a bill can never fail because of the lists.
 - Backfill at migration time: every item bought in the last 90 days or on two or more bills (50 added: 27 shop, 23 store). Older one-off buys stay off.
 - `baristas.can_edit_stock_lists` (default false): staff the owner allows (Staff page) may add, change, move and remove list items from the staff app (`/stock/lists`); read fresh on every action.
+- `baristas.can_edit_recipes` (migration `0023`, default false): staff the owner allows (Staff page) may edit recipes from the staff app (`/recipes`, `/recipes/[id]`): ingredients, amounts, method, section, and new recipes (`source = manual`). The price, on/off menu and deleting stay with the owner (the shared core in `src/lib/recipe-edit.ts` ignores those fields for a barista actor). Audit rows carry the barista as actor.
 
 ### `stock_counts` and `stock_count_lines`
 - `stock_counts`: `location_id`, `place`, `barista_id`, `counted_on` (Dubai day), `counted_at`, `notes`. One per list per day: saving again the same day replaces that day's lines.

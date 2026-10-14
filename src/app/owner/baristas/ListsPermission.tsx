@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { setCanEditStockLists } from "./actions";
+import { setCanEditRecipes, setCanEditStockLists } from "./actions";
 
-/** Switch: may this staff member edit the stock count lists? */
-export function ListsPermission({ id, name, on }: { id: string; name: string; on: boolean }) {
+export type PermissionKind = "lists" | "recipes";
+
+/** Switch: may this staff member edit the stock count lists, or the recipes? */
+export function StaffPermission({ id, name, kind, on }: { id: string; name: string; kind: PermissionKind; on: boolean }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const what = kind === "lists" ? "the count lists" : "recipes";
   function toggle() {
     setError(null);
     startTransition(async () => {
-      const r = await setCanEditStockLists(id, !on);
+      const r = kind === "lists" ? await setCanEditStockLists(id, !on) : await setCanEditRecipes(id, !on);
       if (r?.error) setError(r.error);
     });
   }
@@ -20,7 +23,7 @@ export function ListsPermission({ id, name, on }: { id: string; name: string; on
         type="button"
         role="switch"
         aria-checked={on}
-        aria-label={`${name} may edit the count lists`}
+        aria-label={`${name} may edit ${what}`}
         onClick={toggle}
         disabled={isPending}
         className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 ${
@@ -33,4 +36,9 @@ export function ListsPermission({ id, name, on }: { id: string; name: string; on
       {error ? <span className="text-xs text-red-600">{error}</span> : null}
     </span>
   );
+}
+
+/** Kept for the Staff page's existing import. */
+export function ListsPermission(props: { id: string; name: string; on: boolean }) {
+  return <StaffPermission {...props} kind="lists" />;
 }

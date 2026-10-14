@@ -19,7 +19,7 @@ export default async function BaristaHomePage() {
   const supabase = createServiceClient();
   const today = todayDubai();
   const [{ data: meRow }, { data: notifs }, settings, { data: stockRows }] = await Promise.all([
-    supabase.from("baristas").select("role, can_edit_stock_lists").eq("id", session.bid).maybeSingle(),
+    supabase.from("baristas").select("role, can_edit_stock_lists, can_edit_recipes").eq("id", session.bid).maybeSingle(),
     supabase
       .from("staff_reports")
       .select("id")
@@ -42,11 +42,12 @@ export default async function BaristaHomePage() {
   const storeDue = storeCountDue(lastCount("store")?.counted_on ?? null, today, settings.storeCountDay);
   const timeOf = (iso: string) =>
     new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Dubai" });
-  const me = meRow as { role?: string; can_edit_stock_lists?: boolean | null } | null;
+  const me = meRow as { role?: string; can_edit_stock_lists?: boolean | null; can_edit_recipes?: boolean | null } | null;
   const role = (me?.role ?? "barista").toLowerCase();
   const canOperate = role !== "waiter";
   const stockOn = settings.staffShopCount || settings.staffStoreCount;
   const canEditLists = stockOn && me?.can_edit_stock_lists === true;
+  const canEditRecipes = me?.can_edit_recipes === true;
   const notifCount = (notifs ?? []).length;
 
   return (
@@ -147,6 +148,16 @@ export default async function BaristaHomePage() {
               </Link>
             )}
           </div>
+        )}
+
+        {canEditRecipes && (
+          <Link
+            href={"/recipes" as Route}
+            className="block rounded-2xl border border-neutral-300 bg-white px-6 py-7 text-center text-lg font-medium text-strow-ink shadow-sm transition active:scale-[0.98]"
+          >
+            Recipes
+            <span className="mt-1 block text-xs font-normal text-neutral-500">Ingredients, amounts and method for every item</span>
+          </Link>
         )}
 
         <Link

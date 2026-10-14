@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-10-14 — Recipes: staff can edit them, the owner picks who
+- **Migration `0023_recipe_edit_permission`** (applied via MCP): `baristas.can_edit_recipes`, default off.
+- **Staff page › "Recipes" switch** per person (next to "Count lists"). Allowed staff get a **Recipes** button on the staff home: the menu by section, "No recipe yet" marked, tap to edit — ingredients (stock item or a free-text name, amount, unit), method, section, and "+ New recipe" (name + section, then the ingredients). No costs, prices or margins are shown to staff; the price, taking an item off the menu and deleting stay with the owner. Every change is in the audit log with the barista as actor; the owner's Recipes page shows the result at once.
+- Code: `src/lib/recipe-edit.ts` (the add / change / remove core shared by `owner/recipes/actions.ts` and `(barista)/recipes/actions.ts`); `RecipeEditor` components take `actions` and `mode="staff"`; `/recipes` added to the middleware.
+- Also today (data, no code): the Windmill quotation QWL-0100 (24 Jun) and the Stock Roastery proforma (28 Sep) Eid uploaded in the chat were added as bills waiting in Approvals (new supplier Stock Roastery LLC SPC); the six V60 beans (Pina Colada, Bubble Brew, Sweet Melon, Peach, Coconut, Hambela) moved to the shop list under Coffee (kg, min 0.5, usual order 3); "NY cookies" split into Nutella cookies and Kinder cookies (min 3 each).
+
 ## 2026-10-14 — Stock: staff order list on WhatsApp, who may edit the lists, every bought item on a list
 - **Migration `0022_stock_lists_from_bills`** (applied via MCP, additive): `baristas.can_edit_stock_lists`; `stock_items.source`; `stock_ensure_item()` + trigger `trg_stock_from_line` on `expense_line_items`; backfill. See the data model.
 - **Every item on a scanned bill lands on a count list by itself.** The trigger fires when a bill line is linked to an inventory item (staff scan with a confident match, an owner fix in Needs you, Strow AI): fresh and bar items go on the daily shop list, packaging and cleaning on the store-room list, all under "New from bills" with the unit the bill used and no minimum — counted from the next count, ordered only once someone sets a minimum. Backfill put 50 bought items on the lists (27 shop, 23 store); 38 old one-off buys (May–July, bought once) were left off.

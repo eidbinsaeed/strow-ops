@@ -267,3 +267,24 @@ export async function setCanEditStockLists(id: string, on: boolean) {
   for (const p of ["/owner/baristas", "/owner/stock/lists", "/home", "/stock/lists"]) revalidatePath(p);
   return { ok: true };
 }
+
+/** Lets a staff member edit recipes (ingredients, amounts, method, new recipes) from the staff app. */
+export async function setCanEditRecipes(id: string, on: boolean) {
+  if (!(await getOwnerSession())) return { error: "Sign in again" };
+  const supabase = createServiceClient();
+  const { error } = await supabase.from("baristas").update({ can_edit_recipes: !!on }).eq("id", id);
+  if (error) return { error: error.message };
+
+  const actor = await getOwnerActor();
+  await writeAudit({
+    actor_id: actor.id,
+    actor_type: actor.type,
+    action: on ? "recipes_allowed" : "recipes_revoked",
+    entity_type: "barista",
+    entity_id: id,
+    after_state: { can_edit_recipes: !!on },
+  });
+
+  for (const p of ["/owner/baristas", "/owner/recipes", "/home", "/recipes"]) revalidatePath(p);
+  return { ok: true };
+}

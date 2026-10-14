@@ -6,6 +6,7 @@ import { writeAudit } from "@/lib/audit/log";
 import { getOwnerSession } from "@/lib/auth/owner-session";
 import { baseOfUom, normUom, uomsForBase, type BaseUom, type RecipeSaveInput, type RecipeSource } from "@/lib/recipes";
 import { latestPosPrices, savePosPrices } from "@/lib/recipes-pos";
+import { addRecipeLineCore, deleteMenuItemCore, deleteRecipeLineCore, updateMenuItemCore, updateRecipeLineCore, type Actor } from "@/lib/recipe-edit";
 
 type Result<T = object> = ({ ok: true } & T) | { ok?: false; error: string };
 type Db = ReturnType<typeof createServiceClient>;
@@ -26,7 +27,11 @@ async function mainLocationId(db: Db): Promise<string | null> {
 
 function refresh(menuItemId?: string) {
   revalidatePath("/owner/recipes");
-  if (menuItemId) revalidatePath(`/owner/recipes/${menuItemId}`);
+  revalidatePath("/recipes");
+  if (menuItemId) {
+    revalidatePath(`/owner/recipes/${menuItemId}`);
+    revalidatePath(`/recipes/${menuItemId}`);
+  }
 }
 
 function audit(action: string, entity_type: string, entity_id: string, before_state?: Record<string, unknown> | null, after_state?: Record<string, unknown> | null) {
@@ -175,109 +180,43 @@ export async function saveRecipes(recipes: RecipeSaveInput[]): Promise<SaveResul
   return { ok: true, saved };
 }
 
-// ─── Edit one recipe ─────────────────────────────────────────────────────────
+// ─── Edit one recipe (shared core in src/lib/recipe-edit.ts; staff use it too) ──
+
+const OWNER: Actor = { id: null, type: "owner" };
 
 export async function updateMenuItem(formData: FormData): Promise<Result> {
   if (!(await owner())) return { error: "Please sign in again." };
-  const id = String(formData.get("id") ?? "");
-  if (!UUID.test(id)) return { error: "Missing recipe." };
-  const name = text(formData.get("name"), 120);
-  if (!name) return { error: "Name is required." };
-  const price = money(formData.get("price"));
-  if (price === "bad") return { error: "Price must be a number." };
-  const changes = {
-    name,
-    section: text(formData.get("section"), 60),
-    price,
-    method: text(formData.get("method"), 4000),
-    is_active: formData.get("is_active") === "on",
-  };
-  const db = createServiceClient();
-  const { data: before } = await db.from("menu_items").select("name, section, price, method, is_active").eq("id", id).maybeSingle();
-  if (!before) return { error: "Recipe not found." };
-  const { error } = await db.from("menu_items").update(changes).eq("id", id);
-  if (error) return { error: /uniq_menu_items/.test(error.message) ? `There is already a recipe called "${name}".` : error.message };
-  await audit("updated", "menu_item", id, before, changes);
-  refresh(id);
-  return { ok: true };
+  const r = await updateMenuItemCore(formData, OWNER);
+  if (r.ok) refresh(String(formData.get("id") ?? ""));
+  return r;
 }
 
 export async function deleteMenuItem(id: string): Promise<Result> {
   if (!(await owner())) return { error: "Please sign in again." };
-  if (!UUID.test(id)) return { error: "Missing recipe." };
-  const db = createServiceClient();
-  const [{ data: before }, { data: lines }] = await Promise.all([
-    db.from("menu_items").select("*").eq("id", id).maybeSingle(),
-    db.from("recipe_lines").select("inventory_item_id, label, as_written, qty, uom, manual_unit_cost").eq("menu_item_id", id),
-  ]);
-  if (!before) return { error: "Recipe not found." };
-  const { error } = await db.from("menu_items").delete().eq("id", id);
-  if (error) return { error: error.message };
-  await audit("deleted", "menu_item", id, { ...before, lines: lines ?? [] }, null);
-  refresh();
-  return { ok: true };
+  const r = await deleteMenuItemCore(id, OWNER);
+  if (r.ok) refresh();
+  return r;
 }
 
 export async function addRecipeLine(formData: FormData): Promise<Result> {
   if (!(await owner())) return { error: "Please sign in again." };
-  const menuItemId = String(formData.get("menu_item_id") ?? "");
-  if (!UUID.test(menuItemId)) return { error: "Missing recipe." };
-  const rawItem = String(formData.get("inventory_item_id") ?? "");
-  const itemId = UUID.test(rawItem) ? rawItem : null;
-  const label = itemId ? null : text(formData.get("label"), 120);
-  const qty = amount(formData.get("qty"));
-  const uom = normUom(formData.get("uom"));
-  if (!itemId && !label) return { error: "Pick an item or type a name." };
-  if (!qty || !uom) return { error: "Amount and unit are required." };
-  const db = createServiceClient();
-  const { data: last } = await db.from("recipe_lines").select("position").eq("menu_item_id", menuItemId).order("position", { ascending: false }).limit(1).maybeSingle();
-  const row = { menu_item_id: menuItemId, inventory_item_id: itemId, label, qty, uom, manual_unit_cost: formData.get("free") === "on" ? 0 : null, position: ((last?.position as number | undefined) ?? -1) + 1 };
-  const { data, error } = await db.from("recipe_lines").insert(row).select("id").single();
-  if (error || !data) return { error: error?.message ?? "Could not add." };
-  await audit("created", "recipe_line", data.id as string, null, row);
-  refresh(menuItemId);
-  return { ok: true };
+  const r = await addRecipeLineCore(formData, OWNER);
+  if (r.ok) refresh(r.menuItemId);
+  return r;
 }
 
 export async function updateRecipeLine(formData: FormData): Promise<Result> {
   if (!(await owner())) return { error: "Please sign in again." };
-  const id = String(formData.get("id") ?? "");
-  if (!UUID.test(id)) return { error: "Missing ingredient." };
-  const qty = amount(formData.get("qty"));
-  const uom = normUom(formData.get("uom"));
-  if (!qty || !uom) return { error: "Amount and unit are required." };
-  const rawItem = String(formData.get("inventory_item_id") ?? "");
-  const db = createServiceClient();
-  const { data: before } = await db.from("recipe_lines").select("menu_item_id, inventory_item_id, label, qty, uom, manual_unit_cost").eq("id", id).maybeSingle();
-  if (!before) return { error: "Ingredient not found." };
-  const changes: Record<string, unknown> = { qty, uom };
-  if (UUID.test(rawItem)) {
-    changes.inventory_item_id = rawItem;
-    changes.label = null;
-  } else if (rawItem === "none") {
-    const label = text(formData.get("label"), 120) ?? (before.label as string | null);
-    if (!label) return { error: "Type a name for this ingredient." };
-    changes.inventory_item_id = null;
-    changes.label = label;
-  }
-  const { error } = await db.from("recipe_lines").update(changes).eq("id", id);
-  if (error) return { error: error.message };
-  await audit("updated", "recipe_line", id, before, changes);
-  refresh(before.menu_item_id as string);
-  return { ok: true };
+  const r = await updateRecipeLineCore(formData, OWNER);
+  if (r.ok) refresh(r.menuItemId);
+  return r;
 }
 
 export async function deleteRecipeLine(id: string): Promise<Result> {
   if (!(await owner())) return { error: "Please sign in again." };
-  if (!UUID.test(id)) return { error: "Missing ingredient." };
-  const db = createServiceClient();
-  const { data: before } = await db.from("recipe_lines").select("*").eq("id", id).maybeSingle();
-  if (!before) return { error: "Ingredient not found." };
-  const { error } = await db.from("recipe_lines").delete().eq("id", id);
-  if (error) return { error: error.message };
-  await audit("deleted", "recipe_line", id, before, null);
-  refresh(before.menu_item_id as string);
-  return { ok: true };
+  const r = await deleteRecipeLineCore(id, OWNER);
+  if (r.ok) refresh(r.menuItemId);
+  return r;
 }
 
 // ─── Finish the costs: fix an ingredient once, every recipe updates ─────────

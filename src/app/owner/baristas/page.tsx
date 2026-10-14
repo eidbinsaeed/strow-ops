@@ -6,7 +6,7 @@ import { tr } from "@/lib/i18n/tr";
 import { AddBaristaForm } from "./AddBaristaForm";
 import { BaristaRowActions } from "./BaristaRowActions";
 import { IdCardButton } from "./IdCardButton";
-import { ListsPermission } from "./ListsPermission";
+import { StaffPermission } from "./ListsPermission";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,6 +22,7 @@ type BaristaRow = {
   is_active: boolean;
   is_on_shift: boolean;
   can_edit_stock_lists: boolean | null;
+  can_edit_recipes: boolean | null;
   created_at: string;
   locations: { name: string; slug: string } | null;
 };
@@ -39,7 +40,7 @@ export default async function OwnerBaristasPage() {
   const { data, error } = await supabase
     .from("baristas")
     .select(
-      "id, name, role, employee_code, phone, salary, photo_url, is_active, is_on_shift, can_edit_stock_lists, created_at, locations(name, slug)",
+      "id, name, role, employee_code, phone, salary, photo_url, is_active, is_on_shift, can_edit_stock_lists, can_edit_recipes, created_at, locations(name, slug)",
     )
     .order("is_active", { ascending: false })
     .order("created_at", { ascending: true });
@@ -83,6 +84,7 @@ export default async function OwnerBaristasPage() {
                 <th className="px-5 py-3 text-right font-medium">Salary</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium">Count lists</th>
+                <th className="px-5 py-3 font-medium">Recipes</th>
                 <th className="px-5 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
@@ -122,7 +124,10 @@ export default async function OwnerBaristasPage() {
                     )}
                   </td>
                   <td className="px-5 py-4">
-                    {b.is_active ? <ListsPermission id={b.id} name={b.name} on={b.can_edit_stock_lists === true} /> : <span className="text-neutral-400">—</span>}
+                    {b.is_active ? <StaffPermission id={b.id} name={b.name} kind="lists" on={b.can_edit_stock_lists === true} /> : <span className="text-neutral-400">—</span>}
+                  </td>
+                  <td className="px-5 py-4">
+                    {b.is_active ? <StaffPermission id={b.id} name={b.name} kind="recipes" on={b.can_edit_recipes === true} /> : <span className="text-neutral-400">—</span>}
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center justify-end gap-2">
