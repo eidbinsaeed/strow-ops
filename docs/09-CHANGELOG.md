@@ -4,6 +4,13 @@
 
 ---
 
+## 2026-10-14 — Pulse showed −9k: app fees were counted twice
+- **Cause:** on 13 Oct Strow AI inserted six confirmed expenses of `doc_type = 'commission_estimate'` ("Delivery Platforms (Talabat/Keeta/Beanz)", May–Oct, AED 16,581) to "book" the app commission — but Strow already takes the fees off every closing at the owner's rates (Pulse, Sales, P&L). The October one (AED 3,073 for 1–12 Oct) was projected to month end (×31/13) on top of the page's own fee projection, so "Projected net after app fees" read −9,258 instead of ≈ −1,900.
+- **Fix (data):** the six rows are `rejected` (audit rows written); the Strow AI memory note that led to them now says the opposite, marked as from the owner.
+- **Migration `0024_no_app_commission_expenses`** (applied via MCP): trigger `trg_expenses_block_app_commission` refuses any `commission_estimate` expense that is not rejected.
+- Prompt: the delivery-app fee rule now says fees are never an expense row; a real app invoice for something else (Talabat advertising) still is.
+- Note for reading Pulse: the projection is this month's pace (13 closed days × 31) minus bills at the same pace, minus the 23,000 fixed costs, minus projected app fees. "Spent on N items" is all-time, not this month.
+
 ## 2026-10-14 — Recipes: staff can edit them, the owner picks who
 - **Migration `0023_recipe_edit_permission`** (applied via MCP): `baristas.can_edit_recipes`, default off.
 - **Staff page › "Recipes" switch** per person (next to "Count lists"). Allowed staff get a **Recipes** button on the staff home: the menu by section, "No recipe yet" marked, tap to edit — ingredients (stock item or a free-text name, amount, unit), method, section, and "+ New recipe" (name + section, then the ingredients). No costs, prices or margins are shown to staff; the price, taking an item off the menu and deleting stay with the owner. Every change is in the audit log with the barista as actor; the owner's Recipes page shows the result at once.
