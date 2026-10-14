@@ -16,6 +16,7 @@ const SALES: Seg[] = [
 const PURCHASES: Seg[] = [
   { href: "/owner/expenses", en: "Bills", ar: "الفواتير" },
   { href: "/owner/items", en: "Items", ar: "الأصناف" },
+  { href: "/owner/stock", en: "Stock", ar: "المخزون" },
   { href: "/owner/suppliers", en: "Vendors", ar: "الموردون" },
   { href: "/owner/fixed-costs", en: "Recurring", ar: "الثابتة" },
 ];
@@ -68,6 +69,11 @@ const PROMPTS: P[] = [
     match: (p) => p.startsWith("/owner/items"),
     en: ["Fix the suspicious lines", "Match the unmatched lines to items", "Which items got more expensive?"],
     ar: ["أصلح البنود المشبوهة", "اربط البنود غير المطابقة بالأصناف", "ما الأصناف التي ارتفع سعرها؟"],
+  },
+  {
+    match: (p) => p.startsWith("/owner/stock"),
+    en: ["What should I order this week?", "What runs out first?", "What was thrown away this month, and what did it cost?"],
+    ar: ["ماذا أطلب هذا الأسبوع؟", "ما الذي سينفد أولاً؟", "ما التالف هذا الشهر وكم كلّف؟"],
   },
   {
     match: (p) => p.startsWith("/owner/recipes"),

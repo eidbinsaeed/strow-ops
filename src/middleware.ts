@@ -8,6 +8,7 @@ const BARISTA_PROTECTED_PREFIXES = [
   "/close",
   "/expense",
   "/today",
+  "/stock",
 ];
 
 const OWNER_PROTECTED_PREFIX = "/owner";
@@ -57,6 +58,7 @@ export const config = {
     "/close/:path*",
     "/expense/:path*",
     "/today/:path*",
+    "/stock/:path*",
     "/owner/:path*",
   ],
 };

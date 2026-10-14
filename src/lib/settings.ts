@@ -1,5 +1,5 @@
 /**
- * App settings (auto-approve switches) kept in private Supabase Storage.
+ * App settings (auto-approve and staff-app switches) kept in private Supabase Storage.
  * Each save writes a new timestamped file and reads take the newest one, so a
  * change is seen immediately (no cached copy of an overwritten file).
  */
@@ -17,9 +17,23 @@ export type AppSettings = {
   aiDeep: boolean;
   /** Monthly AI budget in USD; Autopilot pauses once it's used. */
   aiMonthlyBudget: number;
+  /** Staff app shows "Shop stock" (daily count of what is in the shop). */
+  staffShopCount: boolean;
+  /** Staff app shows "Store room count" (weekly). */
+  staffStoreCount: boolean;
+  /** Day of the week the store room is counted (0 = Sunday … 6 = Saturday). */
+  storeCountDay: number;
 };
 
-const DEFAULTS: AppSettings = { autoApproveClosings: true, autoApproveBills: true, aiDeep: false, aiMonthlyBudget: 20 };
+const DEFAULTS: AppSettings = {
+  autoApproveClosings: true,
+  autoApproveBills: true,
+  aiDeep: false,
+  aiMonthlyBudget: 20,
+  staffShopCount: false,
+  staffStoreCount: false,
+  storeCountDay: 6,
+};
 
 async function newest(): Promise<string | null> {
   const { data } = await createServiceClient().storage.from(BUCKET).list(DIR, { limit: 100, sortBy: { column: "name", order: "desc" } });
@@ -39,6 +53,12 @@ export async function getSettings(): Promise<AppSettings> {
       autoApproveBills: typeof j.autoApproveBills === "boolean" ? j.autoApproveBills : DEFAULTS.autoApproveBills,
       aiDeep: typeof j.aiDeep === "boolean" ? j.aiDeep : DEFAULTS.aiDeep,
       aiMonthlyBudget: typeof j.aiMonthlyBudget === "number" && j.aiMonthlyBudget > 0 ? j.aiMonthlyBudget : DEFAULTS.aiMonthlyBudget,
+      staffShopCount: typeof j.staffShopCount === "boolean" ? j.staffShopCount : DEFAULTS.staffShopCount,
+      staffStoreCount: typeof j.staffStoreCount === "boolean" ? j.staffStoreCount : DEFAULTS.staffStoreCount,
+      storeCountDay:
+        typeof j.storeCountDay === "number" && Number.isInteger(j.storeCountDay) && j.storeCountDay >= 0 && j.storeCountDay <= 6
+          ? j.storeCountDay
+          : DEFAULTS.storeCountDay,
     };
   } catch {
     return { ...DEFAULTS };

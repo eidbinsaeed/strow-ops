@@ -1,7 +1,7 @@
 # Strow Ops — Data Model
 
-**Last updated:** 2026-10-06
-**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`), POS daily reports (`0019`) and POS menu sync (`0020`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
+**Last updated:** 2026-10-14
+**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`), POS daily reports (`0019`), POS menu sync (`0020`) and Stock counts (`0021`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
 
 Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). All transactional tables include `location_id` FK. RLS enabled on every table.
 
@@ -298,3 +298,26 @@ All carry `report_id` (cascade delete), `location_id` and `business_date`.
 ### Views
 - `v_pos_product_sales`: a matched menu item without recipe lines gets `cost_status = 'no_recipe'` and NULL `unit_cost` / `recipe_cost`. New columns at the end: `has_recipe` and `section`.
 - `v_pos_daily`: covered sales (`items_with_recipe`, `net_with_recipe`) count only items with a recipe (`has_recipe`).
+
+## Stock counts (migration 0021, 2026-10-14)
+Staff count two lists on the staff app: the **shop** (fridge, shelves, bar) every day and the **store room** once a week. Applied via MCP; additive only. RLS: owners full access (`is_owner()`), the app writes with the service role.
+
+### `stock_items` — the two count lists
+- `location_id`, `place` (`shop` | `store`), `name` (unique per place among active items, case-insensitive), `unit_label` (what staff count in: bottles, kg, boxes of 12), `step` (the + / − step on the shop screen), `grp` (heading on the count screen), `sort`.
+- `min_qty`: below it the item is low. `reorder_qty`: the usual order; NULL = order back up to 2 × minimum.
+- `supplier_id`: usual supplier (NULL = whoever sold it last, from `v_item_unit_cost`).
+- `inventory_item_id` + `base_per_unit`: the matching bill / recipe item and how many recipe base units (kg / L / pc) are in one counted unit (a 2 L bottle = 2). Used for order prices and days of stock left.
+- `is_active`: removing an item sets it false; its past counts stay.
+- Seeded with 22 shop and 22 store items (store list from Shahid's daily store-room messages in the team chat).
+
+### `stock_counts` and `stock_count_lines`
+- `stock_counts`: `location_id`, `place`, `barista_id`, `counted_on` (Dubai day), `counted_at`, `notes`. One per list per day: saving again the same day replaces that day's lines.
+- `stock_count_lines`: `count_id`, `stock_item_id`, `qty` (≥ 0), `wasted` and `waste_reason` (`expired` / `spoiled` / `broken` / `other`, shop only). Unique `(count_id, stock_item_id)`. Items left blank keep their previous count.
+- First row: the store-room list Shahid posted on 9 Oct 07:31, imported from the chat (note says so).
+
+### View
+- `v_stock_levels` (`security_invoker`): every active list item with its latest count (`qty`, `counted_on`, `counted_at`, `barista_name`) and `is_low`.
+
+### Settings (storage, not tables)
+- `staffShopCount`, `staffStoreCount` (default off) show the two buttons on the staff home; `storeCountDay` (0 = Sunday … 6 = Saturday, default Saturday) sets when the store count is due.
+

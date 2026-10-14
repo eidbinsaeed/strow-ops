@@ -45,6 +45,7 @@ export function OwnerNavContent({
         <NavGroup label={ar ? "المشتريات" : "Purchases"}>
           <OwnerNavLink href="/owner/expenses" badge={badges?.uncategorized_count}>{ar ? "الفواتير" : "Bills"}</OwnerNavLink>
           <OwnerNavLink href="/owner/items">{ar ? "الأصناف" : "Items"}</OwnerNavLink>
+          <OwnerNavLink href="/owner/stock">{ar ? "المخزون" : "Stock"}</OwnerNavLink>
           <OwnerNavLink href="/owner/suppliers" badge={badges?.missing_trn_count}>{ar ? "الموردون" : "Vendors"}</OwnerNavLink>
           <OwnerNavLink href="/owner/fixed-costs">{ar ? "المصاريف الثابتة" : "Recurring costs"}</OwnerNavLink>
         </NavGroup>

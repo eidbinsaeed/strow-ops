@@ -32,6 +32,7 @@ export const WRITE_POLICY: Record<string, { ops: Kind[]; denyColumns?: string[] 
   payroll_adjustments: { ops: ["update", "insert"] },
   menu_items: { ops: ["update", "insert"] },
   recipe_lines: { ops: ["update", "insert", "delete"] },
+  stock_items: { ops: ["update", "insert"] },
 };
 
 const ALWAYS_DENY = new Set(["id", "created_at"]);

@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-10-14 — Stock: daily shop count, weekly store-room count, order list
+- **Migration `0021_stock_counts`** (applied via MCP; written without drops so the MCP runs it): `stock_items`, `stock_counts`, `stock_count_lines`, view `v_stock_levels`. See the data model.
+  - Seeded 22 shop items and 22 store-room items, linked to bill/recipe items and usual suppliers where they match.
+  - The first store-room count is Shahid's 9 Oct 07:31 list from the team chat (18 items, note says it was imported).
+- **Staff app** (`/stock/shop`, `/stock/store`), shown on the home screen only when the owner switches it on (both **off** until then):
+  - Shop stock, daily: − / + / type per item, "yesterday N" hint, low items in amber, progress bar, "Thrown away today" (item, amount, expired / spoiled / broken / other) and a note. Saving again the same day updates that day's count.
+  - Store room count, weekly (Saturday by default): number per item with last count in grey and "+12 since the last count (delivery?)".
+  - The home buttons show "Counted today at 11:18" or "not counted yet today", and "Due since Sat 10 Oct" for the store room.
+  - Saving notifies the owner's phone when something is low, thrown away or noted (the store count always).
+- **Owner › Purchases › Stock** (`/owner/stock`, English and Arabic):
+  - Switches for the two staff screens and the store-count weekday.
+  - Order list from the latest counts, grouped by supplier, with an estimate from the last bill prices (before VAT); "Bring from the store room" for shop items the store room has. "Send on WhatsApp" and "Copy list".
+  - Days of stock left: shop + store in recipe units ÷ daily use from POS sales × recipes (last 14 days of reports).
+  - Thrown away this week (with cost where known), recent counts (tap to see every line), and `/owner/stock/lists` to edit items, units, minimums, usual order, supplier and the bill-item link.
+- Logic in `src/lib/stock.ts` (pure, unit-tested: pairing shop and store items, order quantities, supplier groups, days of cover, due dates).
+- **Strow AI:** knows the stock tables (prompt), can change `stock_items` (write policy), never the counts. New prompts on the Stock page.
+- Checked: `tsc`, `next build`, 8 logic tests, and a full run in a browser against a copy of the data (staff count → save → re-save → store count → owner page, list edits, switch off hides the button, Arabic).
+- Not built: the fridge photo from the mockup, and paying suppliers from the app (on hold: staff pay by card at the shop or online).
+
 ## 2026-10-14 — Team WhatsApp chat audit: 27 missing bills and the car wash IOU
 - The "Qavé Team" WhatsApp export (11 Apr – 14 Oct, 3,330 messages) was read by AI into 1,720 records and checked against Strow. Findings page: artifact "Qavé Team Chat Audit".
 - **27 bills added to Approvals** (status `pending_review`, 3,401.25 AED, 9 May – 3 Oct): payments staff posted in the chat with no bill in Strow within 10 days (amount ±1 AED, then ±5%).

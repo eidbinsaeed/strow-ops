@@ -4,6 +4,9 @@ import type { Route } from "next";
 import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
 import { LogoutButton } from "@/components/LogoutButton";
+import { getSettings } from "@/lib/settings";
+import { shortDay, todayDubai } from "@/lib/dates";
+import { storeCountDue, WEEKDAYS_EN } from "@/lib/stock";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +17,8 @@ export default async function BaristaHomePage() {
   const firstName = session.name.split(" ")[0];
 
   const supabase = createServiceClient();
-  const [{ data: meRow }, { data: notifs }] = await Promise.all([
+  const today = todayDubai();
+  const [{ data: meRow }, { data: notifs }, settings, { data: stockRows }] = await Promise.all([
     supabase.from("baristas").select("role").eq("id", session.bid).maybeSingle(),
     supabase
       .from("staff_reports")
@@ -22,7 +26,22 @@ export default async function BaristaHomePage() {
       .eq("barista_id", session.bid)
       .in("kind", ["warning", "incident"])
       .is("acknowledged_at", null),
+    getSettings(),
+    // Latest count of each list (shop / store), for the status under the buttons.
+    supabase
+      .from("stock_counts")
+      .select("place, counted_on, counted_at")
+      .eq("location_id", session.lid)
+      .order("counted_at", { ascending: false })
+      .limit(20),
   ]);
+  const lastCount = (place: string) =>
+    ((stockRows ?? []) as { place: string; counted_on: string; counted_at: string }[]).find((r) => r.place === place) ?? null;
+  const lastShop = lastCount("shop");
+  const shopDoneToday = lastShop?.counted_on === today;
+  const storeDue = storeCountDue(lastCount("store")?.counted_on ?? null, today, settings.storeCountDay);
+  const timeOf = (iso: string) =>
+    new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Dubai" });
   const role = ((meRow as { role?: string } | null)?.role ?? "barista").toLowerCase();
   const canOperate = role !== "waiter";
   const notifCount = (notifs ?? []).length;
@@ -76,6 +95,34 @@ export default async function BaristaHomePage() {
               </span>
             </Link>
           </>
+        )}
+
+        {settings.staffShopCount && (
+          <Link
+            href={"/stock/shop" as Route}
+            className="relative block rounded-2xl border border-neutral-300 bg-white px-6 py-7 text-center text-lg font-medium text-strow-ink shadow-sm transition active:scale-[0.98]"
+          >
+            Shop stock
+            <span className={`mt-1 block text-xs ${shopDoneToday ? "font-normal text-neutral-500" : "font-semibold text-strow-amber"}`}>
+              {shopDoneToday && lastShop ? `Counted today at ${timeOf(lastShop.counted_at)} · tap to change` : "Daily · not counted yet today"}
+            </span>
+          </Link>
+        )}
+
+        {settings.staffStoreCount && (
+          <Link
+            href={"/stock/store" as Route}
+            className="relative block rounded-2xl border border-neutral-300 bg-white px-6 py-7 text-center text-lg font-medium text-strow-ink shadow-sm transition active:scale-[0.98]"
+          >
+            Store room count
+            <span className={`mt-1 block text-xs ${storeDue.state === "upcoming" ? "font-normal text-neutral-500" : "font-semibold text-strow-amber"}`}>
+              {storeDue.state === "upcoming"
+                ? `Weekly · next on ${shortDay(storeDue.due)}`
+                : storeDue.state === "due"
+                  ? "Due today"
+                  : `Due since ${shortDay(storeDue.due)} · every ${WEEKDAYS_EN[settings.storeCountDay]}`}
+            </span>
+          </Link>
         )}
 
         <Link
