@@ -7,6 +7,7 @@ import { LogoutButton } from "@/components/LogoutButton";
 import { getSettings } from "@/lib/settings";
 import { shortDay, todayDubai } from "@/lib/dates";
 import { storeCountDue, WEEKDAYS_EN } from "@/lib/stock";
+import { isFullCountDay } from "@/lib/waste";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,8 @@ export default async function BaristaHomePage() {
   const lastShop = lastCount("shop");
   const shopDoneToday = lastShop?.counted_on === today;
   const storeDue = storeCountDue(lastCount("store")?.counted_on ?? null, today, settings.storeCountDay);
+  // Store-room day = full count: both lists, every item (the owner's waste check uses it).
+  const fullCount = isFullCountDay(today, settings.storeCountDay);
   const timeOf = (iso: string) =>
     new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Dubai" });
   const me = meRow as { role?: string; can_edit_stock_lists?: boolean | null; can_edit_recipes?: boolean | null } | null;
@@ -108,7 +111,11 @@ export default async function BaristaHomePage() {
           >
             Shop stock
             <span className={`mt-1 block text-xs ${shopDoneToday ? "font-normal text-neutral-500" : "font-semibold text-strow-amber"}`}>
-              {shopDoneToday && lastShop ? `Counted today at ${timeOf(lastShop.counted_at)} · tap to change` : "Daily · not counted yet today"}
+              {shopDoneToday && lastShop
+                ? `Counted today at ${timeOf(lastShop.counted_at)} · tap to change`
+                : fullCount
+                  ? "Full count today · every item"
+                  : "Daily · not counted yet today"}
             </span>
           </Link>
         )}
@@ -123,7 +130,9 @@ export default async function BaristaHomePage() {
               {storeDue.state === "upcoming"
                 ? `Weekly · next on ${shortDay(storeDue.due)}`
                 : storeDue.state === "due"
-                  ? "Due today"
+                  ? fullCount
+                    ? "Full count today · every item"
+                    : "Due today"
                   : `Due since ${shortDay(storeDue.due)} · every ${WEEKDAYS_EN[settings.storeCountDay]}`}
             </span>
           </Link>

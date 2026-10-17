@@ -1,8 +1,35 @@
 # Strow Ops — Changelog
 
-**Last updated:** 2026-10-14
+**Last updated:** 2026-10-17
 
 ---
+
+## 2026-10-17 — Waste check: what was used vs what sales × recipes say
+- **The sum, per item, between two full counts** (a full count = the shop and the store room counted on the same day; the store-room day, Saturday by default):
+  - used = start count + bought on bills − end count
+  - should use = POS items sold × recipes (`v_pos_ingredient_usage`), cut at the exact count times using the order times in `pos_orders`
+  - unexplained = used − should use − what staff logged as thrown away on the shop counts in between
+  - all in kg / L / pieces, costed before VAT at what was paid in the period (else the last bill, else the recipe price).
+  - Timing rules: the take time is the shop count; bills dated the count day come after a morning count (before 12:00) and before an evening one.
+- **Migration `0025_waste_check`** (applied via MCP, additive):
+  - `inventory_items.same_as`: "this item is the same thing as that one" for stock (another brand or pack). `v_inventory_groups` maps every item to its group.
+  - `v_purchase_lines`: every received bill line in kg / L / pcs. `v_item_unit_cost` now reads its lines from it (checked: same 114 rows, same checksum before and after).
+  - `v_stock_takes`, `pos_day_share()`, `stock_waste(from, to)` (one row per item group with a status: ok, not_counted, no_size, unit_mismatch, missing_bills, no_recipe, not_on_list), `stock_waste_period(from, to)` (take times, bill dates, sales in the period, days still missing a POS report).
+- **Migration `0026_stock_lists_by_group`**: `stock_ensure_item()` no longer adds a bought item to a list when another item of its group is already there (Oatly would have come back as a second oat-milk line).
+- **Owner › Stock › Waste check** (`/owner/stock/waste`, English and Arabic; link on the Stock page):
+  - Pick two full counts (latest pair by default). Unexplained loss and logged thrown away in AED and % of sales; what recipes say vs what was really used; how much of the recipe cost the checked items cover.
+  - Item by item, biggest gap first, tap for the start count, bills, end count and throw-aways. Amber = more went than recipes explain; blue = less (recipe too big, or a missing bill or count).
+  - "Can't check these yet" with the reason, "Used, not in any recipe" (cleaning, supplies), and a Ready check: recipe cost on a count list, count lines with no size, items sold with no bill in 90 days, POS items with no recipe, staff counts switched on, next full count.
+- **Staff app:** on the store-room day the shop and store screens say "Full count today" (every item, none left = 0, open pack = 0.5), saving with blanks asks first, and the home buttons say "Full count today · every item".
+- **Data fixed for the check** (two actions in AI activity, each can be undone):
+  - Groups: all full-cream milk counts as "Milk — Full Cream 2L" (3 L, Al Rawabi gallon, Al Ain UHT, UHT 4-pack, Lacnor case); Oatly and Alpro unsweetened as Alpro oat milk; Kinder and NY cookies as Nutella cookies.
+  - Pack sizes: Alpro oat milk 1 L (was 12.5 L: AED 1.12/L instead of 14.00); Al Ain UHT a 4 × 1 L pack (Noon 4 Oct: 4.11/L instead of 16.43); UHT 4-pack 4 L, Lacnor case 12 L, Al Rawabi gallon 3.78 L; frozen strawberry 2.5 kg (was 9.6); cereal 1 kg (was 28); banana pack size removed (was 8 kg).
+  - Bill lines: fresh milk 8 Oct 2 × 2 L and 1 × 3 L (were read as 8 and 6 bottles: AED 1.00 and 0.85/L); bananas 7 Oct 1.4 kg, 9 Oct 2 kg (was 16); cereal 9 Oct 1 kg. The AED 470 condensed-milk carton of 3 Oct (car wash) got its line: 48 tins, 17.76 kg.
+  - Recipes: Cookies uses Nutella cookies; Kinder Cookies has a recipe (1 cookie); Dirty Espresso's Mactop is linked to a new stock item "Mactop cream 1 L" (manual price kept).
+  - Count lists: one line per thing ("Long-life milk 1 L (any brand)", "Oat milk 1 L (Alpro or Oatly)"; the UHT 4-pack, Lacnor and Oatly duplicates are off), "Fresh milk 3 L", sizes on Nutella spread (3 kg buckets, step 0.5), cashew, peanut butter and honey jars, cereal, store cups (sleeves of 50), wooden spoons (packs of 100), London Dairy (1 L tubs), Mactop linked on both lists.
+- **Strow AI** knows `stock_waste()`, `v_stock_takes`, `same_as` and how to read a positive or negative gap.
+- Open: Nutella babka has never had a bill in Strow (63 sold 1–16 Oct, about AED 680 at the recipe price), so the check will show it as a missing delivery until those bills are scanned. The Qavè Signature recipe has 500 g of sugar syrup per drink (cost 0, not stock). "Dates" on the store list has no size. Cereal is assumed to be the 1 kg bag.
+- Checked: `tsc`, `next build`, waste helper tests, an offline render of the page (English and Arabic) with real-shaped data, and `stock_waste()` run on throwaway counts inside a transaction that was rolled back (nothing was saved).
 
 ## 2026-10-14 — Pulse showed −9k: app fees were counted twice
 - **Cause:** on 13 Oct Strow AI inserted six confirmed expenses of `doc_type = 'commission_estimate'` ("Delivery Platforms (Talabat/Keeta/Beanz)", May–Oct, AED 16,581) to "book" the app commission — but Strow already takes the fees off every closing at the owner's rates (Pulse, Sales, P&L). The October one (AED 3,073 for 1–12 Oct) was projected to month end (×31/13) on top of the page's own fee projection, so "Projected net after app fees" read −9,258 instead of ≈ −1,900.

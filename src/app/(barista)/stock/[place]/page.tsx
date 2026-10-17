@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import { shortDay, todayDubai } from "@/lib/dates";
 import { groupItems, WEEKDAYS_EN, type Place, type WasteReason } from "@/lib/stock";
+import { isFullCountDay } from "@/lib/waste";
 import { StockCountForm, type CountItem } from "../StockCountForm";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,8 @@ export default async function StockCountPage({ params }: { params: Promise<{ pla
   const on = place === "shop" ? settings.staffShopCount : settings.staffStoreCount;
   const title = place === "shop" ? "Shop stock" : "Store room count";
   const today = todayDubai();
+  // The store-room day is the full count: shop and store room, every item, for the waste check.
+  const fullCount = isFullCountDay(today, settings.storeCountDay);
 
   const header = (
     <header className="flex items-center gap-3">
@@ -40,7 +43,7 @@ export default async function StockCountPage({ params }: { params: Promise<{ pla
       </Link>
       <div className="min-w-0">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-          {place === "shop" ? "Daily" : `Weekly, ${WEEKDAYS_EN[settings.storeCountDay]}s`} · {shortDay(today)}
+          {fullCount ? "Full count day" : place === "shop" ? "Daily" : `Weekly, ${WEEKDAYS_EN[settings.storeCountDay]}s`} · {shortDay(today)}
         </p>
         <h1 className="font-display text-2xl font-bold">{title}</h1>
       </div>
@@ -128,10 +131,11 @@ export default async function StockCountPage({ params }: { params: Promise<{ pla
           place={place}
           groups={groupItems(items)}
           prevLabel={prevLabel}
+          fullCount={fullCount}
           intro={
             place === "shop"
-              ? "Count what is in the shop right now: fridge, shelves and the bar. Not the store room."
-              : `Type what is on the shelves, in full packs. ${prevNote} The grey number is the last count.`
+              ? "Count what is in the shop right now: fridge, shelves and the bar. Not the store room. An open pack or bag counts as 0.5."
+              : `Type what is on the shelves. An open pack counts as 0.5. ${prevNote} The grey number is the last count.`
           }
           initial={
             todayCount

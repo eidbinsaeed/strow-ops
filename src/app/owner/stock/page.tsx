@@ -309,6 +309,21 @@ export default async function OwnerStockPage() {
         )}
       </section>
 
+      <Link href={"/owner/stock/waste" as Route} className="flex items-center justify-between gap-3 rounded-[24px] bg-white p-4 text-strow-ink">
+        <span>
+          <span className="block text-[15px] font-semibold">{t("Waste check", "فحص الهدر")}</span>
+          <span className="block text-xs text-neutral-500">
+            {t(
+              "Used vs what sales × recipes say, between two full counts, in AED",
+              "المستخدم مقابل المبيعات × الوصفات بين جردين كاملين، بالدرهم",
+            )}
+          </span>
+        </span>
+        <span aria-hidden="true" className="text-xl text-neutral-400">
+          ›
+        </span>
+      </Link>
+
       <section className="rounded-[28px] bg-white pb-1.5 pt-[18px] md:pt-6">
         <h2 className="px-[18px] pb-2 font-display text-lg font-semibold md:px-6">{t("Recent counts", "آخر عمليات العدّ")}</h2>
         {counts.length === 0 ? (

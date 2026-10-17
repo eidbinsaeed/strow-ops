@@ -1,7 +1,7 @@
 # Strow Ops — Data Model
 
-**Last updated:** 2026-10-14
-**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`), POS daily reports (`0019`), POS menu sync (`0020`) and Stock counts (`0021`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
+**Last updated:** 2026-10-17
+**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`), POS daily reports (`0019`), POS menu sync (`0020`), Stock counts (`0021`) and Waste check (`0025`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
 
 Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). All transactional tables include `location_id` FK. RLS enabled on every table.
 
@@ -328,4 +328,29 @@ Staff count two lists on the staff app: the **shop** (fridge, shelves, bar) ever
 
 ### Settings (storage, not tables)
 - `staffShopCount`, `staffStoreCount` (default off) show the two buttons on the staff home; `storeCountDay` (0 = Sunday … 6 = Saturday, default Saturday) sets when the store count is due.
+
+## Waste check (migrations 0025–0026, 2026-10-17)
+Used vs what sales × recipes say, between two full counts. Applied via MCP; additive.
+
+### `inventory_items.same_as`
+- uuid FK → `inventory_items` (on delete set null), never the item itself. "For stock and waste this item is the same thing as that one": another brand or pack of the same milk. Recipes and prices are not changed.
+- `v_inventory_groups` (`security_invoker`): every item with `group_id` = the item its group is named after (follows `same_as` up to 5 steps; itself when not set).
+- Groups in use: full-cream milk → "Milk — Full Cream 2L"; oat milk → "Oat Milk — Alpro Barista 1L"; cookies → "Frozen Nutella Cookies".
+- `stock_ensure_item()` (0026): a bought item whose group already has an active list line is not added again.
+
+### Views
+- `v_purchase_lines`: every goods line of a bill that is received and not rejected, with `base_qty` / `base_uom` in kg / L / pcs (the conversion that used to live inside `v_item_unit_cost`), plus `net_total`, `paid_total`, `expense_date`, `supplier_name`, `description`, `location_id`. `v_item_unit_cost` now reads its lines from it (`net_total > 0`); same columns and results.
+- `v_stock_takes`: a day with both a shop and a store count (latest of each that day). `take_date`, `take_at` (= the shop count time), both count ids and barista ids, `shop_lines`, `store_lines`.
+
+### Functions (execute: service role only)
+- `pos_day_share(location, day, at)`: share of that POS day's items sold at or before `at` (0..1), from `pos_orders.paid_at` × `product_qty`; days without orders spread evenly 07:00–24:00 Dubai.
+- `stock_waste(p_from date, p_to date, p_location uuid default null)`: one row per item group between two take dates.
+  - `opening` / `closing` = Σ count qty × `stock_items.base_per_unit` over the group's list items (shop + store).
+  - `bought` = Σ `v_purchase_lines.base_qty` dated from the first cut to the second (a take before 12:00 Dubai is a morning count: that day's bills come after it).
+  - `should_use` = Σ `v_pos_ingredient_usage.qty_used` × the share of each day between the two take times.
+  - `logged_waste` = Σ `stock_count_lines.wasted` × `base_per_unit` on shop counts after the first take, up to the second.
+  - `used`, `unexplained` = used − should_use − logged_waste; `unit_cost` (paid in the period, else last bill in that unit, else recipe price), `used_cost`, `should_cost`, `waste_cost`, `unexplained_cost` (before VAT).
+  - `status`: `ok`, `not_counted` (an active list item has no line at a take; items created after the take count as 0), `no_size` (counted but no `base_per_unit`), `unit_mismatch` (bills or recipes in another unit), `missing_bills` (stock went up with no bill), `no_recipe` (used, no recipe uses it), `not_on_list`.
+  - `detail` jsonb: `start` / `end` count lines, `bills`, `thrown`, `missing_start`, `missing_end`.
+- `stock_waste_period(p_from, p_to, p_location)`: `t0`, `t1`, `bills_from`, `bills_to`, `sales` (POS, incl. VAT) and `sales_ex_vat` weighted the same way, `items_sold`, `report_days`, `missing_report_days`.
 

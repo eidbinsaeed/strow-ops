@@ -44,11 +44,14 @@ export function StockCountForm({
   prevLabel,
   intro,
   initial,
+  fullCount = false,
 }: {
   place: Place;
   groups: { name: string; items: CountItem[] }[];
   prevLabel: string | null;
   intro: string;
+  /** Today is the full count (shop + store room, every item) used by the owner's waste check. */
+  fullCount?: boolean;
   initial: { qty: Record<string, number>; waste: { id: string; qty: number; reason: WasteReason }[]; notes: string; savedLabel: string } | null;
 }) {
   const all = useMemo(() => groups.flatMap((g) => g.items), [groups]);
@@ -91,6 +94,11 @@ export function StockCountForm({
     setErr(null);
     if (bad.length) return setErr(`Check the number for ${bad[0].name}.`);
     if (!counted.length) return setErr("Count at least one item.");
+    if (fullCount && counted.length < all.length) {
+      const left = all.filter((i) => parse(vals[i.id]) === null);
+      const names = left.slice(0, 4).map((i) => i.name).join(", ") + (left.length > 4 ? ` and ${left.length - 4} more` : "");
+      if (!window.confirm(`Full count today: ${left.length} not counted (${names}).\n\nIf there are none, type 0. Save anyway?`)) return;
+    }
     const wasteOut: { id: string; qty: number; reason: WasteReason }[] = [];
     for (const w of waste) {
       if (!w.id && w.qty.trim() === "") continue;
@@ -123,6 +131,15 @@ export function StockCountForm({
 
   return (
     <>
+      {fullCount ? (
+        <section className="rounded-2xl border border-[#F1D9A8] bg-[#FFF7E8] p-4 text-strow-ink">
+          <p className="text-[15px] font-semibold">Full count today</p>
+          <p className="mt-1 text-[13px] leading-snug">
+            Count <span className="font-semibold">every item</span> on {shop ? "this list and the store room list" : "this list and the shop list"}, before opening if you
+            can. None left? Type <span className="font-semibold">0</span>. An open pack counts as 0.5. The owner uses today&apos;s numbers to check waste.
+          </p>
+        </section>
+      ) : null}
       <section className="rounded-2xl border border-neutral-300 bg-white p-4">
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-[15px] font-semibold">

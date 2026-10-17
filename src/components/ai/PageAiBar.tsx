@@ -71,6 +71,11 @@ const PROMPTS: P[] = [
     ar: ["أصلح البنود المشبوهة", "اربط البنود غير المطابقة بالأصناف", "ما الأصناف التي ارتفع سعرها؟"],
   },
   {
+    match: (p) => p.startsWith("/owner/stock/waste"),
+    en: ["Where is my biggest waste and why?", "Which recipes look too big or too small?", "What should staff weigh more carefully?"],
+    ar: ["أين أكبر هدر عندي ولماذا؟", "ما الوصفات التي تبدو أكبر أو أصغر من الحقيقة؟", "ما الذي يجب أن يزنه الموظفون بدقة أكثر؟"],
+  },
+  {
     match: (p) => p.startsWith("/owner/stock"),
     en: ["What should I order this week?", "What runs out first?", "What was thrown away this month, and what did it cost?"],
     ar: ["ماذا أطلب هذا الأسبوع؟", "ما الذي سينفد أولاً؟", "ما التالف هذا الشهر وكم كلّف؟"],
