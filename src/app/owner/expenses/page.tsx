@@ -7,6 +7,8 @@ import { parseFilters } from "@/lib/filters";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { StatusPill } from "@/components/owner/StatusPill";
+import { FlipList } from "@/components/motion/FlipList";
+import { SupplierLogo } from "@/components/owner/SupplierLogo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,7 +24,7 @@ type ExpenseRow = {
   status: string;
   notes: string | null;
   photo_drive_url: string | null;
-  suppliers: { name: string } | null;
+  suppliers: { id: string; name: string; logo_path: string | null; logo_updated_at: string | null } | null;
   categories: { name: string } | null;
   baristas: { name: string } | null;
 };
@@ -72,7 +74,7 @@ export default async function OwnerPurchasesPage({
   let query = supabase
     .from("expenses")
     .select(
-      "id, expense_date, invoice_number, subtotal, vat_amount, total, payment_method, status, notes, photo_drive_url, suppliers(name), categories(name), baristas(name)",
+      "id, expense_date, invoice_number, subtotal, vat_amount, total, payment_method, status, notes, photo_drive_url, suppliers(id, name, logo_path, logo_updated_at), categories(name), baristas(name)",
     )
     .order("expense_date", { ascending: false })
     .limit(200);
@@ -120,14 +122,23 @@ export default async function OwnerPurchasesPage({
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <FlipList className="space-y-3">
           {expenses.map((e) => (
             <div
               key={e.id}
+              data-flip-id={e.id}
               className="rounded-2xl border border-neutral-200 bg-white p-4 md:p-5"
             >
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <div>
+              <div className="flex items-start gap-3">
+                <SupplierLogo
+                  id={e.suppliers?.id}
+                  name={e.suppliers?.name}
+                  category={e.categories?.name}
+                  logoPath={e.suppliers?.logo_path}
+                  version={e.suppliers?.logo_updated_at}
+                  size={44}
+                />
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <StatusPill status={e.status} locale={locale} />
                     {e.categories?.name && (
@@ -173,7 +184,7 @@ export default async function OwnerPurchasesPage({
               </div>
             </div>
           ))}
-        </div>
+        </FlipList>
       )}
 
       <p className="mt-6 text-xs text-neutral-400">

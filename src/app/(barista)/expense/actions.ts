@@ -16,6 +16,7 @@ import { normalizeItemText, looksLikeRealItem } from "@/lib/inventory-match";
 import { baseOf, measureOf, num, type LineKind } from "@/lib/units";
 import { headerAddsUp, reconcileVat } from "@/lib/vat";
 import { checkTrn, isOwnEmail, scrubPhones, type OwnContacts } from "@/lib/supplier-info";
+import { saveSupplierLogo } from "@/lib/supplier-logo";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -613,6 +614,16 @@ export async function submitExpense(formData: FormData) {
       line_item_count: lineItems.length,
     },
   });
+
+  // The supplier's logo, cut from this bill on the phone: fills an empty logo slot only.
+  const logoData = String(formData.get("supplier_logo_data") ?? "").trim();
+  if (logoData && supplier_id) {
+    const sid = supplier_id;
+    after(async () => {
+      const r = await saveSupplierLogo(sid, logoData, "bill", { onlyIfEmpty: true });
+      if (r.error) console.error("[submitExpense] logo:", r.error);
+    });
+  }
 
   // Owner screens update on the spot.
   await broadcastLive({ t: "expenses", id: inserted.id as string });

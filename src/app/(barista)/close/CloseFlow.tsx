@@ -1,5 +1,6 @@
 "use client";
 
+import { MorphSubmit } from "@/components/motion/MorphSubmit";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -540,13 +541,14 @@ export function CloseFlow({
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="mt-2 w-full rounded-xl bg-strow-ink px-4 py-3.5 text-base font-medium text-white transition active:scale-95 disabled:opacity-50"
-        >
-          {isSubmitting ? "Submitting..." : "Submit closing"}
-        </button>
+        <div className="mt-2">
+          <MorphSubmit
+            pending={isSubmitting}
+            label="Submit closing"
+            pendingLabel="Submitting…"
+            className="w-full rounded-xl bg-strow-ink px-4 py-3.5 text-base font-medium text-white transition active:scale-95"
+          />
+        </div>
 
         <p className="text-center text-xs text-neutral-400">
           <Link href="/home" className="underline">

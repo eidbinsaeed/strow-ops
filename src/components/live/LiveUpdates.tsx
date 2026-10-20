@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { Route } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { BooksIcon, CameraIcon, Sparkle } from "@/components/pulse/icons";
+import { motion, reducedMotion } from "@/lib/motion";
 
 type LiveEvent = { key: string; kind: "closing" | "expense" | "ai"; title: string; subtitle: string; href: string };
 
@@ -105,28 +106,54 @@ export function LiveUpdates() {
     };
   }, [check]);
 
-  // Each banner stays ~7 s.
-  useEffect(() => {
-    if (!toasts.length) return;
-    const id = window.setTimeout(() => setToasts((t) => t.slice(0, -1)), 7000);
-    return () => window.clearTimeout(id);
-  }, [toasts]);
-
+  const dismiss = useCallback((key: string) => setToasts((x) => x.filter((y) => y.key !== key)), []);
   if (!toasts.length) return null;
-  const dismiss = (key: string) => setToasts((x) => x.filter((y) => y.key !== key));
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[75] flex flex-col items-center gap-2 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] print:hidden">
       {toasts.map((t) => (
+        <Banner key={t.key} t={t} onGone={dismiss} onOpen={(href) => router.push(href as Route)} />
+      ))}
+    </div>
+  );
+}
+
+/** One banner: drops in with a small spring, leaves upwards after ~7 s, on ×, or when tapped. */
+function Banner({ t, onGone, onOpen }: { t: LiveEvent; onGone: (key: string) => void; onOpen: (href: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const leaving = useRef(false);
+
+  const leave = useCallback(
+    (then?: () => void) => {
+      if (leaving.current) return;
+      leaving.current = true;
+      const el = ref.current;
+      const done = () => {
+        onGone(t.key);
+        then?.();
+      };
+      if (!el || reducedMotion()) return done();
+      motion().gsap.to(el, { y: -90, opacity: 0, scale: 0.97, duration: 0.32, ease: "power2.in", onComplete: done });
+    },
+    [onGone, t.key],
+  );
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !reducedMotion()) motion().gsap.fromTo(el, { y: -90, opacity: 0, scale: 0.96 }, { y: 0, opacity: 1, scale: 1, duration: 0.6, ease: "back.out(1.5)" });
+  }, []);
+  useEffect(() => {
+    const id = window.setTimeout(() => leave(), 7000);
+    return () => window.clearTimeout(id);
+  }, [leave]);
+
+  return (
         <div
-          key={t.key}
-          className="ai-pop pointer-events-auto flex w-full max-w-md items-center gap-2 rounded-2xl bg-white p-2.5 shadow-[0_12px_32px_rgba(15,28,43,0.18)] ring-1 ring-black/5"
+          ref={ref}
+          className="pointer-events-auto flex w-full max-w-md items-center gap-2 rounded-2xl bg-white p-2.5 shadow-[0_12px_32px_rgba(15,28,43,0.18)] ring-1 ring-black/5"
         >
           <button
             type="button"
-            onClick={() => {
-              dismiss(t.key);
-              router.push(t.href as Route);
-            }}
+            onClick={() => leave(() => onOpen(t.href))}
             className="flex min-w-0 flex-1 items-center gap-3 text-start"
           >
             <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white ${t.kind === "ai" ? "bg-strow-blue" : "bg-strow-ink"}`}>
@@ -137,11 +164,9 @@ export function LiveUpdates() {
               <span className="block truncate text-[13px] text-neutral-500">{t.subtitle}</span>
             </span>
           </button>
-          <button type="button" aria-label="Dismiss" onClick={() => dismiss(t.key)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl leading-none text-neutral-400">
+          <button type="button" aria-label="Dismiss" onClick={() => leave()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xl leading-none text-neutral-400">
             ×
           </button>
         </div>
-      ))}
-    </div>
   );
 }

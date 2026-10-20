@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { PhotoViewer, photoSrc } from "@/components/ai/PhotoViewer";
 import { askAiHref } from "@/components/ai/ActionButtons";
+import { SuccessTick } from "@/components/motion/SuccessTick";
+import { motion, reducedMotion } from "@/lib/motion";
 import { BackIcon, CheckIcon } from "./icons";
+
+type Toast = { id: string; title: string; kind: "fixed" | "dismissed"; side: number };
 
 export type NyItem = {
   id: string;
@@ -39,17 +43,58 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [zoom, setZoom] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [cleared, setCleared] = useState(false);
+  const stage = useRef<HTMLDivElement>(null);
+  const toastRef = useRef<HTMLDivElement>(null);
+  // Which side the next card comes in from: 0 = from below (first load, Next / Previous), ±1 = back from where it flew.
+  const enterSide = useRef(0);
+  const current = items[i]?.id ?? "";
 
-  if (!items.length) {
+  // The card (and its buttons) arrive: from below, or back in from the side it left on Undo.
+  useLayoutEffect(() => {
+    const el = stage.current;
+    if (!el || reducedMotion()) return;
+    const { gsap } = motion();
+    const side = enterSide.current;
+    enterSide.current = 0;
+    const tween = side
+      ? gsap.fromTo(el, { x: side * 420, rotation: side * 8, opacity: 0 }, { x: 0, rotation: 0, opacity: 1, duration: 0.55, ease: "back.out(1.1)", clearProps: "transform,opacity" })
+      : gsap.fromTo(el, { x: 0, rotation: 0, y: 22, opacity: 0, scale: 0.98 }, { y: 0, opacity: 1, scale: 1, duration: 0.45, ease: "power3.out", clearProps: "transform,opacity" });
+    return () => {
+      tween.progress(1);
+    };
+  }, [current, cleared]);
+
+  // The undo toast rises in and leaves after 5 s.
+  useEffect(() => {
+    if (!toast) return;
+    const el = toastRef.current;
+    if (el && !reducedMotion()) motion().gsap.fromTo(el, { y: 80, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "back.out(1.6)" });
+    const t = window.setTimeout(() => {
+      const node = toastRef.current;
+      if (node && !reducedMotion()) motion().gsap.to(node, { y: 80, opacity: 0, duration: 0.3, ease: "power2.in", onComplete: () => setToast(null) });
+      else setToast(null);
+    }, 5000);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  if (!items.length || cleared) {
+    const handled = items.filter((x) => ["applied", "rejected", "undone"].includes(st[x.id] ?? x.status)).length;
     return (
-      <div className="mx-auto flex max-w-[440px] flex-col items-center gap-3 rounded-[28px] bg-white p-10 text-center">
-        <span className="ai-orb h-12 w-12" aria-hidden />
-        <p className="font-display text-xl font-bold">All clear</p>
-        <p className="text-sm text-neutral-500">Nothing needs you right now. Autopilot keeps watching.</p>
-        <Link href="/owner" className="mt-2 rounded-full bg-strow-ink px-5 py-2.5 text-sm font-semibold text-white">
-          Back to Pulse
-        </Link>
-      </div>
+      <>
+        <div ref={stage} className="mx-auto flex max-w-[440px] flex-col items-center gap-3 rounded-[28px] bg-white p-10 text-center">
+          {cleared ? <SuccessTick size={76} label="All clear" /> : <span className="ai-orb h-12 w-12" aria-hidden />}
+          <p className="font-display text-xl font-bold">All clear</p>
+          <p className="text-sm text-neutral-500">
+            {cleared && handled ? `${handled} handled. ` : ""}Nothing needs you right now. Autopilot keeps watching.
+          </p>
+          <Link href="/owner" className="mt-2 rounded-full bg-strow-ink px-5 py-2.5 text-sm font-semibold text-white">
+            Back to Pulse
+          </Link>
+        </div>
+        {toast ? <UndoToast refEl={toastRef} toast={toast} onUndo={() => undoFromToast(toast)} /> : null}
+      </>
     );
   }
 
@@ -69,22 +114,66 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
           ? { t: "Fix ready", c: "bg-[#E3EAFB] text-[#1A3FA8]" }
           : { t: status === "proposed" ? "Check" : status === "undone" ? "Undone" : "Dismissed", c: "bg-[#EEF0F3] text-[#3F4A57]" };
 
+  async function send(id: string, decision: "approve" | "reject" | "undo"): Promise<string | null> {
+    const r = await fetch("/api/ai/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, decision }),
+    });
+    const j = (await r.json().catch(() => ({}))) as { ok?: boolean; status?: string; error?: string };
+    if (!r.ok || !j.ok) throw new Error(j.error || "That didn't work");
+    return j.status ?? null;
+  }
+
+  /** The card flies off (left when fixed, right when dismissed), then the next open finding comes in. */
+  function flyOff(side: number): Promise<void> {
+    const el = stage.current;
+    if (!el || reducedMotion()) return Promise.resolve();
+    return new Promise((done) => {
+      motion().gsap.to(el, { x: side * 440, y: side < 0 ? -30 : 10, rotation: side * 9, opacity: 0, duration: 0.4, ease: "power2.in", onComplete: () => done() });
+    });
+  }
+
   async function decide(decision: "approve" | "reject" | "undo") {
     setBusy(decision);
     setErr(null);
     try {
-      const r = await fetch("/api/ai/actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: it.id, decision }),
-      });
-      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; status?: string; error?: string };
-      if (!r.ok || !j.ok) throw new Error(j.error || "That didn't work");
-      setSt((s) => ({ ...s, [it.id]: j.status ?? status }));
+      const next = await send(it.id, decision);
+      const newStatus = next ?? status;
+      const after = { ...st, [it.id]: newStatus };
+      if (decision === "undo") {
+        setSt(after);
+        return;
+      }
+      const side = decision === "approve" ? -1 : 1;
+      await flyOff(side);
+      setSt(after);
+      setToast({ id: it.id, title: it.title, kind: decision === "approve" ? "fixed" : "dismissed", side });
+      setZoom(false);
+      const isOpen = (x: NyItem) => ["proposed", "info"].includes(after[x.id] ?? x.status);
+      const order = [...items.slice(i + 1), ...items.slice(0, i)];
+      const nxt = order.find(isOpen);
+      if (nxt) setI(items.findIndex((x) => x.id === nxt.id));
+      else setCleared(true);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
+      if (stage.current) motion().gsap.set(stage.current, { clearProps: "transform,opacity" });
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function undoFromToast(t: Toast) {
+    setToast(null);
+    try {
+      const back = await send(t.id, "undo");
+      setSt((s) => ({ ...s, [t.id]: back ?? "undone" }));
+      enterSide.current = t.side;
+      setCleared(false);
+      setErr(null);
+      setI(Math.max(0, items.findIndex((x) => x.id === t.id)));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
     }
   }
   const go = (d: number) => {
@@ -123,7 +212,8 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
         ))}
       </div>
 
-      <div key={it.id} className="pulse-pop flex flex-col gap-3.5 rounded-[28px] bg-white p-[18px]">
+      <div ref={stage} className="flex flex-col gap-3.5">
+      <div className="flex flex-col gap-3.5 rounded-[28px] bg-white p-[18px]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="font-display text-[22px] font-bold leading-tight tracking-[-0.4px]">{it.title}</h1>
@@ -217,6 +307,7 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
           {status === "undone" ? "Undone — back to how it was." : "Dismissed."}
         </div>
       )}
+      </div>
       {err ? <p className="text-center text-sm text-red-600">{err}</p> : null}
 
       <div className="flex items-center justify-between">
@@ -228,6 +319,25 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
         </button>
       </div>
       {zoom && src ? <PhotoViewer src={src} caption={it.title} onClose={() => setZoom(false)} /> : null}
+      {toast ? <UndoToast refEl={toastRef} toast={toast} onUndo={() => undoFromToast(toast)} /> : null}
+    </div>
+  );
+}
+
+function UndoToast({ toast, onUndo, refEl }: { toast: Toast; onUndo: () => void; refEl: RefObject<HTMLDivElement | null> }) {
+  return (
+    <div
+      ref={refEl}
+      role="status"
+      className="fixed inset-x-4 bottom-[calc(6.5rem+env(safe-area-inset-bottom))] z-[70] mx-auto flex max-w-[440px] items-center gap-3 rounded-full bg-strow-ink/95 py-2 pe-2 ps-5 text-white shadow-[0_12px_32px_rgba(15,28,43,0.3)] md:bottom-8"
+    >
+      <span className="min-w-0 flex-1 truncate text-sm">
+        {toast.kind === "fixed" ? "Fixed: " : "Dismissed: "}
+        {toast.title}
+      </span>
+      <button type="button" onClick={onUndo} className="h-11 shrink-0 rounded-full bg-white/15 px-4 text-sm font-semibold">
+        Undo
+      </button>
     </div>
   );
 }

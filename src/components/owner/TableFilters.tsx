@@ -43,7 +43,8 @@ export function TableFilters({
       next.set(key, value);
     }
     startTransition(() => {
-      router.push((`${pathname}?${next.toString()}`) as never);
+      // Stay where you are: the list below re-sorts in place (FlipList).
+      router.push((`${pathname}?${next.toString()}`) as never, { scroll: false });
     });
   }
 
@@ -135,7 +136,7 @@ export function TableFilters({
         <button
           type="button"
           onClick={() => {
-            startTransition(() => router.push(pathname as never));
+            startTransition(() => router.push(pathname as never, { scroll: false }));
           }}
           className="self-start text-xs text-neutral-500 underline hover:text-strow-ink sm:ms-auto"
         >

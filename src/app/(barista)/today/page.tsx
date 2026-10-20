@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { Reveal } from "@/components/motion/Reveal";
+import { SuccessTick } from "@/components/motion/SuccessTick";
 import Link from "next/link";
 import { getBaristaSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -94,16 +96,17 @@ export default async function BaristaTodayPage({
       </header>
 
       <div className="mx-auto w-full max-w-md flex-1 py-8">
-        {justSubmitted === "closing" && (
-          <div className="mb-6 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
-            Close submitted. Nice work, {session.name}.
-          </div>
-        )}
-        {justSubmitted === "expense" && (
-          <div className="mb-6 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
-            Expense submitted. Nice work, {session.name}.
-          </div>
-        )}
+        {justSubmitted === "closing" || justSubmitted === "expense" ? (
+          <Reveal className="mb-8 flex flex-col items-center text-center">
+            <SuccessTick size={88} label={justSubmitted === "closing" ? "Close sent" : "Bill sent"} />
+            <h2 data-reveal="" className="mt-5 text-2xl font-semibold">
+              {justSubmitted === "closing" ? "Close sent" : "Bill sent"}
+            </h2>
+            <p data-reveal="" className="mt-1 text-sm text-neutral-500">
+              Nice work, {session.name}. It&apos;s with the owner now.
+            </p>
+          </Reveal>
+        ) : null}
         {(justSubmitted === "closing-queued" ||
           justSubmitted === "expense-queued") && (
           <div className="mb-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">

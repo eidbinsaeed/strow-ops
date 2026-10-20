@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 import { logResponseUsage } from "@/lib/ai/usage";
 import { checkTrn, isOwnEmail, scrubPhones, type OwnContacts } from "@/lib/supplier-info";
+import { cleanLogoBox } from "@/lib/logo-box";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -29,6 +30,7 @@ The photo is an expense receipt — a printed VAT invoice, a handwritten cash re
 - rounding: a printed rounding adjustment (e.g. -0.20), else null.
 - prices_include_vat: true if the line prices already include VAT (typical supermarket receipt: "Tax inclusive", VAT shown only as a summary), false if lines are before VAT (typical supplier invoice with VAT added at the bottom or per line), null if the bill has no VAT at all. Keep line_total exactly as printed — the app does the VAT maths.
 - Your own café's details: QAVE CAFE and anything in the "Bill To" / "Customer" / "Ship To" / receiver block (names, phones, emails, TRN) belong to the buyer — never report them as supplier details.
+- supplier_logo_box: where the SUPPLIER's printed logo is on the first page — their emblem, picture or stylised name, usually at the top. Not QAVE's logo, not a stamp or signature, not a QR code or barcode, not card-payment logos, not a shop name in plain typed text. Give the smallest rectangle around the whole logo as fractions of the photo's width and height (0 to 1), x and y its top-left corner: {"x", "y", "w", "h"}. null when the bill has no printed logo (handwritten receipts, plain till slips).
 
 == SUPPLIER & DOCUMENT DETAILS ==
 Read the SELLER's details (never the "Bill To" / customer block — that is Qave Cafe itself):
@@ -97,6 +99,7 @@ Deliver the result by calling the record_bill tool with ONE object matching this
   "supplier_address": string | null,
   "supplier_phone": string | null,
   "supplier_email": string | null,
+  "supplier_logo_box": { "x": number, "y": number, "w": number, "h": number } | null,
   "doc_type": "tax_invoice" | "sales_order" | "receipt" | "delivery_note" | "quotation" | "other" | null,
   "order_ref": string | null,
   "salesperson": string | null,
@@ -299,6 +302,11 @@ const BILL_SCHEMA = {
     supplier_address: S,
     supplier_phone: S,
     supplier_email: S,
+    supplier_logo_box: {
+      type: ["object", "null"],
+      properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } },
+      required: ["x", "y", "w", "h"],
+    },
     doc_type: { type: ["string", "null"], enum: ["tax_invoice", "sales_order", "receipt", "delivery_note", "quotation", "other", null] },
     order_ref: S,
     salesperson: S,
@@ -369,7 +377,7 @@ const BILL_SCHEMA = {
     },
   },
   required: [
-    "supplier_name", "supplier_trn", "supplier_address", "supplier_phone", "supplier_email",
+    "supplier_name", "supplier_trn", "supplier_address", "supplier_phone", "supplier_email", "supplier_logo_box",
     "doc_type", "order_ref", "salesperson", "payment_terms", "rounding", "prices_include_vat", "expense_date", "invoice_number",
     "subtotal", "vat_amount", "total", "payment_method", "category_hint", "notes",
     "line_items", "confidence", "anomalies",
@@ -556,6 +564,9 @@ export async function POST(request: Request) {
         }
       }
     }
+
+    // Logo box: only a sensible rectangle reaches the phone (it cuts the logo out of the photo).
+    ex.supplier_logo_box = cleanLogoBox(ex.supplier_logo_box);
 
     // Never file Qave's own phone/email as the supplier's.
     const { data: loc } = await supabase

@@ -1,7 +1,7 @@
 # Strow Ops — Data Model
 
-**Last updated:** 2026-10-17
-**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`), POS daily reports (`0019`), POS menu sync (`0020`), Stock counts (`0021`) and Waste check (`0025`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
+**Last updated:** 2026-10-20
+**Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`), POS daily reports (`0019`), POS menu sync (`0020`), Stock counts (`0021`), Waste check (`0025`) and Supplier logos (`0027`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
 
 Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). All transactional tables include `location_id` FK. RLS enabled on every table.
 
@@ -354,3 +354,13 @@ Used vs what sales × recipes say, between two full counts. Applied via MCP; add
   - `detail` jsonb: `start` / `end` count lines, `bills`, `thrown`, `missing_start`, `missing_end`.
 - `stock_waste_period(p_from, p_to, p_location)`: `t0`, `t1`, `bills_from`, `bills_to`, `sales` (POS, incl. VAT) and `sales_ex_vat` weighted the same way, `items_sold`, `report_days`, `missing_report_days`.
 
+## Supplier logos (migration 0027, 2026-10-20)
+New columns on `suppliers` (additive, applied via MCP):
+- `logo_path` text: path of the logo in the private Storage bucket `supplier-logos` (`<supplier_id>/<ms>.jpg`). NULL = no logo yet; the app shows a category icon from the name (`src/lib/supplier-icon.ts`).
+- `logo_source` text, `check (logo_source in ('bill','upload'))`: `bill` = cut from the supplier's own bill photo; `upload` = picked by hand on the Vendors page.
+- `logo_updated_at` timestamptz: last change; also the `?v=` of `/api/supplier-logo/[id]` so devices re-fetch only when it changes.
+- `logo_checked_at` timestamptz: when the past-bills logo finder looked at this supplier, so it is never charged twice.
+
+Rules (`src/lib/supplier-logo.ts`): images are small JPEG / PNG / WebP data URLs (≤ 400 kB, the browser shrinks them to ≤ 320 px). A logo from a bill only fills an empty slot (the update is conditional on `logo_path is null`); an upload always replaces. The old image is removed from Storage on replace or remove. Strow AI's write policy denies the four logo columns.
+
+The bill reader (`/api/expense/extract`) returns `supplier_logo_box` `{x, y, w, h}` (fractions of the photo, top-left corner) or null; the server keeps it only when `cleanLogoBox` accepts it (inside the photo, not a speck, not over a third of the page).

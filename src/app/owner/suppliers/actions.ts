@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit/log";
-import { getOwnerActor } from "@/lib/auth/owner-session";
+import { getOwnerActor, getOwnerSession } from "@/lib/auth/owner-session";
+import { clearSupplierLogo, saveSupplierLogo } from "@/lib/supplier-logo";
 
 export async function createSupplier(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -77,5 +78,40 @@ export async function deleteSupplier(id: string) {
 
   revalidatePath("/owner/suppliers");
   revalidatePath("/owner");
+  return { ok: true };
+}
+
+// ── Logos ────────────────────────────────────────────────────────────────
+
+async function logoDone(id: string, action: string, after: Record<string, unknown>) {
+  const actor = await getOwnerActor();
+  await writeAudit({ actor_id: actor.id, actor_type: actor.type, action, entity_type: "supplier", entity_id: id, after_state: after });
+  revalidatePath("/owner/suppliers");
+  revalidatePath("/owner/expenses");
+}
+
+/** The owner picked a logo by hand (already shrunk in the browser). Replaces any logo. */
+export async function uploadSupplierLogo(id: string, dataUrl: string) {
+  if (!(await getOwnerSession())) return { error: "Sign in again" };
+  const r = await saveSupplierLogo(id, dataUrl, "upload");
+  if (!r.saved) return { error: r.error ?? "Couldn't save the logo" };
+  await logoDone(id, "logo_uploaded", { logo_source: "upload" });
+  return { ok: true };
+}
+
+/** A logo the past-bills finder cut out. Never replaces a logo that's already there. */
+export async function saveLogoFromBill(id: string, dataUrl: string) {
+  if (!(await getOwnerSession())) return { error: "Sign in again" };
+  const r = await saveSupplierLogo(id, dataUrl, "bill", { onlyIfEmpty: true });
+  if (r.error) return { error: r.error };
+  if (r.saved) await logoDone(id, "logo_from_bill", { logo_source: "bill" });
+  return { ok: true, saved: r.saved };
+}
+
+export async function removeSupplierLogo(id: string) {
+  if (!(await getOwnerSession())) return { error: "Sign in again" };
+  const r = await clearSupplierLogo(id);
+  if (!r.ok) return { error: r.error ?? "Couldn't remove the logo" };
+  await logoDone(id, "logo_removed", { logo_source: null });
   return { ok: true };
 }

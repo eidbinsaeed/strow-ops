@@ -4,6 +4,9 @@ import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { AddSupplierForm } from "./AddSupplierForm";
 import { DeleteSupplierButton } from "./DeleteSupplierButton";
+import { LogoCell } from "./LogoCell";
+import { LogoFinder } from "./LogoFinder";
+import { suppliersToCheck } from "@/lib/ai/find-logo";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -18,6 +21,9 @@ type SupplierRow = {
   address: string | null;
   notes: string | null;
   created_at: string;
+  logo_path: string | null;
+  logo_source: string | null;
+  logo_updated_at: string | null;
   categories: { name: string } | null;
 };
 
@@ -25,16 +31,17 @@ export default async function OwnerSuppliersPage() {
   const locale = await getLocale();
   const supabase = createServiceClient();
 
-  const [suppliersResult, categoriesResult] = await Promise.all([
+  const [suppliersResult, categoriesResult, logoTodo] = await Promise.all([
     supabase
       .from("suppliers")
-      .select("id, name, trn, contact, phone, email, address, notes, created_at, categories(name)")
+      .select("id, name, trn, contact, phone, email, address, notes, created_at, logo_path, logo_source, logo_updated_at, categories(name)")
       .order("name", { ascending: true }),
     supabase
       .from("categories")
       .select("id, name")
       .eq("is_active", true)
       .order("name", { ascending: true }),
+    suppliersToCheck().catch(() => []),
   ]);
 
   const suppliers = (suppliersResult.data ?? []) as unknown as SupplierRow[];
@@ -53,6 +60,8 @@ export default async function OwnerSuppliersPage() {
       </header>
 
       <AddSupplierForm categories={categories} />
+
+      <LogoFinder todo={logoTodo} />
 
       {suppliersResult.error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
@@ -84,6 +93,16 @@ export default async function OwnerSuppliersPage() {
                     {s.notes && (
                       <div className="text-xs text-neutral-500">{s.notes}</div>
                     )}
+                    <div className="mt-2">
+                      <LogoCell
+                        id={s.id}
+                        name={s.name}
+                        category={s.categories?.name ?? null}
+                        logoPath={s.logo_path}
+                        version={s.logo_updated_at}
+                        source={s.logo_source}
+                      />
+                    </div>
                   </td>
                   <td className="px-5 py-4 text-neutral-600">{s.trn ?? "—"}</td>
                   <td className="px-5 py-4 text-neutral-600">

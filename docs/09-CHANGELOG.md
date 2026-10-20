@@ -1,8 +1,26 @@
 # Strow Ops — Changelog
 
-**Last updated:** 2026-10-17
+**Last updated:** 2026-10-20
 
 ---
+
+## 2026-10-20 — Motion with GSAP, supplier logos from bills
+- **GSAP** (`gsap` 3.15 + `@gsap/react`), registered once in `src/lib/motion.ts`. Every animation checks Reduce motion first and only moves things that are already in their final place, so a slow script never hides anything. Approved mockups: canvas "Strow · Motion".
+  - `components/motion/Reveal`: Pulse comes in piece by piece on first load (hero, Autopilot, each card), once per visit, not on live refreshes. Pulse skips the old CSS rise (`.page.reveal-js`).
+  - `components/motion/FlipList`: rows glide to their new places when a list changes (GSAP Flip), new rows fade in. Used on Bills and Closings (filters, search) and on Pulse's Autopilot findings, where new findings from a live refresh slide in at the top. TableFilters now keeps the scroll position (`scroll: false`).
+  - **Needs you:** Apply flies the card off to the left, Dismiss to the right, and the next open finding comes in by itself. A toast says what happened, with Undo for 5 s. When nothing is left: a green tick that draws itself, "N handled".
+  - **Undo a dismissal:** `decideAction(id, "undo")` on a `rejected` item opens it again (`proposed`, or `info` when it has no fix); undoing an applied fix works as before.
+  - **Barista submit:** the Submit button shrinks into a round spinner while sending and opens back up on an error (`components/motion/MorphSubmit`). Today then shows "Close sent" / "Bill sent" with the drawing tick (`components/motion/SuccessTick`).
+  - **Live banners** drop in with a small spring and slide up when they leave (after ~7 s, on ×, or when tapped).
+  - Count-up numbers and the shimmering text were already there (`CountUpText`, `.ai-shimmer`). Lenis (smooth scroll) was left out: on phones it changes nothing, and it fights the app's own scrolling boxes.
+  - Cost: about 45 kB more script on the pages that animate.
+- **Supplier logos** (migration `0027_supplier_logos`, applied via MCP, additive): `suppliers.logo_path`, `logo_source` (`bill` | `upload`), `logo_updated_at`, `logo_checked_at`. Images in the private Storage bucket `supplier-logos` (made by the app on first use), served by `/api/supplier-logo/[id]?v=<logo_updated_at>` to signed-in owner or staff.
+  - **From each new bill:** the bill reader also returns `supplier_logo_box` (where the supplier's printed logo is, as fractions of the photo; checked by `cleanLogoBox`). The phone cuts the logo out of the photo (`src/lib/logo-crop.ts`, at most 320 px, JPEG on white), shows it next to "Supplier", and sends it with the bill. `submitExpense` saves it after the response only when that supplier has no logo yet. PDFs are skipped.
+  - **From past bills:** Vendors › "Logos from past bills": for each supplier with a bill photo and no logo, `/api/suppliers/logo-find` asks Sonnet 5 where the logo is on its latest photo (up to two photos, PDFs skipped; usage logged as `photo-logo`, about 1 cent a vendor); the owner's browser cuts it out and saves it. Each supplier is looked at once (`logo_checked_at`). 41 suppliers today, 31 with a bill photo.
+  - **By hand:** Vendors › each supplier: Add logo / Change / Remove (shrunk on the phone first). A hand-picked logo replaces any logo; a logo from a bill never replaces one.
+  - **Shown on** Bills and Vendors (`components/owner/SupplierLogo`). No logo yet: a category icon picked from the supplier's name or category, English or Arabic (`src/lib/supplier-icon.ts`: dairy, coffee, desserts, bakery, packaging, delivery apps, supermarkets, food service, fresh produce, pharmacy, cleaning, books, payments; else a shop).
+  - Strow AI cannot change the logo columns (write policy `denyColumns`).
+- Checked: `tsc`, `next build`; logo box and icon tests; and a headless Chromium run of the motion pieces on a throwaway page with mocked APIs (reveal, Flip on sort and filter, crop to 320×153, submit morph 358 → 52 px, Needs you fix → next card → Undo → fix → dismiss → all clear → Undo reopens → all clear, live banner). No screen was tested against the live data.
 
 ## 2026-10-17 — Waste check: what was used vs what sales × recipes say
 - **The sum, per item, between two full counts** (a full count = the shop and the store room counted on the same day; the store-room day, Saturday by default):

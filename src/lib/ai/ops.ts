@@ -18,7 +18,8 @@ export const WRITE_POLICY: Record<string, { ops: Kind[]; denyColumns?: string[] 
   closings: { ops: ["update", "insert"], denyColumns: ["grand_total", "over_short"] },
   expenses: { ops: ["update", "insert"] },
   expense_line_items: { ops: ["update", "insert", "delete"] },
-  suppliers: { ops: ["update", "insert"] },
+  // Logos are images in Storage: only the logo actions change these.
+  suppliers: { ops: ["update", "insert"], denyColumns: ["logo_path", "logo_source", "logo_updated_at", "logo_checked_at"] },
   categories: { ops: ["update", "insert"] },
   inventory_items: { ops: ["update", "insert"] },
   item_aliases: { ops: ["update", "insert", "delete"] },
@@ -248,6 +249,12 @@ export async function decideAction(id: string, decision: "approve" | "reject" | 
   }
 
   // undo
+  // A dismissal is undone by opening the item again (nothing was changed in the data).
+  if (a.status === "rejected") {
+    const back = a.ops?.length ? "proposed" : "info";
+    await db.from("ai_actions").update({ status: back, decided_at: null }).eq("id", id);
+    return { ok: true, status: back };
+  }
   if (a.status !== "applied") return { ok: false, error: "Only applied changes can be undone" };
   try {
     await revertOps(a.ops ?? [], a.before ?? []);

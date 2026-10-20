@@ -1,5 +1,7 @@
 "use client";
 
+import { cropLogo } from "@/lib/logo-crop";
+import { MorphSubmit } from "@/components/motion/MorphSubmit";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -42,6 +44,7 @@ type Extracted = {
   prices_include_vat?: boolean | null;
   matched_supplier_id?: string | null;
   trn_problem?: string | null;
+  supplier_logo_box?: { x: number; y: number; w: number; h: number } | null;
   expense_date: string | null;
   invoice_number: string | null;
   subtotal: number | null;
@@ -106,6 +109,8 @@ export function ExpenseFlow({
   const [imageMediaType, setImageMediaType] = useState<string>("image/jpeg");
   const [fileName, setFileName] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<Extracted | null>(null);
+  // The supplier's logo, cut from this bill photo in the browser (saved on the supplier if it has none yet).
+  const [logoData, setLogoData] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, startSubmitTransition] = useTransition();
   const [supplierMode, setSupplierMode] = useState<"existing" | "new">(
@@ -169,6 +174,10 @@ export function ExpenseFlow({
       const ext = json.extracted as Extracted;
       setExtracted(ext);
       setFormDate(pickedDate);
+      setLogoData(null);
+      if (ext.supplier_logo_box && mediaType !== "application/pdf") {
+        void cropLogo(dataUrl, ext.supplier_logo_box).then(setLogoData);
+      }
 
       if (ext.supplier_name || ext.matched_supplier_id) {
         const matched =
@@ -219,6 +228,7 @@ export function ExpenseFlow({
 
   function reset() {
     setStage("capture");
+    setLogoData(null);
     setImageDataUrl(null);
     setImageMediaType("image/jpeg");
     setFileName(null);
@@ -448,11 +458,16 @@ export function ExpenseFlow({
           name="photo_media_type"
           value={imageMediaType}
         />
+        <input type="hidden" name="supplier_logo_data" value={logoData ?? ""} />
 
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <label className="text-xs font-medium text-neutral-600">
+            <label className="flex items-center gap-2 text-xs font-medium text-neutral-600">
               Supplier
+              {logoData ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoData} alt="Supplier logo from this bill" className="h-6 max-w-[88px] rounded object-contain ring-1 ring-black/5" />
+              ) : null}
             </label>
             <span
               className={`text-[10px] uppercase tracking-wider ${
@@ -704,13 +719,14 @@ export function ExpenseFlow({
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="mt-2 w-full rounded-xl bg-strow-ink px-4 py-3.5 text-base font-medium text-white transition active:scale-95 disabled:opacity-50"
-        >
-          {isSubmitting ? "Submitting..." : "Submit expense"}
-        </button>
+        <div className="mt-2">
+          <MorphSubmit
+            pending={isSubmitting}
+            label="Submit expense"
+            pendingLabel="Submitting…"
+            className="w-full rounded-xl bg-strow-ink px-4 py-3.5 text-base font-medium text-white transition active:scale-95"
+          />
+        </div>
 
         <p className="text-center text-xs text-neutral-400">
           <Link href="/home" className="underline">

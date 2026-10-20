@@ -6,6 +6,7 @@ import { ordersFor, payParts } from "@/lib/pay-split";
 import { AppFeeLine } from "@/components/owner/AppFeeLine";
 import { Suspense } from "react";
 import { TableFilters } from "@/components/owner/TableFilters";
+import { FlipList } from "@/components/motion/FlipList";
 import { parseFilters } from "@/lib/filters";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
@@ -198,10 +199,11 @@ export default async function OwnerSalesPage({
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <FlipList className="space-y-3">
           {closings.map((c) => (
             <div
               key={c.id}
+              data-flip-id={c.id}
               className="rounded-2xl border border-neutral-200 bg-white p-4 md:p-5"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -246,7 +248,7 @@ export default async function OwnerSalesPage({
               </div>
             </div>
           ))}
-        </div>
+        </FlipList>
       )}
 
       <p className="mt-6 text-xs text-neutral-400">

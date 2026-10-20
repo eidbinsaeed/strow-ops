@@ -155,3 +155,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .pulse-bar, .pulse-ping, .pulse-fill, .pulse-scan, .pulse-breathe, .pulse-pop { animation: none !important; }
 }
+
+/* Pages that bring themselves in with GSAP (components/motion/Reveal) skip the CSS rise. */
+.page.reveal-js > * { animation: none; }

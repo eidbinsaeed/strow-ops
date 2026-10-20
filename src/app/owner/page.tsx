@@ -10,6 +10,8 @@ import { todayDubai } from "@/lib/dates";
 import { PushToggle } from "@/components/push/PushToggle";
 import { clockLabel, dubaiClock } from "@/lib/sales";
 import { appSalesOfClosing, feesForDay, sumFees } from "@/lib/app-fees";
+import { Reveal } from "@/components/motion/Reveal";
+import { FlipList } from "@/components/motion/FlipList";
 
 export const dynamic = "force-dynamic";
 
@@ -241,12 +243,14 @@ export default async function PulsePage() {
   const projected = N(kpi?.projected_net) - (daysClosedMtd > 0 ? (feesConfirmedMtd / daysClosedMtd) * N(kpi?.days_in_month) : 0);
 
   const FindingRows = ({ limit }: { limit: number }) => (
-    <>
+    <FlipList enterFrom="above">
       {findings.slice(0, limit).map((f) => {
         const tag = tagOf(f);
         return (
           <Link
             key={f.id}
+            data-flip-id={f.id}
+            data-reveal=""
             href={`/owner/needs-you?id=${f.id}` as Route}
             className="flex items-start gap-3 border-t border-[#EDF0F3] px-[18px] py-3.5 text-strow-ink transition hover:bg-neutral-50 active:bg-neutral-100 md:px-6"
           >
@@ -259,7 +263,7 @@ export default async function PulsePage() {
         );
       })}
       {pending > 0 ? (
-        <Link href="/owner/review" className="flex items-start gap-3 border-t border-[#EDF0F3] px-[18px] py-3.5 text-strow-ink transition hover:bg-neutral-50 md:px-6">
+        <Link href="/owner/review" data-flip-id="pending" data-reveal="" className="flex items-start gap-3 border-t border-[#EDF0F3] px-[18px] py-3.5 text-strow-ink transition hover:bg-neutral-50 md:px-6">
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-[15px] font-semibold leading-snug">
               {ar ? `${pending} بانتظار موافقتك` : `${pending} waiting for your approval`}
@@ -270,13 +274,13 @@ export default async function PulsePage() {
         </Link>
       ) : null}
       {totalFindings === 0 ? (
-        <p className="border-t border-[#EDF0F3] px-[18px] py-5 text-sm text-emerald-700 md:px-6">{ar ? "كل شيء سليم." : "All clear — nothing needs you."}</p>
+        <p data-flip-id="clear" className="border-t border-[#EDF0F3] px-[18px] py-5 text-sm text-emerald-700 md:px-6">{ar ? "كل شيء سليم." : "All clear — nothing needs you."}</p>
       ) : null}
-    </>
+    </FlipList>
   );
 
   return (
-    <div className="page">
+    <div className="page reveal-js">
       <header className="mb-5 hidden items-center gap-4 md:flex">
         <div>
           <h1 className="font-display text-[28px] font-bold tracking-[-0.6px]">{ar ? "النبض" : "Pulse"}</h1>
@@ -295,9 +299,9 @@ export default async function PulsePage() {
 
       <PushToggle variant="card" locale={locale} />
 
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_392px] md:gap-[18px]">
+      <Reveal className="grid gap-4 md:grid-cols-[minmax(0,1fr)_392px] md:gap-[18px]">
         {/* Hero + month strip */}
-        <section className="flex flex-col gap-4 md:col-start-1 md:row-start-1 md:gap-5 md:rounded-[32px] md:bg-white md:px-[30px] md:pb-[22px] md:pt-7">
+        <section data-reveal="" className="flex flex-col gap-4 md:col-start-1 md:row-start-1 md:gap-5 md:rounded-[32px] md:bg-white md:px-[30px] md:pb-[22px] md:pt-7">
           <div className="flex flex-col gap-1.5 px-1 pt-2 md:flex-row md:items-end md:justify-between md:px-0 md:pt-0">
             <div className="flex flex-col gap-1.5">
               <span className="text-sm text-neutral-500">
@@ -369,7 +373,7 @@ export default async function PulsePage() {
         </section>
 
         {/* Autopilot */}
-        <section className="flex flex-col rounded-[28px] bg-white pb-1.5 pt-[18px] md:col-start-2 md:row-span-4 md:row-start-1 md:self-start md:rounded-[32px] md:pt-6">
+        <section data-reveal="" className="flex flex-col rounded-[28px] bg-white pb-1.5 pt-[18px] md:col-start-2 md:row-span-4 md:row-start-1 md:self-start md:rounded-[32px] md:pt-6">
           <div className="flex items-center justify-between px-[18px] pb-2.5 md:px-6 md:pb-3.5">
             <Link href="/owner/needs-you" className="flex items-center gap-2.5">
               <span className="pulse-ping h-2.5 w-2.5 rounded-full bg-strow-blue" />
@@ -397,7 +401,7 @@ export default async function PulsePage() {
 
         {/* Pay split, average day, cash */}
         <div className="grid gap-4 md:col-start-1 md:row-start-2 md:grid-cols-3 md:gap-[18px]">
-          <div className="flex flex-col gap-3.5 rounded-[28px] bg-white px-[18px] py-5 md:p-[22px]">
+          <div data-reveal="" className="flex flex-col gap-3.5 rounded-[28px] bg-white px-[18px] py-5 md:p-[22px]">
             <span className="font-display text-lg font-semibold md:text-[17px]">{ar ? "كيف يدفع العملاء" : "How customers pay"}</span>
             {tot > 0 ? (
               <>
@@ -453,7 +457,7 @@ export default async function PulsePage() {
             )}
           </div>
 
-          <div className="flex flex-col gap-2.5 rounded-[28px] bg-white px-[18px] py-5 md:p-[22px]">
+          <div data-reveal="" className="flex flex-col gap-2.5 rounded-[28px] bg-white px-[18px] py-5 md:p-[22px]">
             <span className="font-display text-lg font-semibold md:text-[17px]">{ar ? "متوسط اليوم" : "Average day"}</span>
             {week.map((w) => {
               const low = week.length > 3 && w === week[week.length - 1];
@@ -470,7 +474,7 @@ export default async function PulsePage() {
             {!week.length ? <span className="text-sm text-neutral-500">{ar ? "لا توجد بيانات" : "Not enough closings yet"}</span> : null}
           </div>
 
-          <div className="flex flex-col gap-2 rounded-[28px] bg-white px-[18px] py-5 md:p-[22px]">
+          <div data-reveal="" className="flex flex-col gap-2 rounded-[28px] bg-white px-[18px] py-5 md:p-[22px]">
             <span className="font-display text-lg font-semibold md:text-[17px]">{ar ? "النقد في الصندوق" : "Cash on hand"}</span>
             <span className={`font-display text-[30px] font-bold tracking-[-0.6px] tabular-nums ${N(cash?.cash_on_hand) < 0 ? "text-[#9A1B12]" : ""}`}>
               {fmt(N(cash?.cash_on_hand))}
@@ -496,7 +500,7 @@ export default async function PulsePage() {
             { l: ar ? "متوسط الطلب" : "Average order", v: monthOrders > 0 ? fmt(monthOrderSales / monthOrders) : "—", red: false },
             { l: ar ? `إنفاق على ${N(itemsRow?.items)} صنف` : `Spent on ${N(itemsRow?.items)} items`, v: fmt(N(itemsRow?.spent)), red: false },
           ].map((s) => (
-            <div key={s.l} className="flex flex-col gap-1.5 rounded-3xl bg-white p-4">
+            <div key={s.l} data-reveal="" className="flex flex-col gap-1.5 rounded-3xl bg-white p-4">
               <span className="text-[13px] text-neutral-500">{s.l}</span>
               <span className={`font-display text-2xl font-bold tracking-[-0.5px] tabular-nums ${s.red ? "text-[#9A1B12]" : ""}`}>
                 <CountUpText text={s.v} from={0.4} />
@@ -507,7 +511,7 @@ export default async function PulsePage() {
 
         {/* Cash controls (count, withdraw, opening) */}
         {cash ? (
-          <section id="cash" className="scroll-mt-6 md:col-start-1 md:row-start-4">
+          <section id="cash" data-reveal="" className="scroll-mt-6 md:col-start-1 md:row-start-4">
             <CashControls
               cashOnHand={N(cash.cash_on_hand)}
               cashInToday={N(cash.cash_in_today)}
@@ -519,7 +523,7 @@ export default async function PulsePage() {
             />
           </section>
         ) : null}
-      </div>
+      </Reveal>
     </div>
   );
 }
