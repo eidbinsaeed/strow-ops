@@ -32,6 +32,8 @@ export type HomeData = {
   missingDays: number;
   cash: number | null;
   pins: PinView[];
+  /** A finished quarter whose VAT return is due in the next 28 days. */
+  vatDue: { label: string; due: string; days: number; href: string } | null;
 };
 
 const fmt0 = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -53,7 +55,7 @@ const KIND: Record<HomeFinding["kind"], { icon: IconName; color: string }> = {
  */
 export function HomeView({ d, locale }: { d: HomeData; locale: Locale }) {
   const ar = locale === "ar";
-  const nothing = !d.findings.length && !d.approvals && !d.missingDays;
+  const nothing = !d.findings.length && !d.approvals && !d.missingDays && !d.vatDue;
 
   const body = (
     <>
@@ -105,6 +107,16 @@ export function HomeView({ d, locale }: { d: HomeData; locale: Locale }) {
                 color={COLOR.orange}
                 label={ar ? `${d.missingDays} أيام بدون إقفال` : `${d.missingDays} day${d.missingDays === 1 ? "" : "s"} without a close`}
                 sub={ar ? "هذا الشهر · أكملها الآن" : "This month · fill them in now"}
+              />
+            ) : null}
+            {d.vatDue ? (
+              <Row
+                flipId="vat"
+                href={d.vatDue.href}
+                icon="vat"
+                color={COLOR.purple}
+                label={ar ? `إقرار الضريبة ${d.vatDue.label}` : `VAT return for ${d.vatDue.label}`}
+                sub={ar ? `آخر موعد ${d.vatDue.due} · بعد ${d.vatDue.days} يوماً` : `Due ${d.vatDue.due} · ${d.vatDue.days} day${d.vatDue.days === 1 ? "" : "s"} left`}
               />
             ) : null}
             {nothing ? (

@@ -6,6 +6,7 @@ import { addDays, dayLong, N, WD, WD_AR } from "@/lib/owner-month";
 import { buildPeriods, PERIOD_KEYS, type HomeBill, type HomeClosing, type PeriodKey } from "@/lib/home-periods";
 import { HomeView, type HomeData, type HomeFinding } from "@/components/apple/HomeView";
 import { loadPins } from "@/lib/ai/pins";
+import { addDays as addDaysIso, MONTHS as MONTH_NAMES, quartersSince } from "@/lib/reports/vat";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +139,15 @@ export default async function HomePage() {
   const periods = buildPeriods(rows, (billRes.data ?? []) as HomeBill[], last?.closing_date ?? null, today, ar);
   const cashRow = ((cashRes.data ?? [])[0] ?? null) as { cash_on_hand: Num } | null;
 
+  // The VAT return of the quarter that just ended, until its due date (28 days after).
+  const lastQ = quartersSince("2026-05-01", today).find((q) => q.done) ?? null;
+  const qDue = lastQ ? addDaysIso(lastQ.to, 28) : null;
+  const qDays = qDue ? Math.round((Date.parse(`${qDue}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000) : -1;
+  const vatDue: HomeData["vatDue"] =
+    lastQ && qDue && qDays >= 0 && qDays <= 28
+      ? { label: lastQ.short, due: `${Number(qDue.slice(8, 10))} ${MONTH_NAMES[Number(qDue.slice(5, 7)) - 1].slice(0, 3)}`, days: qDays, href: `/owner/reports/vat?q=${lastQ.key}` }
+      : null;
+
   const data: HomeData = {
     subtitle: last ? (ar ? `الأرقام حتى ${dayLong(last.closing_date, ar)}` : `Figures up to ${dayLong(last.closing_date, ar)}`) : dayLong(today, ar),
     periods,
@@ -150,6 +160,7 @@ export default async function HomePage() {
     missingDays,
     cash: cashRow ? N(cashRow.cash_on_hand) : null,
     pins,
+    vatDue,
   };
   return <HomeView d={data} locale={locale} />;
 }

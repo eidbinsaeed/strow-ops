@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-10-20 — VAT return by quarter, Excel for the accountant, all bills in one PDF
+
+- **Money › VAT** (`/owner/reports/vat`) rebuilt: quarter chips (default = the last finished quarter, now Jul–Sep 2026) or other dates. Shows the VAT to pay and the due date (28 days after the quarter: **28 Oct 2026**), the VAT 201 boxes (1a Abu Dhabi, 9, 12, 13, 14), month by month, every bill, and **Check before you file**.
+  - Sales: every closing that isn't rejected, VAT = total × 5 ÷ 105.
+  - Box 9 counts a bill's VAT only when the supplier's TRN (15 digits) is on file and the bill is not a proforma. Q3 2026: output 4,222.81, recoverable 310.03 (46 bills), **payable 3,912.78**; 206.46 VAT on 5 bills not counted for lack of a TRN (Dupak 171, HOTPACK 18.17, Golden Grains 17.10…), 76.00 on the Stock Roastery proforma; 20 bills have no photo.
+  - Maths in `src/lib/reports/vat.ts` (`buildVatReturn` is pure; checked against SQL).
+- **Excel file** (`/api/reports/vat/xlsx`, `src/lib/reports/vat-xlsx.ts`, exceljs): sheets VAT 201, Sales by day, Purchases (with "VAT counted" and why not), Months. The CSV export uses the same numbers.
+- **All bills in one PDF**, built in the phone's browser (pdf-lib, loaded on tap): the list of bills with totals and the page of each, then one A4 page per bill with date, supplier, invoice no., TRN, total and VAT on top. Photos (JPEG/PNG; WebP/HEIC converted) and PDF bills are fitted to the page. Save or Send (share sheet). Q3: 70 pages.
+- **Home › Needs you** shows "VAT return for Jul–Sep · Due 28 Oct" until the due date.
+
 ## 2026-10-20 — Strow AI: live steps, tables that point at the problem, full screen and pins
 
 - **Live steps.** While the AI works, each step ticks in with its result ("Totalling card sales by day · 19 rows"); when the answer arrives the list folds into "How I got this · 3 steps · 12 s", which opens again on tap. Saved with the answer as a `steps` block (new `note` stream event; tools return a short `note`).

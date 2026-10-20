@@ -1,53 +1,37 @@
 import { NextResponse } from "next/server";
-import { fetchSales, fetchExpenses, sumSales, sumExpenses } from "@/lib/reports/queries";
 import { csvResponse, toCsv } from "@/lib/reports/csv";
-import { currentQuarter, parsePeriod } from "@/lib/reports/period";
-import { fetchVatRate, vatLabel } from "@/lib/reports/pnl";
 import { getOwnerSession } from "@/lib/auth/owner-session";
+import { todayDubai } from "@/lib/dates";
+import { loadVatReturn, quartersSince } from "@/lib/reports/vat";
 
 export const runtime = "nodejs";
 
-export async function GET(request: Request) {
-  const sess = await getOwnerSession();
-  if (!sess) return NextResponse.json({ error: "unauth" }, { status: 401 });
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** The VAT 201 boxes as CSV (same numbers as the VAT page and its Excel file). */
+export async function GET(request: Request) {
+  if (!(await getOwnerSession())) return NextResponse.json({ error: "unauth" }, { status: 401 });
   try {
     const url = new URL(request.url);
-    const params: Record<string, string | undefined> = {};
-    url.searchParams.forEach((v, k) => (params[k] = v));
-    const period = parsePeriod(params, currentQuarter());
-
-    const [sales, expenses, vatRate] = await Promise.all([
-      fetchSales(period.from, period.to),
-      fetchExpenses(period.from, period.to),
-      fetchVatRate(),
-    ]);
-    const s = sumSales(sales);
-    const e = sumExpenses(expenses);
-    const outputVat = s.grand - s.grand / (1 + vatRate);
-    const inputVat = e.vat;
-    const net = outputVat - inputVat;
-
+    const today = todayDubai();
+    const qs = quartersSince("2026-05-01", today);
+    const q = qs.find((x) => x.done) ?? qs[0];
+    const from = DATE.test(url.searchParams.get("from") ?? "") ? (url.searchParams.get("from") as string) : q.from;
+    const to = DATE.test(url.searchParams.get("to") ?? "") ? (url.searchParams.get("to") as string) : q.to;
+    const v = await loadVatReturn(from, to, today);
     const rows: (string | number)[][] = [
-      [`Strow Ops - VAT Report (${vatLabel(vatRate)} UAE)`],
-      ["Period", period.label],
+      ["Qave Cafe - VAT return"],
+      ["Period", `${from} to ${to}`],
+      ["Due", v.due],
       [],
-      ["Output VAT (sales)"],
-      ["Total sales (incl. VAT)", s.grand],
-      ["VAT-exclusive base", s.grand / (1 + vatRate)],
-      ["Output VAT", outputVat],
-      [],
-      ["Input VAT (purchases)"],
-      ["Total purchases (incl. VAT)", e.total],
-      ["Subtotal (excl. VAT)", e.subtotal],
-      ["Input VAT", inputVat],
-      [],
-      ["Net VAT"],
-      [net >= 0 ? "Payable to FTA" : "Refundable from FTA", Math.abs(net)],
+      ["Box", "Description", "Amount (AED)", "VAT (AED)"],
+      ["1a", "Standard rated supplies in Abu Dhabi", v.boxes.b1aAmount, v.boxes.b1aVat],
+      ["9", "Standard rated expenses (bills with a supplier TRN)", v.boxes.b9Amount, v.boxes.b9Vat],
+      ["12", "Total value of due tax", "", v.boxes.b12],
+      ["13", "Total value of recoverable tax", "", v.boxes.b13],
+      ["14", v.boxes.b14 >= 0 ? "Payable tax for the period" : "Refundable tax for the period", "", Math.abs(v.boxes.b14)],
     ];
-
-    const filename = `strow-vat-${period.from}-to-${period.to}.csv`;
-    return csvResponse(filename, toCsv(rows));
+    return csvResponse(`qave-vat-${from}-to-${to}.csv`, toCsv(rows));
   } catch {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }

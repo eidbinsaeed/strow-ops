@@ -84,8 +84,11 @@ export function Row({
   detail,
   tone,
   flipId,
+  wrap = false,
 }: {
   flipId?: string;
+  /** Let the label and sub line wrap instead of cutting them off. */
+  wrap?: boolean;
   href: string;
   icon: IconName;
   color: string;
@@ -99,8 +102,8 @@ export function Row({
       <RowIcon name={icon} color={color} />
       <span className="apple-row-body flex min-h-[52px] min-w-0 flex-1 items-center gap-2 py-2 pe-3.5">
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-[17px] leading-[22px]">{label}</span>
-          {sub ? <span className="truncate text-[15px] leading-5 text-neutral-500">{sub}</span> : null}
+          <span className={`${wrap ? "" : "truncate "}text-[17px] leading-[22px]`}>{label}</span>
+          {sub ? <span className={`${wrap ? "" : "truncate "}text-[15px] leading-5 text-neutral-500`}>{sub}</span> : null}
         </span>
         {detail != null ? <span className={`shrink-0 text-[15px] tabular-nums ${tone === "warn" ? "font-semibold text-strow-amber" : "text-neutral-500"}`}>{detail}</span> : null}
         <Chevron />
