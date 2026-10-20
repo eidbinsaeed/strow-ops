@@ -25,7 +25,7 @@ export function OwnerNavContent({
     <>
       <nav className="flex flex-col gap-4 px-3 pb-4 md:pb-6">
         <div className="flex flex-col gap-0.5">
-          <OwnerNavLink href="/owner">{ar ? "اليوم" : "Today"}</OwnerNavLink>
+          <OwnerNavLink href="/owner">{ar ? "الرئيسية" : "Home"}</OwnerNavLink>
           <OwnerNavLink href="/owner/needs-you" badge={aiOpen}>{ar ? "يحتاجك" : "Needs you"}</OwnerNavLink>
           <OwnerNavLink href="/owner/review" badge={badges?.pending_count}>{ar ? "الموافقات" : "Approvals"}</OwnerNavLink>
           <OwnerNavLink href="/owner/assistant" exact>{ar ? "✦ Strow AI" : "✦ Strow AI"}</OwnerNavLink>

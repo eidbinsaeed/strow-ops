@@ -90,7 +90,7 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
             {cleared && handled ? `${handled} handled. ` : ""}Nothing needs you right now. Autopilot keeps watching.
           </p>
           <Link href="/owner" className="mt-2 rounded-full bg-strow-ink px-5 py-2.5 text-sm font-semibold text-white">
-            Back to Today
+            Back to Home
           </Link>
         </div>
         {toast ? <UndoToast refEl={toastRef} toast={toast} onUndo={() => undoFromToast(toast)} /> : null}
@@ -187,7 +187,7 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
       <div className="flex items-center justify-between">
         <Link href="/owner" className="flex min-h-11 items-center gap-1.5 text-[15px] text-strow-ink">
           <BackIcon />
-          Today
+          Home
         </Link>
         <span className="text-[13px] text-neutral-500">
           {i + 1} of {items.length}

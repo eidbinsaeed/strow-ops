@@ -1,5 +1,5 @@
 /**
- * Every owner page, grouped the way the phone tab bar is: Today · Money · Stock · Team,
+ * Every owner page, grouped the way the phone tab bar is: Home · Money · Stock · Team,
  * plus Account (behind the "E" button). The tab bar, the back pill, Search and the
  * section pages all read this one list, so a page has one name and one place.
  */
@@ -20,12 +20,13 @@ export type PageEntry = {
 };
 
 export type IconName =
-  | "today" | "alert" | "check" | "sparkle" | "sales" | "orders" | "doc" | "pos" | "store" | "repeat" | "owed"
+  | "today" | "home" | "alert" | "check" | "sparkle" | "sales" | "orders" | "doc" | "pos" | "store" | "repeat" | "owed"
   | "pnl" | "pie" | "vat" | "cash" | "box" | "list" | "trash" | "cup" | "tag" | "people" | "clock" | "folder"
   | "wallet" | "tree" | "shield" | "bell" | "globe" | "calendar" | "search";
 
 export const ICON: Record<IconName, string> = {
   today: "M4 20V12 M10 20V7 M16 20v-9 M22 20H2",
+  home: "M3 11 12 4l9 7 M5.5 9.5V20h4.5v-5.5h4V20h4.5V9.5",
   alert: "M12 5v9 M12 19h.01",
   check: "M5 12.5l4.5 4.5L19 7.5",
   sparkle: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z M19 17l.7 1.8 1.8.7-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z",
@@ -69,7 +70,7 @@ export const COLOR = {
 } as const;
 
 const G = {
-  today: { en: "Today", ar: "اليوم" },
+  today: { en: "Home", ar: "الرئيسية" },
   sales: { en: "Sales", ar: "المبيعات" },
   costs: { en: "Costs", ar: "التكاليف" },
   reports: { en: "Reports", ar: "التقارير" },
@@ -81,7 +82,7 @@ const G = {
 };
 
 export const PAGES: PageEntry[] = [
-  { href: "/owner", en: "Today", ar: "اليوم", section: "today", group: G.today, icon: "today", color: COLOR.blue, exact: true },
+  { href: "/owner", en: "Home", ar: "الرئيسية", section: "today", group: G.today, icon: "home", color: COLOR.blue, exact: true },
   { href: "/owner/needs-you", en: "Needs you", ar: "يحتاجك", section: "today", group: G.today, icon: "alert", color: COLOR.orange },
   { href: "/owner/review", en: "Approvals", ar: "الموافقات", section: "today", group: G.today, icon: "check", color: COLOR.green },
   { href: "/owner/assistant", en: "Strow AI", ar: "Strow AI", section: "today", group: G.today, icon: "sparkle", color: COLOR.blue, exact: true },
@@ -116,7 +117,7 @@ export const PAGES: PageEntry[] = [
 
 /** The section roots: what each tab (and the back pill) opens. */
 export const HUB: Record<Section, { href: string; en: string; ar: string }> = {
-  today: { href: "/owner", en: "Today", ar: "اليوم" },
+  today: { href: "/owner", en: "Home", ar: "الرئيسية" },
   money: { href: "/owner/hub/money", en: "Money", ar: "المال" },
   stock: { href: "/owner/hub/stock", en: "Stock", ar: "المخزون" },
   team: { href: "/owner/hub/team", en: "Team", ar: "الفريق" },

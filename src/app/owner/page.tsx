@@ -1,28 +1,18 @@
+import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/i18n/locale";
 import { todayDubai } from "@/lib/dates";
 import { addDays, dayLong, N, WD, WD_AR } from "@/lib/owner-month";
-import { TodayView, type TodayData, type TodayFinding } from "@/components/apple/TodayView";
+import { buildPeriods, PERIOD_KEYS, type HomeBill, type HomeClosing, type PeriodKey } from "@/lib/home-periods";
+import { HomeView, type HomeData, type HomeFinding } from "@/components/apple/HomeView";
 
 export const dynamic = "force-dynamic";
 
 type Num = number | string | null;
-type Closing = {
-  closing_date: string;
-  grand_total: Num;
-  cash_total: Num;
-  online_total: Num;
-  talabat_total: Num;
-  keeta_total: Num;
-  beanz_total: Num;
-  transactions: number | null;
-  baristas: { name: string } | { name: string }[] | null;
-};
+type Closing = HomeClosing & { baristas: { name: string } | { name: string }[] | null };
 type Finding = { id: string; status: string; severity: string; title: string; detail: string | null; ops: unknown[] | null };
 
 const RANK: Record<string, number> = { critical: 0, warn: 1, info: 2 };
-const LETTER_EN = ["S", "M", "T", "W", "T", "F", "S"];
-const LETTER_AR = ["ح", "ن", "ث", "ر", "خ", "ج", "س"];
 
 function firstSentence(t: string | null): string | null {
   if (!t) return null;
@@ -30,27 +20,35 @@ function firstSentence(t: string | null): string | null {
   return s.length > 90 ? `${s.slice(0, 89)}…` : s;
 }
 
-/** Today (the owner home): last close, what needs you, the day at a glance. The month lives in Money. */
-export default async function TodayPage() {
+/**
+ * Home (the owner's main dashboard): sales by week, month or year up to the last
+ * close, what needs you, the last close and cash. Closings arrive at the end of
+ * the day, so nothing here is framed around "today".
+ */
+export default async function HomePage() {
   const locale = await getLocale();
   const ar = locale === "ar";
   const db = createServiceClient();
   const today = todayDubai();
   const monthPrefix = today.slice(0, 8);
+  const yearStart = `${Number(today.slice(0, 4)) - 1}-12-01`; // a little before Jan 1, so January can compare with December
+  const saved = (await cookies()).get("home_period")?.value as PeriodKey | undefined;
 
-  const [closRes, findRes, waitC, waitB, posRes] = await Promise.all([
+  const [closRes, findRes, waitC, waitB, posRes, billRes, cashRes] = await Promise.all([
     db
       .from("closings")
       .select("closing_date, grand_total, cash_total, online_total, talabat_total, keeta_total, beanz_total, transactions, baristas(name)")
       .neq("status", "rejected")
       .lte("closing_date", today)
-      .gte("closing_date", addDays(today, -70))
+      .gte("closing_date", yearStart)
       .order("closing_date", { ascending: false })
-      .limit(80),
+      .range(0, 999),
     db.from("ai_actions").select("id, status, severity, title, detail, ops").in("status", ["proposed", "info"]).order("created_at", { ascending: false }).limit(60),
     db.from("closings").select("id", { count: "exact", head: true }).in("status", ["pending_review", "flagged"]),
     db.from("expenses").select("id", { count: "exact", head: true }).in("status", ["pending_review", "flagged"]),
     db.from("pos_daily_reports").select("business_date, generated_at, total_paid, orders_paid").order("business_date", { ascending: false }).limit(1),
+    db.from("expenses").select("expense_date, total").neq("status", "rejected").gte("expense_date", yearStart).lte("expense_date", today).range(0, 4999),
+    db.from("v_cash_position").select("cash_on_hand").limit(1),
   ]);
 
   const rows = (closRes.data ?? []) as Closing[];
@@ -64,19 +62,11 @@ export default async function TodayPage() {
   let missingDays = 0;
   for (let d = 1; d <= elapsed; d++) if (!byDate.has(`${monthPrefix}${String(d).padStart(2, "0")}`)) missingDays++;
 
-  let close: TodayData["close"] = null;
-  let glance: TodayData["glance"] = null;
+  let lastClose: HomeData["last"] = null;
   if (last) {
     const lastDate = last.closing_date;
     const dow = new Date(`${lastDate}T00:00:00Z`).getUTCDay();
-    const ago = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${lastDate}T00:00:00Z`)) / 86_400_000);
     const amount = byDate.get(lastDate) ?? N(last.grand_total);
-    const bars = Array.from({ length: 7 }, (_, k) => {
-      const iso = addDays(lastDate, k - 6);
-      const wd = new Date(`${iso}T00:00:00Z`).getUTCDay();
-      return { iso, letter: (ar ? LETTER_AR : LETTER_EN)[wd], value: byDate.has(iso) ? (byDate.get(iso) as number) : null, isLast: k === 6 };
-    });
-    const vals = bars.map((b) => b.value).filter((v): v is number => v != null);
     const prev = byDate.get(addDays(lastDate, -7));
     let compare: { pct: number; label: string } | null = null;
     if (prev && prev > 0) {
@@ -90,48 +80,27 @@ export default async function TodayPage() {
       };
     }
     const b = Array.isArray(last.baristas) ? last.baristas[0] : last.baristas;
-    close = {
-      title: ago > 6 ? `${ar ? "آخر إقفال" : "Last close"} · ${dayLong(lastDate, ar)}` : ar ? `إقفال ${WD_AR[dow]}` : `${WD[dow]}'s close`,
+    const orders = rows.filter((r) => r.closing_date === lastDate).reduce((a, r) => a + (r.transactions ?? 0), 0) || null;
+    lastClose = {
+      date: dayLong(lastDate, ar),
       who: b?.name ?? null,
       amount,
+      orders,
+      avgOrder: orders ? amount / orders : null,
       compare,
-      bars,
-      avg: vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0,
-      total: vals.reduce((a, v) => a + v, 0),
-    };
-
-    const split = last.talabat_total != null || last.keeta_total != null || last.beanz_total != null;
-    const apps = split ? N(last.talabat_total) + N(last.keeta_total) + N(last.beanz_total) : N(last.online_total);
-    const lead = split
-      ? [
-          { k: ar ? "طلبات" : "Talabat", v: N(last.talabat_total) },
-          { k: ar ? "كيتا" : "Keeta", v: N(last.keeta_total) },
-          { k: "Beanz", v: N(last.beanz_total) },
-        ].sort((x, y) => y.v - x.v)[0]
-      : null;
-    const total = N(last.grand_total);
-    glance = {
-      title: ar ? `${WD_AR[dow]} باختصار` : `${WD[dow]} at a glance`,
-      orders: last.transactions ?? null,
-      avgOrder: last.transactions ? total / last.transactions : null,
-      total,
-      appsPct: total > 0 ? Math.round((apps / total) * 100) : null,
-      appsAmount: apps,
-      appsLead: lead && lead.v > 0 ? lead.k : null,
-      cash: N(last.cash_total),
-      cashPct: total > 0 ? Math.round((N(last.cash_total) / total) * 100) : 0,
+      href: `/owner/closings?from=${lastDate}&to=${lastDate}`,
     };
   }
 
   // POS: "today so far" until the closing comes in, else a check against the last close.
   const pos = ((posRes.data ?? [])[0] ?? null) as { business_date: string; total_paid: Num; orders_paid: number } | null;
-  let posLine: TodayData["pos"] = null;
+  let posLine: HomeData["pos"] = null;
   if (pos) {
     const href = `/owner/sales?p=day&d=${pos.business_date}`;
     if (!last || pos.business_date > last.closing_date) {
       posLine = {
         kind: "ahead",
-        label: pos.business_date === today ? (ar ? "اليوم حتى الآن" : "Today so far") : `${dayLong(pos.business_date, ar)} · ${ar ? "الإقفال لم يصل" : "close not in yet"}`,
+        label: `${dayLong(pos.business_date, ar)} · ${ar ? "الإقفال لم يصل" : "close not in yet"}`,
         amount: N(pos.total_paid),
         orders: pos.orders_paid,
         href,
@@ -157,22 +126,27 @@ export default async function TodayPage() {
       const key = (f: { status: string; severity: string; hasOps: boolean }) => (f.status === "proposed" && f.hasOps ? 0 : f.status === "info" ? 1 + (RANK[f.severity] ?? 2) : 5);
       return key(a) - key(b);
     });
-  const findings: TodayFinding[] = all.slice(0, 4).map((f) => ({
+  const findings: HomeFinding[] = all.slice(0, 4).map((f) => ({
     id: f.id,
     title: f.title,
     sub: firstSentence(f.detail),
     kind: f.status === "info" ? "needs" : f.hasOps ? "fix" : "check",
   }));
 
-  const data: TodayData = {
-    dateLabel: dayLong(today, ar),
-    close,
+  const periods = buildPeriods(rows, (billRes.data ?? []) as HomeBill[], last?.closing_date ?? null, today, ar);
+  const cashRow = ((cashRes.data ?? [])[0] ?? null) as { cash_on_hand: Num } | null;
+
+  const data: HomeData = {
+    subtitle: last ? (ar ? `الأرقام حتى ${dayLong(last.closing_date, ar)}` : `Figures up to ${dayLong(last.closing_date, ar)}`) : dayLong(today, ar),
+    periods,
+    initial: saved && PERIOD_KEYS.includes(saved) ? saved : "month",
+    last: lastClose,
     pos: posLine,
     findings,
     openCount: all.length,
     approvals: (waitC.count ?? 0) + (waitB.count ?? 0),
     missingDays,
-    glance,
+    cash: cashRow ? N(cashRow.cash_on_hand) : null,
   };
-  return <TodayView d={data} locale={locale} />;
+  return <HomeView d={data} locale={locale} />;
 }

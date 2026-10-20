@@ -4,6 +4,13 @@
 
 ---
 
+## 2026-10-20 — Today becomes Home, the main dashboard
+
+- Closings come in at the end of the day, so "today" never had figures. The first tab is now **Home**: sales by **Week · Month · Year**, all ending on the last close ("Figures up to Monday 19 October").
+- The sales card: total, change (week vs the 7 days before, month vs the same days last month), bars you can tap or drag across to read any day or month, the daily or monthly average line, and "On track for" while a month is running. The choice is remembered (cookie `home_period`).
+- Under it, At a glance for the same period: orders, average order, delivery-app share, bills (and % of sales). Then Needs you, Last close (with the POS check) and Cash on hand.
+- Maths in `src/lib/home-periods.ts` (pure, no database); view in `components/apple/HomeView.tsx` and `HomePeriod.tsx`.
+
 ## 2026-10-20 — Apple look, step 1: Today, the tab bar and the sections
 - **Look** (approved canvas "Strow · Apple style"): `.apple-theme` on top of `.pulse-theme` (`ThemeScope`) for every owner page — iOS grey ground #F2F2F7, white cards, SF system type, blue #1E6EF4 actions (blue for primary buttons and links styled `bg-strow-ink`), orange #C55300 for "look at this", glass buttons (`.glass`, `.glass-bar`). Pages not yet rebuilt keep their layout and take the new colours and type.
 - **Phone navigation:** the old Pulse · Sales · AI · Reports · More bar and the slide-out menu are replaced by a glass tab bar **Today · Money · Stock · Team** plus a round **Search** button (`components/apple/TabBar`; the Today badge = open findings + approvals) and a top row (`PhoneTopBar`) with a back pill to the page's section ("‹ Money"), ✦ Strow AI and the account button. One list of every page, its section, icon and colour: `src/lib/sections.ts` (tested: 23 paths land in the right section).

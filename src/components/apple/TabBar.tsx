@@ -11,9 +11,7 @@ const HIDE = ["/owner/assistant", "/owner/finance/assistant", "/owner/finance/cl
 const TAB_ICON: Record<Exclude<Section, "account">, React.ReactNode> = {
   today: (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <rect x="3" y="12" width="4.6" height="9" rx="1.6" />
-      <rect x="9.7" y="7" width="4.6" height="14" rx="1.6" />
-      <rect x="16.4" y="3" width="4.6" height="18" rx="1.6" />
+      <path d="M11.1 2.7a1.4 1.4 0 0 1 1.8 0l8.3 7a1 1 0 0 1-1.3 1.6l-.4-.3v8.6a2 2 0 0 1-2 2h-3v-6.1h-5v6.1h-3a2 2 0 0 1-2-2V11l-.4.3a1 1 0 0 1-1.3-1.6z" />
     </svg>
   ),
   money: (
@@ -38,7 +36,7 @@ const TAB_ICON: Record<Exclude<Section, "account">, React.ReactNode> = {
   ),
 };
 
-/** Phone navigation, iOS style: Today · Money · Stock · Team in a glass pill, and Search on its own. */
+/** Phone navigation, iOS style: Home · Money · Stock · Team in a glass pill, and Search on its own. */
 export function TabBar({ locale, badge = 0 }: { locale: Locale; badge?: number }) {
   const p = usePathname() ?? "";
   if (HIDE.some((h) => p === h || p.startsWith(`${h}/`))) return null;
