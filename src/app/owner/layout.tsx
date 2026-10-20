@@ -2,11 +2,11 @@ import Link from "next/link";
 import { getOwnerSession } from "@/lib/auth/owner-session";
 import { createServiceClient } from "@/lib/supabase/server";
 import { OwnerNavContent } from "@/components/owner/OwnerNav";
-import { MobileNavDrawer } from "@/components/owner/MobileNavDrawer";
 import { LocaleProvider } from "@/components/owner/LocaleProvider";
 import { LangToggle } from "@/components/owner/LangToggle";
 import { getLocale, dirFor } from "@/lib/i18n/locale";
-import { MobileTabBar } from "@/components/owner/MobileTabBar";
+import { TabBar } from "@/components/apple/TabBar";
+import { PhoneTopBar } from "@/components/apple/PhoneTopBar";
 import { AiFab } from "@/components/ai/AiFab";
 import { PageAiBar } from "@/components/ai/PageAiBar";
 import { ThemeScope } from "@/components/pulse/ThemeScope";
@@ -55,10 +55,8 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
   return (
     <LocaleProvider locale={locale}>
       <ThemeScope lang={locale} dir={dir} className="flex min-h-dvh flex-col md:flex-row">
-        {/* Phone: header + slide-out menu */}
-        <MobileNavDrawer locale={locale}>
-          <OwnerNavContent signedIn={signedIn} locale={locale} badges={badges} aiOpen={aiOpen} />
-        </MobileNavDrawer>
+        {/* Phone: back pill, Strow AI and account (the tab bar is at the bottom) */}
+        <PhoneTopBar locale={locale} />
 
         {/* Desktop: sidebar */}
         <aside className="hidden print:hidden md:sticky md:top-0 md:flex md:h-dvh md:w-[248px] md:flex-shrink-0 md:flex-col md:overflow-y-auto md:py-7">
@@ -79,7 +77,7 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
           <PageAiBar locale={locale} />
           {children}
         </main>
-        <MobileTabBar locale={locale} aiBadge={aiOpen} />
+        <TabBar locale={locale} badge={aiOpen + (badges?.pending_count ?? 0)} />
         <AiFab />
         <LiveUpdates />
       </ThemeScope>

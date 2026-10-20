@@ -25,13 +25,14 @@ export function OwnerNavContent({
     <>
       <nav className="flex flex-col gap-4 px-3 pb-4 md:pb-6">
         <div className="flex flex-col gap-0.5">
-          <OwnerNavLink href="/owner">{ar ? "النبض" : "Pulse"}</OwnerNavLink>
+          <OwnerNavLink href="/owner">{ar ? "اليوم" : "Today"}</OwnerNavLink>
           <OwnerNavLink href="/owner/needs-you" badge={aiOpen}>{ar ? "يحتاجك" : "Needs you"}</OwnerNavLink>
           <OwnerNavLink href="/owner/review" badge={badges?.pending_count}>{ar ? "الموافقات" : "Approvals"}</OwnerNavLink>
           <OwnerNavLink href="/owner/assistant" exact>{ar ? "✦ Strow AI" : "✦ Strow AI"}</OwnerNavLink>
         </div>
 
         <NavGroup label={ar ? "المبيعات" : "Sales"}>
+          <OwnerNavLink href="/owner/hub/money">{ar ? "الشهر والنقد" : "Month and cash"}</OwnerNavLink>
           <OwnerNavLink href="/owner/sales" also={["/owner/insights"]}>{ar ? "نظرة عامة" : "Overview"}</OwnerNavLink>
           <OwnerNavLink href="/owner/orders">{ar ? "الطلبات" : "Orders"}</OwnerNavLink>
           <OwnerNavLink href="/owner/closings" badge={badges?.missing_float_count}>{ar ? "الإقفالات" : "Closings"}</OwnerNavLink>
