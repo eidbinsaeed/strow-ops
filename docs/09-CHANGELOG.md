@@ -4,6 +4,13 @@
 
 ---
 
+## 2026-10-20 — Strow AI: live steps, tables that point at the problem, full screen and pins
+
+- **Live steps.** While the AI works, each step ticks in with its result ("Totalling card sales by day · 19 rows"); when the answer arrives the list folds into "How I got this · 3 steps · 12 s", which opens again on tap. Saved with the answer as a `steps` block (new `note` stream event; tools return a short `note`).
+- **Tables.** Sorting and filtering slide the rows (GSAP Flip). Rows the AI flags (`highlight_rows` + `highlight_note`), or any row with a non-zero Gap/Difference column, are tinted orange and flash once, with "Only these" to filter. `totals: true` adds a totals row. Tap any number → "Ask why" sends "In the table "…": why is POS 430 for 14 Oct?". Charts get the same "Ask why" on the tapped point.
+- **Full screen.** ⤢ on every chart and table grows it out of the card to full screen (clip-path) and back.
+- **Pin to Home.** 📌 pins a chart or table to Home ("Pinned from Strow AI"). When the AI gave `source_sql` (now part of show_chart / show_table), the pin is rebuilt from that SQL through `ai_read_query` on every Home load ("Live"); otherwise it is a dated snapshot. New table `ai_pins` (migration 0028, applied). API: `POST/DELETE /api/ai/pins`.
+
 ## 2026-10-20 — Today becomes Home, the main dashboard
 
 - Closings come in at the end of the day, so "today" never had figures. The first tab is now **Home**: sales by **Week · Month · Year**, all ending on the last close ("Figures up to Monday 19 October").

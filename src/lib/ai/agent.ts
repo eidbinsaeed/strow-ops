@@ -169,8 +169,12 @@ export async function runAgent(opts: {
       messages.push({ role: "assistant", content: content as unknown as MessageParam["content"] });
       const results: ToolResultBlockParam[] = [];
       for (const tu of toolUses) {
-        opts.ctx.emit({ t: "status", text: statusFor(tu.name, tu.input) });
+        // Showing a chart or table is not a step worth listing — the block itself appears.
+        const listed = !DISPLAY_TOOLS.has(tu.name);
+        if (listed) opts.ctx.emit({ t: "status", text: statusFor(tu.name, tu.input) });
         const out = await exec(tu.name, tu.input, opts.ctx);
+        if (listed && out.isError) opts.ctx.emit({ t: "note", text: "didn't work, trying another way", ok: false });
+        else if (listed && out.note) opts.ctx.emit({ t: "note", text: out.note });
         results.push({
           type: "tool_result",
           tool_use_id: tu.id,

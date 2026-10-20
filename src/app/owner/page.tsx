@@ -5,6 +5,7 @@ import { todayDubai } from "@/lib/dates";
 import { addDays, dayLong, N, WD, WD_AR } from "@/lib/owner-month";
 import { buildPeriods, PERIOD_KEYS, type HomeBill, type HomeClosing, type PeriodKey } from "@/lib/home-periods";
 import { HomeView, type HomeData, type HomeFinding } from "@/components/apple/HomeView";
+import { loadPins } from "@/lib/ai/pins";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ export default async function HomePage() {
   const yearStart = `${Number(today.slice(0, 4)) - 1}-12-01`; // a little before Jan 1, so January can compare with December
   const saved = (await cookies()).get("home_period")?.value as PeriodKey | undefined;
 
-  const [closRes, findRes, waitC, waitB, posRes, billRes, cashRes] = await Promise.all([
+  const [closRes, findRes, waitC, waitB, posRes, billRes, cashRes, pins] = await Promise.all([
     db
       .from("closings")
       .select("closing_date, grand_total, cash_total, online_total, talabat_total, keeta_total, beanz_total, transactions, baristas(name)")
@@ -49,6 +50,7 @@ export default async function HomePage() {
     db.from("pos_daily_reports").select("business_date, generated_at, total_paid, orders_paid").order("business_date", { ascending: false }).limit(1),
     db.from("expenses").select("expense_date, total").neq("status", "rejected").gte("expense_date", yearStart).lte("expense_date", today).range(0, 4999),
     db.from("v_cash_position").select("cash_on_hand").limit(1),
+    loadPins().catch(() => []),
   ]);
 
   const rows = (closRes.data ?? []) as Closing[];
@@ -147,6 +149,7 @@ export default async function HomePage() {
     approvals: (waitC.count ?? 0) + (waitB.count ?? 0),
     missingDays,
     cash: cashRow ? N(cashRow.cash_on_hand) : null,
+    pins,
   };
   return <HomeView d={data} locale={locale} />;
 }

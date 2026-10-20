@@ -364,3 +364,6 @@ New columns on `suppliers` (additive, applied via MCP):
 Rules (`src/lib/supplier-logo.ts`): images are small JPEG / PNG / WebP data URLs (≤ 400 kB, the browser shrinks them to ≤ 320 px). A logo from a bill only fills an empty slot (the update is conditional on `logo_path is null`); an upload always replaces. The old image is removed from Storage on replace or remove. Strow AI's write policy denies the four logo columns.
 
 The bill reader (`/api/expense/extract`) returns `supplier_logo_box` `{x, y, w, h}` (fractions of the photo, top-left corner) or null; the server keeps it only when `cleanLogoBox` accepts it (inside the photo, not a speck, not over a third of the page).
+
+### ai_pins (0028)
+Charts/tables pinned from Strow AI to Home. `kind` chart|table, `title`, `block` jsonb (the block as shown — the snapshot), `source_sql` (read-only SELECT that rebuilds it: chart = column `label` + one column per series name; table = one column per column title; NULL = snapshot), `chat_id` → ai_chats (set null), `position`, `created_at`. RLS on, service role only; not in the AI's schema map (ai_ prefix).

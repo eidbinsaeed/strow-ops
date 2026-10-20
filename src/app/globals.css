@@ -206,3 +206,8 @@ body {
 @media (prefers-reduced-motion: reduce) { .apple-bar { animation: none; } }
 /* Grouped lists: inset hairlines between rows, starting after the icon. */
 .apple-rows > .apple-row + .apple-row .apple-row-body { border-top: 1px solid #E5E5EA; }
+
+/* Strow AI tables: rows the AI flagged (or with a non-zero gap). */
+tr.ai-flag > td { background: #FFF6EA; }
+tr.ai-flag > td:first-child { box-shadow: inset 3px 0 0 #C55300; }
+[dir="rtl"] tr.ai-flag > td:first-child { box-shadow: inset -3px 0 0 #C55300; }

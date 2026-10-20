@@ -5,6 +5,7 @@ import type { Tool, TextBlockParam, ImageBlockParam } from "@anthropic-ai/sdk/re
 import { createServiceClient } from "@/lib/supabase/server";
 import { downloadDriveFile } from "@/lib/drive/upload";
 import { closeOpenItem, recordAction, validateOps } from "./ops";
+import { runSource } from "./pins";
 import type { ActionBlock, Block, ChartBlock, ChartKind, StatsBlock, StreamEvent, TableBlock } from "./types";
 
 export type AgentMode = "chat" | "autopilot";
@@ -23,6 +24,8 @@ export type ToolContext = {
 export type ToolOutcome = {
   content: string | Array<TextBlockParam | ImageBlockParam>;
   isError?: boolean;
+  /** Two or three words for the owner's step list ("38 rows", "Applied"). */
+  note?: string;
 };
 
 type Json = Record<string, unknown>;
@@ -177,19 +180,33 @@ export const TOOLS: Record<string, Tool> = {
           },
         },
         unit: { type: "string", description: "e.g. AED, %, kg" },
+        source_sql: {
+          type: "string",
+          description:
+            "Optional, for charts of something that keeps changing: ONE read-only SELECT that rebuilds this chart from scratch, using current_date for relative ranges. Alias the label column as label and one column per series, named exactly like the series (e.g. sum(card_total) as \"Card\"). Lets the owner pin it to Home and it stays up to date.",
+        },
       },
       required: ["kind", "title", "labels", "series"],
     },
   },
   show_table: {
     name: "show_table",
-    description: "Show a sortable table in the chat.",
+    description:
+      "Show a sortable table in the chat. The owner can tap any number to ask you about it. Point at the rows that matter with highlight_rows (they are tinted and flash once).",
     input_schema: {
       type: "object",
       properties: {
         title: { type: "string" },
         columns: { type: "array", items: { type: "string" } },
         rows: { type: "array", items: { type: "array", items: { type: ["string", "number", "null"] } } },
+        highlight_rows: { type: "array", items: { type: "number" }, description: "0-based indexes of rows to flag, e.g. days where the closing and the POS don't match" },
+        highlight_note: { type: "string", description: "One short line on why those rows are flagged, e.g. 'Closing and POS differ'" },
+        totals: { type: "boolean", description: "Add a totals row for the number columns (only when a sum makes sense — not for averages, prices or percentages)" },
+        source_sql: {
+          type: "string",
+          description:
+            "Optional: ONE read-only SELECT that rebuilds this table, with one column per column title, aliased exactly (e.g. closing_date as \"Date\"). Use current_date for relative ranges. Lets the owner pin it to Home and it stays up to date.",
+        },
       },
       required: ["columns", "rows"],
     },
@@ -306,7 +323,28 @@ export function sanitizeTable(i: Json): TableBlock {
       return String(v).slice(0, 200);
     }),
   );
-  return { type: "table", title: str(i.title)?.slice(0, 120) ?? undefined, columns, rows };
+  const highlight = (Array.isArray(i.highlight_rows) ? i.highlight_rows : [])
+    .map((x) => Math.trunc(num(x)))
+    .filter((x, k, a) => x >= 0 && x < rows.length && a.indexOf(x) === k)
+    .slice(0, 100);
+  return {
+    type: "table",
+    title: str(i.title)?.slice(0, 120) ?? undefined,
+    columns,
+    rows,
+    ...(highlight.length ? { highlight } : {}),
+    ...(str(i.highlight_note) ? { highlightNote: (str(i.highlight_note) as string).slice(0, 120) } : {}),
+    ...(i.totals === true ? { totals: true } : {}),
+  };
+}
+
+/** Keeps the block's source SQL only when it really rebuilds the block; tells the model why not otherwise. */
+async function withSource<B extends ChartBlock | TableBlock>(block: B, i: Json): Promise<{ block: B; note: string }> {
+  const sql = str(i.source_sql);
+  if (!sql) return { block, note: "" };
+  const r = await runSource(block, sql.slice(0, 4000)).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+  if ("error" in r) return { block, note: ` (source_sql was dropped: ${r.error}. The chart is shown, but it can only be pinned as a snapshot.)` };
+  return { block: { ...block, source: sql.slice(0, 4000) }, note: " It can be pinned to Home and will stay up to date." };
 }
 
 export function sanitizeStats(i: Json): StatsBlock {
@@ -338,7 +376,7 @@ async function queryDb(i: Json): Promise<ToolOutcome> {
   const rows = (Array.isArray(data) ? data : []) as unknown[];
   let text = JSON.stringify(rows);
   if (text.length > 8000) text = text.slice(0, 8000) + ` … (truncated, ${rows.length} rows — aggregate in SQL or add LIMIT)`;
-  return { content: `${rows.length} row(s): ${text}` };
+  return { content: `${rows.length} row(s): ${text}`, note: rows.length === 0 ? "nothing found" : rows.length === 1 ? "1 row" : `${rows.length} rows` };
 }
 
 async function change(i: Json, ctx: ToolContext, applyNow: boolean): Promise<ToolOutcome> {
@@ -381,6 +419,7 @@ async function change(i: Json, ctx: ToolContext, applyNow: boolean): Promise<Too
       res.status === "applied"
         ? `Applied (action ${res.id}). The owner can undo it.`
         : `Saved as a proposal for the owner to approve (action ${res.id}).`,
+    note: res.status === "applied" ? `done · ${ops.length} change${ops.length === 1 ? "" : "s"}` : "waiting for your OK",
   };
 }
 
@@ -409,7 +448,7 @@ async function flag(i: Json, ctx: ToolContext): Promise<ToolOutcome> {
     ctx.blocks.push(block);
     ctx.emit({ t: "block", block });
   }
-  return { content: `Flagged for the owner (action ${res.id}).` };
+  return { content: `Flagged for the owner (action ${res.id}).`, note: "added to Needs you" };
 }
 
 function mediaType(m: string): ImageBlockParam["source"]["media_type"] | null {
@@ -452,6 +491,7 @@ async function viewPhoto(i: Json, ctx: ToolContext): Promise<ToolOutcome> {
   if (file.bytes.length > 4_800_000) return { content: "Photo too large to view.", isError: true };
   ctx.photosLeft -= 1;
   return {
+    note: "read",
     content: [
       { type: "text", text: `Photo of ${table} ${id}:` },
       { type: "image", source: { type: "base64", media_type: mt, data: file.bytes.toString("base64") } },
@@ -479,7 +519,7 @@ async function resolveItem(i: Json, ctx: ToolContext): Promise<ToolOutcome> {
     ctx.blocks.push(block);
     ctx.emit({ t: "block", block });
   }
-  return { content: "Closed — it no longer shows under Needs you." };
+  return { content: "Closed — it no longer shows under Needs you.", note: "closed" };
 }
 
 async function remember(i: Json): Promise<ToolOutcome> {
@@ -492,7 +532,7 @@ async function remember(i: Json): Promise<ToolOutcome> {
     .select("id")
     .single();
   if (error) return { content: error.message, isError: true };
-  return { content: `Saved to memory (${(data as { id: string }).id}).` };
+  return { content: `Saved to memory (${(data as { id: string }).id}).`, note: "saved" };
 }
 
 async function forget(i: Json): Promise<ToolOutcome> {
@@ -526,10 +566,16 @@ export async function executeTool(name: string, input: unknown, ctx: ToolContext
         return await remember(i);
       case "forget":
         return await forget(i);
-      case "show_chart":
-        return show(ctx, sanitizeChart(i));
-      case "show_table":
-        return show(ctx, sanitizeTable(i));
+      case "show_chart": {
+        const { block, note } = await withSource(sanitizeChart(i), i);
+        const out = show(ctx, block);
+        return { ...out, content: `${out.content}${note}` };
+      }
+      case "show_table": {
+        const { block, note } = await withSource(sanitizeTable(i), i);
+        const out = show(ctx, block);
+        return { ...out, content: `${out.content}${note}` };
+      }
       case "show_stats":
         return show(ctx, sanitizeStats(i));
       case "suggest_followups": {

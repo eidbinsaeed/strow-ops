@@ -8,6 +8,7 @@ import type { Period, PeriodKey } from "@/lib/home-periods";
 import type { Locale } from "@/lib/i18n/dict";
 import { COLOR, type IconName } from "@/lib/sections";
 import { PeriodCard, PeriodProvider, PeriodTiles } from "./HomePeriod";
+import { PinnedCards, type PinView } from "./PinnedCards";
 import { Group, Row, Rows, LargeTitle } from "./ui";
 
 export type HomeFinding = { id: string; title: string; sub: string | null; kind: "needs" | "fix" | "check" };
@@ -30,6 +31,7 @@ export type HomeData = {
   approvals: number;
   missingDays: number;
   cash: number | null;
+  pins: PinView[];
 };
 
 const fmt0 = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -44,7 +46,7 @@ const KIND: Record<HomeFinding["kind"], { icon: IconName; color: string }> = {
  * last close — closings come in at the end of the day), what needs you, the
  * last close and the cash in the drawer.
  *
- * Phone order: sales card → Needs you → tiles → last close → cash. On a wide
+ * Phone order: sales card → Needs you → tiles → pinned AI charts → last close → cash. On a wide
  * screen the right-hand column holds Needs you, the last close and cash. The
  * two column wrappers are `display: contents` on the phone so `order` can
  * interleave them.
@@ -66,6 +68,7 @@ export function HomeView({ d, locale }: { d: HomeData; locale: Locale }) {
             {ar ? "لا توجد إقفالات بعد" : "No closings yet"}
           </section>
         )}
+        {d.pins.length ? <PinnedCards pins={d.pins} ar={ar} className="order-4" /> : null}
       </div>
 
       <div className="contents md:flex md:min-w-0 md:flex-col md:gap-6">
@@ -122,7 +125,7 @@ export function HomeView({ d, locale }: { d: HomeData; locale: Locale }) {
 
         {/* Last close */}
         {d.last ? (
-          <Group big title={ar ? "آخر إقفال" : "Last close"} aside={d.last.who ? <span className="text-[15px] text-neutral-500">{d.last.who}</span> : undefined} className="order-4">
+          <Group big title={ar ? "آخر إقفال" : "Last close"} aside={d.last.who ? <span className="text-[15px] text-neutral-500">{d.last.who}</span> : undefined} className="order-5">
             <div className="flex flex-col rounded-3xl bg-white px-4 pb-3.5 pt-3.5">
               <Link href={d.last.href as Route} className="press flex items-center justify-between gap-3">
                 <span className="flex min-w-0 flex-col">
@@ -166,7 +169,7 @@ export function HomeView({ d, locale }: { d: HomeData; locale: Locale }) {
 
         {/* Cash */}
         {d.cash != null ? (
-          <Group className="order-5">
+          <Group className="order-6">
             <Rows>
               <Row href="/owner/hub/money#cash" icon="cash" color={COLOR.orange} label={ar ? "النقد المتوفر" : "Cash on hand"} detail={`AED ${fmt0(d.cash)}`} />
               <Row href="/owner/hub/money" icon="pnl" color={COLOR.blue} label={ar ? "المال وأرقام الشهر" : "Money and month figures"} />

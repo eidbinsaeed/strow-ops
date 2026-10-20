@@ -53,6 +53,7 @@ export function TabBar({ locale, badge = 0 }: { locale: Locale; badge?: number }
               key={t}
               href={HUB[t].href as Route}
               aria-current={on ? "page" : undefined}
+              data-tab-home={t === "today" ? "" : undefined}
               className={`relative flex h-[52px] flex-col items-center justify-center gap-0.5 rounded-[26px] text-[11px] font-semibold transition-colors ${on ? "bg-black/[0.06] text-strow-blue" : "text-neutral-900"}`}
             >
               {TAB_ICON[t]}

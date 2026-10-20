@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Block, FollowupsBlock, StreamEvent } from "@/lib/ai/types";
+import type { Block, FollowupsBlock, Step, StepsBlock, StreamEvent } from "@/lib/ai/types";
+import { applyStepEvent, stepsBlock, visibleSteps } from "@/lib/ai/steps";
+import { ChatToolsProvider } from "./ChatTools";
+import { Steps } from "./Steps";
 import { Chart, DataTable, Stats } from "./Charts";
 import { Markdown } from "./Markdown";
 import { ActionCard } from "./ActionButtons";
@@ -17,6 +20,7 @@ export type ChatMessage = {
   pending?: boolean;
   status?: string;
   startedAt?: number;
+  steps?: Step[];
 };
 
 const COPY = {
@@ -199,7 +203,8 @@ export function AssistantChat({
             onChatId?.(ev.chatId);
             if (variant === "full") window.history.replaceState(window.history.state, "", `${basePath}?c=${ev.chatId}`);
           }
-        } else if (ev.t === "status") patch((m) => ({ ...m, status: ev.text }));
+        } else if (ev.t === "status") patch((m) => ({ ...m, status: ev.text, steps: applyStepEvent(m.steps ?? [], ev) }));
+        else if (ev.t === "note") patch((m) => ({ ...m, steps: applyStepEvent(m.steps ?? [], ev) }));
         else if (ev.t === "block") patch((m) => ({ ...m, blocks: [...m.blocks, ev.block] }));
         else if (ev.t === "error") patch((m) => ({ ...m, blocks: [...m.blocks, { type: "text", text: "⚠️ " + ev.message }] }));
       };
@@ -258,7 +263,10 @@ export function AssistantChat({
         }
       } finally {
         abortRef.current = null;
-        patch((m) => ({ ...m, pending: false, status: undefined }));
+        patch((m) => {
+          const sb = m.blocks.some((b) => b.type === "steps") ? null : stepsBlock(m.steps ?? [], (Date.now() - (m.startedAt ?? Date.now())) / 1000);
+          return { ...m, pending: false, status: undefined, blocks: sb ? [sb, ...m.blocks] : m.blocks };
+        });
         setBusy(false);
       }
     },
@@ -318,8 +326,10 @@ export function AssistantChat({
       ? ((last.blocks.find((b) => b.type === "followups") as FollowupsBlock | undefined)?.items ?? [])
       : [];
   const full = variant === "full";
+  const tools = useMemo(() => ({ ask: (q: string) => void send(q), chatId, canPin: !mode }), [send, chatId, mode]);
 
   return (
+    <ChatToolsProvider value={tools}>
     <div className="flex h-full min-h-0 flex-col bg-strow-bg">
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className={`mx-auto w-full space-y-5 ${full ? "max-w-3xl px-4 py-5" : "px-3 py-4"}`}>
@@ -413,6 +423,7 @@ export function AssistantChat({
         </div>
       </form>
     </div>
+    </ChatToolsProvider>
   );
 }
 
@@ -462,26 +473,17 @@ function MessageView({ m, now, fallback }: { m: ChatMessage; now: number; fallba
       </div>
     );
   }
-  const visible = m.blocks.filter((b) => b.type !== "followups");
+  const visible = m.blocks.filter((b) => b.type !== "followups" && b.type !== "steps");
+  const saved = m.blocks.find((b): b is StepsBlock => b.type === "steps");
   const seconds = m.startedAt ? Math.max(0, Math.round((now - m.startedAt) / 1000)) : 0;
   return (
     <div className="space-y-3">
+      <Steps items={m.pending ? visibleSteps(m.steps ?? []) : (saved?.items ?? [])} live={!!m.pending} seconds={m.pending ? seconds : saved?.seconds} thinking={fallback} />
       {visible.map((b, i) => (
         <BlockBoundary key={i}>
           <BlockView b={b} />
         </BlockBoundary>
       ))}
-      {m.pending ? (
-        <div className="flex items-center gap-2.5 text-sm">
-          <span className="ai-dots" aria-hidden>
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className="ai-shimmer min-w-0 truncate">{m.status ?? fallback}</span>
-          {seconds >= 3 ? <span className="shrink-0 text-xs tabular-nums text-neutral-400">{seconds}s</span> : null}
-        </div>
-      ) : null}
     </div>
   );
 }

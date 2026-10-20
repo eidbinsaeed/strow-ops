@@ -8,7 +8,8 @@ import { getSettings } from "@/lib/settings";
 import { closeOpenItem } from "@/lib/ai/ops";
 import { FINANCE_TOOLS, buildFinancePrompt, executeFinanceTool } from "@/lib/ai/finance";
 import type { ToolContext } from "@/lib/ai/tools";
-import type { Block, StreamEvent } from "@/lib/ai/types";
+import { applyStepEvent, stepsBlock } from "@/lib/ai/steps";
+import type { Block, Step, StreamEvent } from "@/lib/ai/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -116,7 +117,10 @@ export async function POST(req: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let steps: Step[] = [];
+      const t0 = Date.now();
       const send = (e: StreamEvent) => {
+        steps = applyStepEvent(steps, e);
         try {
           controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
         } catch {
@@ -152,12 +156,14 @@ export async function POST(req: Request) {
           ctx.blocks.push(b);
           send({ t: "block", block: b });
         }
-        await db.from("ai_messages").insert({ chat_id: cid, role: "assistant", blocks: ctx.blocks, text: summarize(ctx.blocks) });
+        const sb = stepsBlock(steps, (Date.now() - t0) / 1000);
+        await db.from("ai_messages").insert({ chat_id: cid, role: "assistant", blocks: sb ? [sb, ...ctx.blocks] : ctx.blocks, text: summarize(ctx.blocks) });
         await db.from("ai_chats").update({ updated_at: new Date().toISOString() }).eq("id", cid);
       } catch (e) {
         const msg = friendly(e instanceof Error ? e.message : String(e));
         send({ t: "error", message: msg });
-        const blocks: Block[] = [...ctx.blocks, { type: "text", text: "⚠️ " + msg }];
+        const sb = stepsBlock(steps, (Date.now() - t0) / 1000);
+        const blocks: Block[] = [...(sb ? [sb] : []), ...ctx.blocks, { type: "text", text: "⚠️ " + msg }];
         await db.from("ai_messages").insert({ chat_id: cid, role: "assistant", blocks, text: summarize(blocks) });
       }
       send({ t: "done" });
