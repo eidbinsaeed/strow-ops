@@ -86,7 +86,7 @@ async function safeFetch(raw: string, maxBytes: number, accept: string, log?: st
       return null;
     }
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), 6000);
     try {
       const res = await fetch(url, { redirect: "manual", signal: ctrl.signal, headers: { "User-Agent": UA, Accept: accept, "Accept-Language": "en" } });
       if (res.status >= 300 && res.status < 400) {
@@ -187,7 +187,14 @@ export function pagePictures(html: string, pageUrl: string, kind: "item" | "logo
     .slice(0, 5);
 }
 
+/** Shops that turn away anything but a person's browser (checked 1 Nov 2026): not worth the wait. */
+const BLOCKS_APPS = /(^|\.)(amazon\.[a-z.]+|carrefouruae\.com|spinneys\.com)$/i;
+
 async function pictureFrom(page: Page, kind: "item" | "logo", log?: string[]): Promise<string | null> {
+  if (BLOCKS_APPS.test(hostOf(page.url))) {
+    log?.push(`${hostOf(page.url)}: skipped (blocks apps)`);
+    return null;
+  }
   if (/\.(jpe?g|png|webp)(\?|$)/i.test(page.url) || (kind === "logo" && /\.svg(\?|$)/i.test(page.url))) return fetchImage(page.url, kind === "logo", log);
   const got = await safeFetch(page.url, 3_000_000, "text/html,application/xhtml+xml", log);
   if (!got) return null;
@@ -206,24 +213,39 @@ async function pictureFrom(page: Page, kind: "item" | "logo", log?: string[]): P
 
 // ─── open sources that welcome apps ───────────────────────────────────────────
 
-/** Open Food Facts: crowd-sourced pack shots of grocery products (free to reuse). */
-async function openFoodFactsImage(query: string, log?: string[]): Promise<string | null> {
-  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,image_front_url,image_url`;
-  const got = await safeFetch(url, 2_000_000, "application/json", log);
-  if (!got) return null;
-  try {
-    const j = JSON.parse(got.bytes.toString("utf8")) as { products?: { image_front_url?: string; image_url?: string }[] };
-    for (const p of j.products ?? []) {
-      const src = p.image_front_url || p.image_url;
-      if (!src) continue;
+/** Open Food Facts: crowd-sourced pack shots of grocery products (free to reuse). By barcode when known, else by name. */
+async function openFoodFactsImage(query: string, barcode: string | null, log?: string[]): Promise<string | null> {
+  const tryList = async (raw: string, pick: (j: unknown) => string[]): Promise<string | null> => {
+    const got = await safeFetch(raw, 2_000_000, "application/json", log);
+    if (!got) return null;
+    let srcs: string[] = [];
+    try {
+      srcs = pick(JSON.parse(got.bytes.toString("utf8")));
+    } catch {
+      log?.push("openfoodfacts: bad answer");
+      return null;
+    }
+    for (const src of srcs.slice(0, 3)) {
       const img = await fetchImage(src, false, log);
       if (img) return img;
     }
-    log?.push("openfoodfacts: no match with a photo");
-  } catch {
-    log?.push("openfoodfacts: bad answer");
+    return null;
+  };
+  type P = { image_front_url?: string; image_url?: string };
+  const srcOf = (list: P[] | undefined) => (list ?? []).map((p) => p.image_front_url || p.image_url || "").filter(Boolean);
+  if (barcode && /^\d{8,14}$/.test(barcode)) {
+    const img = await tryList(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=image_front_url,image_url`, (j) => srcOf([(j as { product?: P }).product ?? {}]));
+    if (img) return img;
   }
-  return null;
+  const q = encodeURIComponent(query);
+  const viaSearch = await tryList(`https://search.openfoodfacts.org/search?q=${q}&page_size=5&fields=product_name,brands,image_front_url,image_url`, (j) => srcOf((j as { hits?: P[] }).hits));
+  if (viaSearch) return viaSearch;
+  const viaLegacy = await tryList(
+    `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,image_front_url,image_url`,
+    (j) => srcOf((j as { products?: P[] }).products),
+  );
+  if (!viaLegacy) log?.push("openfoodfacts: no match with a photo");
+  return viaLegacy;
 }
 
 /** Wikipedia: the article's lead picture (fresh produce, plain ingredients, generic things). */
@@ -256,18 +278,19 @@ function webSearchTool(): Tool {
   } as unknown as Tool;
 }
 
-type Plan = { pages: Page[]; product: string | null; wikipedia: string | null };
+type Plan = { pages: Page[]; product: string | null; wikipedia: string | null; barcode: string | null };
 
 function parsePlan(text: string, seen: string[]): Plan {
   const a = text.indexOf("{");
   const z = text.lastIndexOf("}");
-  let plan: Plan = { pages: [], product: null, wikipedia: null };
+  let plan: Plan = { pages: [], product: null, wikipedia: null, barcode: null };
   try {
-    const j = a >= 0 && z > a ? (JSON.parse(text.slice(a, z + 1)) as { pages?: { url?: unknown; exact?: unknown }[]; product?: unknown; wikipedia?: unknown }) : {};
+    const j = a >= 0 && z > a ? (JSON.parse(text.slice(a, z + 1)) as { pages?: { url?: unknown; exact?: unknown }[]; product?: unknown; wikipedia?: unknown; barcode?: unknown }) : {};
     plan = {
       pages: (j.pages ?? []).map((p) => ({ url: String(p.url ?? ""), exact: p.exact === true })).filter((p) => safeUrl(p.url)),
       product: typeof j.product === "string" && j.product.trim() ? j.product.trim().slice(0, 120) : null,
       wikipedia: typeof j.wikipedia === "string" && j.wikipedia.trim() ? j.wikipedia.trim().slice(0, 120) : null,
+      barcode: typeof j.barcode === "string" || typeof j.barcode === "number" ? String(j.barcode).replace(/\D/g, "") || null : null,
     };
   } catch {
     /* keep the empty plan */
@@ -343,29 +366,29 @@ export async function findItemPhoto(itemId: string): Promise<WebImage> {
 Item: "${it.name}"${it.brand ? `, brand ${it.brand}` : ""}${it.kind ? `, kind ${it.kind}` : ""}${it.unit ? `, bought by the ${it.unit}` : ""}.
 ${seenOn.length ? `How it appears on the café's bills: ${seenOn.join("; ")}.` : ""}
 
-Search the web and find the page of this exact product — same brand, same pack size. The brand's own website is best (its product page); then a UAE shop or wholesaler that sells it (spinneys.com, luluhypermarket.com, kibsons.com, carrefouruae.com, noon.com, amazon.ae, a catering supplier).
-Also say what the product is in a few words (brand, product, size) so it can be looked up in Open Food Facts, and for things that aren't a branded product (fresh fruit or vegetables, ice, eggs, a plain ingredient, a generic cup or lid) the English Wikipedia article that shows it.
+Search the web and find the page of this exact product — same brand, same pack size. The brand's own website is best (its product page); then a UAE shop or wholesaler that sells it (luluhypermarket.com, kibsons.com, noon.com, talabat mart, a catering or packaging supplier). Skip amazon, carrefouruae.com and spinneys.com: their pages can't be read.
+Also give: what the product is in a few words (brand, product, size) for a lookup in Open Food Facts; its barcode (EAN) if a page shows it; and ALWAYS the English Wikipedia article whose picture shows the same kind of thing (e.g. "Milk", "Banana", "Paper cup", "Whipped cream", "Oat milk"), used when no product photo can be had.
 
 Reply with ONLY this JSON, best first, at most 3 pages, only URLs you saw in the search results:
-{"pages": [{"url": "https://…", "exact": true}], "product": "Al Rawabi full cream milk 2 L", "wikipedia": "Milk", "note": "one short line"}
-exact = true only when the page is this exact product. wikipedia = the article title, or null.`;
+{"pages": [{"url": "https://…", "exact": true}], "product": "Al Rawabi full cream milk 2 L", "barcode": null, "wikipedia": "Milk", "note": "one short line"}
+exact = true only when the page is this exact product.`;
   const usage = new Map<string, Usage>();
   const tried: string[] = [];
   try {
     const plan = await askPages(prompt, usage);
     // 1. The product's own page (brand site, shop).
-    for (const p of plan.pages) {
+    for (const p of plan.pages.slice(0, 3)) {
       const dataUrl = await pictureFrom(p, "item", tried);
       if (dataUrl) return { status: "found", dataUrl, page: p.url, exact: p.exact };
     }
     // 2. Open Food Facts, for packaged groceries.
     const query = plan.product ?? `${it.brand ? `${it.brand} ` : ""}${it.name.replace(/[—–-].*$/, "").trim()}`;
     if (!["packaging", "cleaning", "service"].includes(it.kind ?? "")) {
-      const off = await openFoodFactsImage(query, tried);
+      const off = await openFoodFactsImage(query, plan.barcode, tried);
       if (off) return { status: "found", dataUrl: off, page: `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}`, exact: false };
     }
     // 3. Wikipedia, for produce and plain things: a picture of the same kind of thing.
-    const wiki = plan.wikipedia ?? (["produce", "frozen_fruit"].includes(it.kind ?? "") ? it.name.split(/[—–(,-]/)[0].trim() : null);
+    const wiki = plan.wikipedia ?? it.name.split(/[—–(,-]/)[0].trim();
     if (wiki) {
       const img = await wikipediaImage(wiki, tried);
       if (img) return { status: "found", dataUrl: img, page: `https://en.wikipedia.org/wiki/${encodeURIComponent(wiki.replace(/ /g, "_"))}`, exact: false };
