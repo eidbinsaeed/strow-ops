@@ -377,3 +377,8 @@ Charts/tables pinned from Strow AI to Home. `kind` chart|table, `title`, `block`
 
 ## AI changes: refs between ops (2026-11-01, code only)
 `ai_actions.ops` inserts may carry `ref` ("$name", or the made-up uuid the AI gave the row); later ops point at the new row with that token. When applied, the stored ops carry the real ids (inserts keep `ref`), so Undo is exact. A finding redone with the owner's note starts its `detail` with "Owner note: …" on the first line.
+
+## Item photos (migration 0030, 2026-11-01)
+- `inventory_items.photo_path` (bucket `item-photos`, `<item_id>/<ms>.jpg`), `photo_source` (`web` | `bill` | `upload`), `photo_page` (where a web photo came from), `photo_updated_at` (also the `?v=` of `/api/item-photo/[id]`), `photo_checked_at` (the web finder looked; never charged twice).
+- `suppliers.logo_page`, `logo_web_checked_at`; `logo_source` adds `web`.
+- Rules (`src/lib/item-photo.ts`): ≤ 400 kB JPEG / PNG / WebP data URLs (the browser shrinks to ≤ 360 px). A web photo only fills an empty slot; an upload always replaces; the old image is removed from Storage.

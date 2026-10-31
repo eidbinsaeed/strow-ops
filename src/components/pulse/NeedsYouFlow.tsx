@@ -23,7 +23,7 @@ export type NyItem = {
   hasOps: boolean;
   opsCount: number;
   /** "what" = which bill line the change is on, shown above its row. */
-  diffs: { label: string; from: string; to: string; what?: string }[];
+  diffs: { label: string; from: string; to: string; what?: string; keep?: boolean }[];
   /** The note the owner wrote when he had the AI redo this fix. */
   note?: string | null;
   photo: { table: string; id: string } | null;
@@ -354,7 +354,7 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
                 {d.what ? <p className="col-span-2 -mb-1 truncate text-xs text-neutral-500">{d.what}</p> : null}
                 <div className="flex flex-col gap-1 rounded-2xl bg-[#FBE9E7] p-3">
                   <span className="text-xs font-semibold text-[#9A1B12]">{d.label} · {status === "applied" ? "was" : "now"}</span>
-                  <span className={`break-words text-[15px] font-semibold text-[#9A1B12] ${status === "undone" || status === "rejected" ? "" : "line-through"}`}>{d.from}</span>
+                  <span className={`break-words text-[15px] font-semibold text-[#9A1B12] ${status === "undone" || status === "rejected" || d.keep || d.from === "—" ? "" : "line-through"}`}>{d.from}</span>
                 </div>
                 <div className="flex flex-col gap-1 rounded-2xl bg-[#E3EAFB] p-3">
                   <span className="text-xs font-semibold text-[#1A3FA8]">{status === "applied" ? "Fixed to" : "Should be"}</span>

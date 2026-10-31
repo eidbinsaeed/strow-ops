@@ -179,7 +179,8 @@ export default async function NeedsYouPage({ searchParams }: { searchParams: Pro
       } else if (o.op === "insert") {
         const v = o.values ?? {};
         if (o.table === "item_aliases") {
-          diffs.push({ label: "Bill spelling", from: `“${clip(String(v.raw_text ?? v.norm ?? ""), 30)}”`, to: `= ${nameOf("item_aliases", "inventory_item_id", v.inventory_item_id)}` });
+          // The bill's own spelling stays as it is; it is only taught to mean this item.
+          diffs.push({ label: "Bill spelling", from: `“${clip(String(v.raw_text ?? v.norm ?? ""), 30)}”`, to: `= ${nameOf("item_aliases", "inventory_item_id", v.inventory_item_id)}`, keep: true });
         } else if (o.table === "expense_line_items") {
           diffs.push({ label: NEW_LABEL[o.table], from: "—", to: `${clip(String(v.description ?? "Line"), 32)}${v.line_total != null ? ` · AED ${show(v.line_total)}` : ""}` });
         } else {

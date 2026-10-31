@@ -7,6 +7,9 @@ import { DeleteSupplierButton } from "./DeleteSupplierButton";
 import { LogoCell } from "./LogoCell";
 import { LogoFinder } from "./LogoFinder";
 import { suppliersToCheck } from "@/lib/ai/find-logo";
+import { suppliersWithoutLogo } from "@/lib/ai/find-web-image";
+import { WebPictureFinder } from "@/components/owner/WebPictureFinder";
+import { saveLogoFromWeb } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -31,7 +34,7 @@ export default async function OwnerSuppliersPage() {
   const locale = await getLocale();
   const supabase = createServiceClient();
 
-  const [suppliersResult, categoriesResult, logoTodo] = await Promise.all([
+  const [suppliersResult, categoriesResult, logoTodo, noLogo] = await Promise.all([
     supabase
       .from("suppliers")
       .select("id, name, trn, contact, phone, email, address, notes, created_at, logo_path, logo_source, logo_updated_at, categories(name)")
@@ -42,7 +45,11 @@ export default async function OwnerSuppliersPage() {
       .eq("is_active", true)
       .order("name", { ascending: true }),
     suppliersToCheck().catch(() => []),
+    suppliersWithoutLogo().catch(() => []),
   ]);
+  // The web is for vendors whose bills have no logo (the past-bills finder goes first: it's exact and cheaper).
+  const billPending = new Set(logoTodo.map((s) => s.id));
+  const webTodo = noLogo.filter((s) => !billPending.has(s.id));
 
   const suppliers = (suppliersResult.data ?? []) as unknown as SupplierRow[];
   const categories = (categoriesResult.data ?? []) as {
@@ -62,6 +69,16 @@ export default async function OwnerSuppliersPage() {
       <AddSupplierForm categories={categories} />
 
       <LogoFinder todo={logoTodo} />
+
+      <WebPictureFinder
+        todo={webTodo}
+        endpoint="/api/suppliers/logo-web"
+        idKey="supplierId"
+        save={saveLogoFromWeb}
+        title="Logos from the web"
+        noun={{ one: "vendor", many: "vendors" }}
+        hint="For vendors whose bills carry no logo: takes it from their own website. About 3 US cents a vendor."
+      />
 
       {suppliersResult.error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">

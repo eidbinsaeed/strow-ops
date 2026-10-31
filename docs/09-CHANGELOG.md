@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-11-01 — Item photos and vendor logos from the web
+
+- **Migration `0030_item_photos`** (applied via MCP, additive): `inventory_items.photo_path`, `photo_source` (`web` | `bill` | `upload`), `photo_page`, `photo_updated_at`, `photo_checked_at`; `suppliers.logo_page`, `logo_web_checked_at`; `suppliers.logo_source` now also allows `web`. Images in the private bucket `item-photos` (made by the app on first use), served by `/api/item-photo/[id]?v=<photo_updated_at>` to the owner or signed-in staff.
+- **Items › Photos from the web** (`components/owner/WebPictureFinder`, `/api/items/photo-find`, `src/lib/ai/find-web-image.ts`): for every active item without a photo (each looked at once), the AI searches the web (Anthropic web search, located in Al Ain) for the exact product page on a UAE shop or the brand's site — or the Wikipedia article for fresh produce and plain ingredients — and the server takes the page's own picture (og:image). The browser shrinks it to ≤ 360 px JPEG and saves it; a photo from the web only fills an empty slot. "similar" marks a page that isn't the exact product. About 3 US cents an item (AI spend source `photo-web`).
+- **Each item on Items** shows its photo with Add / Change / Remove (tap the photo: camera or library; a photo picked by hand always wins) and where a web photo came from.
+- **Staff count screens** (shop and store room) show each line's photo (from its linked stock item), or a kind icon.
+- **Vendors › Logos from the web** (`/api/suppliers/logo-web`): for vendors with no logo whose bills carry none, their own website — straight from a company email domain, else a web search — and the logo on it (a logo image, the app icon, or the page picture). The past-bills finder still goes first. AI spend source `logo-web`.
+- Fetching pages and pictures: http(s) only, no IP addresses, local names or names that resolve to private addresses, ≤ 3 redirects, 8 s, a few MB.
+- Strow AI can't change the photo or logo columns (write policy).
+- Checked: `tsc`, `next build`, tests of the page-picture picking and the address checks. The web search itself was not run from here (it needs the live server): if the Anthropic account has web search switched off, the finder says so and stops.
+
 ## 2026-11-01 — App prices: app orders count at what the customer paid
 
 - **Why:** the apps sell at higher prices than the shop (Latte 20 → 25, Americano 16 → 20), but staff ring most app orders into the POS at shop prices, and the closing copies the POS. October, checkable app orders: POS 17,916 vs 21,687 at app prices. Staff fix Talabat orders sometimes (47 of 133), Beanz and Keeta almost never (5 of 199, 6 of 99).

@@ -63,7 +63,7 @@ export default async function StockCountPage({ params }: { params: Promise<{ pla
   const [itemsRes, todayRes, prevRes] = await Promise.all([
     db
       .from("stock_items")
-      .select("id, name, unit_label, step, min_qty, grp, sort")
+      .select("id, name, unit_label, step, min_qty, grp, sort, inventory_item_id, inventory_items(kind, photo_path, photo_updated_at)")
       .eq("location_id", session.lid)
       .eq("place", place)
       .eq("is_active", true)
@@ -107,6 +107,7 @@ export default async function StockCountPage({ params }: { params: Promise<{ pla
     grp: String(r.grp),
     sort: Number(r.sort) || 0,
     prev: prevQty.has(String(r.id)) ? (prevQty.get(String(r.id)) as number) : null,
+    photo: photoOf(r),
   }));
 
   const yesterday = new Date(Date.UTC(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8, 10) - 1)).toISOString().slice(0, 10);
@@ -153,4 +154,12 @@ export default async function StockCountPage({ params }: { params: Promise<{ pla
       )}
     </main>
   );
+}
+
+/** The linked stock item's photo (or its kind, for the icon). */
+function photoOf(r: Record<string, unknown>): CountItem["photo"] {
+  const raw = r.inventory_items as { kind: string | null; photo_path: string | null; photo_updated_at: string | null } | { kind: string | null; photo_path: string | null; photo_updated_at: string | null }[] | null;
+  const ii = Array.isArray(raw) ? raw[0] : raw;
+  if (!r.inventory_item_id || !ii) return null;
+  return { itemId: String(r.inventory_item_id), path: ii.photo_path, v: ii.photo_updated_at, kind: ii.kind };
 }

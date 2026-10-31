@@ -19,9 +19,10 @@ export const WRITE_POLICY: Record<string, { ops: Kind[]; denyColumns?: string[] 
   expenses: { ops: ["update", "insert"] },
   expense_line_items: { ops: ["update", "insert", "delete"] },
   // Logos are images in Storage: only the logo actions change these.
-  suppliers: { ops: ["update", "insert"], denyColumns: ["logo_path", "logo_source", "logo_updated_at", "logo_checked_at"] },
+  suppliers: { ops: ["update", "insert"], denyColumns: ["logo_path", "logo_source", "logo_updated_at", "logo_checked_at", "logo_page", "logo_web_checked_at"] },
   categories: { ops: ["update", "insert"] },
-  inventory_items: { ops: ["update", "insert"] },
+  // Photos are images in Storage: only the photo actions change these.
+  inventory_items: { ops: ["update", "insert"], denyColumns: ["photo_path", "photo_source", "photo_page", "photo_updated_at", "photo_checked_at"] },
   item_aliases: { ops: ["update", "insert", "delete"] },
   fixed_costs: { ops: ["update", "insert"] },
   liabilities: { ops: ["update", "insert"] },

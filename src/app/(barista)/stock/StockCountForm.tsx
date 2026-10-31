@@ -7,6 +7,7 @@ import { saveStockCount, type RestockSummary } from "./actions";
 import { fmtQty, roundToStep, type Place, type WasteReason } from "@/lib/stock";
 import { CopyText } from "@/components/stock/CopyText";
 import { WhatsAppButton } from "@/components/stock/WhatsAppButton";
+import { ItemThumb } from "@/components/owner/ItemThumb";
 
 export type CountItem = {
   id: string;
@@ -18,6 +19,8 @@ export type CountItem = {
   sort: number;
   /** The last count before today (null = not counted then). */
   prev: number | null;
+  /** Photo of the stock item this line is linked to (null = not linked: an icon from the name). */
+  photo?: { itemId: string; path: string | null; v: string | null; kind: string | null } | null;
 };
 
 type WasteRow = { key: number; id: string; qty: string; reason: WasteReason };
@@ -171,6 +174,7 @@ export function StockCountForm({
               const inputId = `${place}-${it.id}`;
               return (
                 <div key={it.id} className={`flex items-center gap-2.5 px-3 py-2.5 ${i ? "border-t border-[#EEF1F4]" : ""} ${low ? "bg-[#FFF7E8]" : ""}`}>
+                  <ItemThumb id={it.photo?.itemId} name={it.name} kind={it.photo?.kind} photoPath={it.photo?.path} version={it.photo?.v} size={40} />
                   <div className="min-w-0 flex-1">
                     <label htmlFor={inputId} className="block text-[15px] font-semibold leading-tight">
                       {it.name}

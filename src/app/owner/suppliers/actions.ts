@@ -108,6 +108,15 @@ export async function saveLogoFromBill(id: string, dataUrl: string) {
   return { ok: true, saved: r.saved };
 }
 
+/** A logo the web finder took from the vendor's own site. Never replaces a logo that's already there. */
+export async function saveLogoFromWeb(id: string, dataUrl: string, page: string | null) {
+  if (!(await getOwnerSession())) return { error: "Sign in again" };
+  const r = await saveSupplierLogo(id, dataUrl, "web", { onlyIfEmpty: true, page });
+  if (r.error) return { error: r.error };
+  if (r.saved) await logoDone(id, "logo_from_web", { logo_source: "web", logo_page: page });
+  return { ok: true, saved: r.saved };
+}
+
 export async function removeSupplierLogo(id: string) {
   if (!(await getOwnerSession())) return { error: "Sign in again" };
   const r = await clearSupplierLogo(id);

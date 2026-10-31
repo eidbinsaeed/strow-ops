@@ -44,7 +44,7 @@ export function LogoCell({
     <div className="flex items-center gap-3">
       <SupplierLogo id={id} name={name} category={category} logoPath={logoPath} version={version} size={44} />
       <div className="flex flex-col items-start gap-0.5 text-xs">
-        <span className="text-neutral-500">{logoPath ? (source === "bill" ? "From a bill" : "Uploaded") : "No logo yet"}</span>
+        <span className="text-neutral-500">{logoPath ? (source === "bill" ? "From a bill" : source === "web" ? "From their website" : "Uploaded") : "No logo yet"}</span>
         <span className="flex gap-3">
           <button type="button" disabled={pending} onClick={() => input.current?.click()} className="min-h-8 font-semibold text-strow-ink underline disabled:opacity-50">
             {pending ? "Saving…" : logoPath ? "Change" : "Add logo"}

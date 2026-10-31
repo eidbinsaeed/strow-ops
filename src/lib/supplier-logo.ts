@@ -6,13 +6,14 @@
  *  - "bill": cut from the top of the supplier's own bill photo (the bill reader
  *    says where the logo is; the browser cuts it out). Only fills an empty slot.
  *  - "upload": added or replaced by hand on the Vendors page. Always wins.
+ *  - "web": taken from the vendor's own website (logo_page says where). Only fills an empty slot.
  */
 import { createServiceClient } from "@/lib/supabase/server";
 
 const BUCKET = "supplier-logos";
 const MAX_BYTES = 400_000;
 
-export type LogoSource = "bill" | "upload";
+export type LogoSource = "bill" | "upload" | "web";
 
 function parseDataUrl(dataUrl: string): { contentType: string; ext: string; bytes: Buffer } | null {
   const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl.trim());
@@ -36,7 +37,7 @@ export async function saveSupplierLogo(
   supplierId: string,
   dataUrl: string,
   source: LogoSource,
-  opts: { onlyIfEmpty?: boolean } = {},
+  opts: { onlyIfEmpty?: boolean; page?: string | null } = {},
 ): Promise<{ saved: boolean; error?: string }> {
   const img = parseDataUrl(dataUrl);
   if (!img) return { saved: false, error: "Not a small JPEG, PNG or WebP image" };
@@ -55,7 +56,7 @@ export async function saveSupplierLogo(
 
   let q = db
     .from("suppliers")
-    .update({ logo_path: path, logo_source: source, logo_updated_at: new Date().toISOString() })
+    .update({ logo_path: path, logo_source: source, logo_page: source === "web" ? opts.page ?? null : null, logo_updated_at: new Date().toISOString() })
     .eq("id", supplierId);
   // A logo from a bill never replaces one that appeared meanwhile.
   if (opts.onlyIfEmpty) q = q.is("logo_path", null);

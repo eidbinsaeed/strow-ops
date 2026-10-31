@@ -4,6 +4,10 @@ import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { LineFixer } from "@/components/owner/LineFixer";
 import { describeQty, fmtQty, sumByBase } from "@/lib/units";
+import { WebPictureFinder } from "@/components/owner/WebPictureFinder";
+import { itemsWithoutPhoto } from "@/lib/ai/find-web-image";
+import { PhotoCell } from "./PhotoCell";
+import { saveItemPhotoFromWeb } from "./photo-actions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,7 +31,18 @@ type LineRow = {
   units_per_pack: number | null;
   base_qty: number | null;
   base_uom: string | null;
-  inventory_items: { name: string; kind: string | null; unit: string | null; base_uom: string | null; brand: string | null } | null;
+  inventory_items: {
+    id: string;
+    name: string;
+    kind: string | null;
+    unit: string | null;
+    base_uom: string | null;
+    brand: string | null;
+    photo_path: string | null;
+    photo_source: string | null;
+    photo_page: string | null;
+    photo_updated_at: string | null;
+  } | null;
   expenses: { expense_date: string; photo_drive_url: string | null; goods_received: boolean | null; suppliers: { name: string } | null } | null;
   set_parts: string[] | null;
 };
@@ -62,6 +77,8 @@ type SupplierStat = {
 };
 
 type Item = {
+  id: string;
+  photo: { path: string | null; source: string | null; page: string | null; v: string | null };
   name: string;
   kind: string;
   unit: string;
@@ -151,7 +168,7 @@ export default async function OwnerItemsPage() {
   const { data, error } = await supabase
     .from("expense_line_items")
     .select(
-      "id, quantity, unit_price, line_total, vat_amount, discount, description, inventory_item_id, line_kind, count_qty, count_uom, unit_size, size_uom, pack_qty, pack_type, units_per_pack, base_qty, base_uom, set_parts, inventory_items(name, kind, unit, base_uom, brand), expenses(expense_date, photo_drive_url, goods_received, suppliers(name))",
+      "id, quantity, unit_price, line_total, vat_amount, discount, description, inventory_item_id, line_kind, count_qty, count_uom, unit_size, size_uom, pack_qty, pack_type, units_per_pack, base_qty, base_uom, set_parts, inventory_items(id, name, kind, unit, base_uom, brand, photo_path, photo_source, photo_page, photo_updated_at), expenses(expense_date, photo_drive_url, goods_received, suppliers(name))",
     )
     .limit(2000);
 
@@ -206,6 +223,13 @@ export default async function OwnerItemsPage() {
     let it = byItem.get(key);
     if (!it) {
       it = {
+        id: r.inventory_items.id,
+        photo: {
+          path: r.inventory_items.photo_path,
+          source: r.inventory_items.photo_source,
+          page: r.inventory_items.photo_page,
+          v: r.inventory_items.photo_updated_at,
+        },
         name: key,
         kind: r.inventory_items.kind ?? "other",
         unit: r.inventory_items.unit ?? "",
@@ -285,6 +309,8 @@ export default async function OwnerItemsPage() {
   const flaggedItems = items.filter((i) => i.flagCount > 0);
   const totalFlags = items.reduce((s, i) => s + i.flagCount, 0);
 
+  const photoTodo = await itemsWithoutPhoto();
+
   const groups = KIND_ORDER
     .map((k) => ({ kind: k, items: items.filter((i) => i.kind === k) }))
     .filter((g) => g.items.length > 0);
@@ -300,6 +326,16 @@ export default async function OwnerItemsPage() {
           </p>
         </div>
       </header>
+
+      <WebPictureFinder
+        todo={photoTodo}
+        endpoint="/api/items/photo-find"
+        idKey="itemId"
+        save={saveItemPhotoFromWeb}
+        title="Photos from the web"
+        noun={{ one: "item", many: "items" }}
+        hint="Finds each product's photo on UAE shops or the brand's site (Wikipedia for fresh produce). About 3 US cents an item."
+      />
 
       {error && (
         <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
@@ -387,9 +423,12 @@ export default async function OwnerItemsPage() {
             {g.items.map((it) => (
               <div key={it.name} className="rounded-2xl border border-neutral-200 bg-white p-4 md:p-5">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-base font-medium">{it.name}</p>
-                    <p className="text-xs text-neutral-400">{it.unit}</p>
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <div>
+                      <p className="text-base font-medium">{it.name}</p>
+                      <p className="text-xs text-neutral-400">{it.unit}</p>
+                    </div>
+                    <PhotoCell id={it.id} name={it.name} kind={it.kind} photoPath={it.photo.path} version={it.photo.v} source={it.photo.source} page={it.photo.page} />
                   </div>
                   {it.flagCount > 0 && (
                     <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
