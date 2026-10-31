@@ -189,10 +189,16 @@ export function pagePictures(html: string, pageUrl: string, kind: "item" | "logo
 
 /** Shops that turn away anything but a person's browser (checked 1 Nov 2026): not worth the wait. */
 const BLOCKS_APPS = /(^|\.)(amazon\.[a-z.]+|carrefouruae\.com|spinneys\.com)$/i;
+/** Pages whose picture is a profile or company banner, never the product. */
+const NOT_PRODUCT = /(^|\.)(linkedin\.com|facebook\.com|instagram\.com|x\.com|twitter\.com|tiktok\.com|youtube\.com|pinterest\.[a-z.]+)$/i;
 
 async function pictureFrom(page: Page, kind: "item" | "logo", log?: string[]): Promise<string | null> {
   if (BLOCKS_APPS.test(hostOf(page.url))) {
     log?.push(`${hostOf(page.url)}: skipped (blocks apps)`);
+    return null;
+  }
+  if (kind === "item" && NOT_PRODUCT.test(hostOf(page.url))) {
+    log?.push(`${hostOf(page.url)}: skipped (social page)`);
     return null;
   }
   if (/\.(jpe?g|png|webp)(\?|$)/i.test(page.url) || (kind === "logo" && /\.svg(\?|$)/i.test(page.url))) return fetchImage(page.url, kind === "logo", log);
@@ -231,10 +237,18 @@ async function openFoodFactsImage(query: string, barcode: string | null, log?: s
     }
     return null;
   };
-  type P = { image_front_url?: string; image_url?: string };
-  const srcOf = (list: P[] | undefined) => (list ?? []).map((p) => p.image_front_url || p.image_url || "").filter(Boolean);
+  type P = { image_front_url?: string; image_url?: string; product_name?: string; brands?: string | string[] };
+  // A name search must be about the same thing: the hit shares a real word with what was asked for.
+  const words = (t: string) => new Set(t.toLowerCase().split(/[^a-z\u0600-\u06ff]+/).filter((w) => w.length >= 4));
+  const asked = words(query);
+  const relevant = (p: P) => {
+    const got = words(`${p.product_name ?? ""} ${Array.isArray(p.brands) ? p.brands.join(" ") : p.brands ?? ""}`);
+    return [...asked].some((w) => got.has(w));
+  };
+  const srcOf = (list: P[] | undefined, check = true) =>
+    (list ?? []).filter((p) => !check || relevant(p)).map((p) => p.image_front_url || p.image_url || "").filter(Boolean);
   if (barcode && /^\d{8,14}$/.test(barcode)) {
-    const img = await tryList(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=image_front_url,image_url`, (j) => srcOf([(j as { product?: P }).product ?? {}]));
+    const img = await tryList(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=image_front_url,image_url`, (j) => srcOf([(j as { product?: P }).product ?? {}], false));
     if (img) return img;
   }
   const q = encodeURIComponent(query);
@@ -413,7 +427,9 @@ export async function itemsWithoutPhoto(limit = 300): Promise<{ id: string; name
     .is("photo_checked_at", null)
     .order("name")
     .limit(limit);
-  return ((data ?? []) as { id: string; name: string; kind: string | null }[]).filter((i) => i.kind !== "service").map(({ id, name }) => ({ id, name }));
+  return ((data ?? []) as { id: string; name: string; kind: string | null }[])
+    .filter((i) => i.kind !== "service" && !/\b(fee|charge|delivery|deposit|discount|service)\b/i.test(i.name))
+    .map(({ id, name }) => ({ id, name }));
 }
 
 // ─── vendors ─────────────────────────────────────────────────────────────────
