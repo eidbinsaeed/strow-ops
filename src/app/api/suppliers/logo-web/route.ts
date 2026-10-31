@@ -16,6 +16,6 @@ export async function POST(req: Request) {
   const id = typeof body.supplierId === "string" && UUID.test(body.supplierId) ? body.supplierId : null;
   if (!id) return NextResponse.json({ error: "bad supplier" }, { status: 400 });
   const r = await findSupplierLogoOnWeb(id);
-  const stop = r.status === "error" && /credit|switched off|not configured/i.test(r.reason);
+  const stop = r.status === "error" && /credit|switched off|not configured|refused the request/i.test(r.reason);
   return NextResponse.json(r, { status: stop ? 402 : 200 });
 }

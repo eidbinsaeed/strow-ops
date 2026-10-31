@@ -18,6 +18,6 @@ export async function POST(req: Request) {
   if (!id) return NextResponse.json({ error: "bad item" }, { status: 400 });
   const r = await findItemPhoto(id);
   if (r.status === "none") await markPhotoChecked(id);
-  const stop = r.status === "error" && /credit|switched off|not configured/i.test(r.reason);
+  const stop = r.status === "error" && /credit|switched off|not configured|refused the request/i.test(r.reason);
   return NextResponse.json(r, { status: stop ? 402 : 200 });
 }

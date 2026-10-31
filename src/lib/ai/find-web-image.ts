@@ -178,7 +178,7 @@ function webSearchTool(): Tool {
     type: "web_search_20250305",
     name: "web_search",
     max_uses: 4,
-    user_location: { type: "approximate", city: "Al Ain", region: "Abu Dhabi", country: "AE", timezone: "Asia/Dubai" },
+    // No user_location: web search doesn't accept the UAE (AE) as a location; the prompt says where to look instead.
   } as unknown as Tool;
 }
 
@@ -233,6 +233,8 @@ function friendly(e: unknown): string {
     return "Web search is switched off for the Anthropic account — turn it on in the Anthropic Console (organization settings), then try again.";
   }
   if (/credit balance|billing|quota/i.test(msg)) return "The AI account is out of credit.";
+  // A request the API refuses outright will be refused for every item: say so once and stop.
+  if (/invalid_request_error/i.test(msg)) return `Web search refused the request: ${(/"message":"([^"]+)"/.exec(msg)?.[1] ?? msg).slice(0, 160)}`;
   return msg.slice(0, 200);
 }
 
