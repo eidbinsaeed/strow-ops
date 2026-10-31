@@ -28,7 +28,7 @@ const FREE_MAIL = /^(gmail|googlemail|hotmail|outlook|live|yahoo|icloud|me|aol|p
 
 export type WebImage =
   | { status: "found"; dataUrl: string; page: string; exact: boolean }
-  | { status: "none"; reason: string }
+  | { status: "none"; reason: string; tried?: string[] }
   | { status: "error"; reason: string };
 
 type Page = { url: string; exact: boolean };
@@ -69,10 +69,22 @@ async function publicHost(u: URL): Promise<boolean> {
   }
 }
 
-async function safeFetch(raw: string, maxBytes: number, accept: string): Promise<{ url: string; type: string; bytes: Buffer } | null> {
+const hostOf = (u: string) => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, "");
+  } catch {
+    return u.slice(0, 40);
+  }
+};
+
+async function safeFetch(raw: string, maxBytes: number, accept: string, log?: string[]): Promise<{ url: string; type: string; bytes: Buffer } | null> {
   let url = safeUrl(raw);
+  if (!url) log?.push(`${hostOf(raw)}: bad address`);
   for (let hop = 0; url && hop < 4; hop++) {
-    if (!(await publicHost(url))) return null;
+    if (!(await publicHost(url))) {
+      log?.push(`${url.hostname}: not a public address`);
+      return null;
+    }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
     try {
@@ -82,9 +94,15 @@ async function safeFetch(raw: string, maxBytes: number, accept: string): Promise
         url = loc ? safeUrl(loc, url.toString()) : null;
         continue;
       }
-      if (!res.ok || !res.body) return null;
+      if (!res.ok || !res.body) {
+        log?.push(`${url.hostname}: HTTP ${res.status}`);
+        return null;
+      }
       const len = Number(res.headers.get("content-length") ?? 0);
-      if (len > maxBytes) return null;
+      if (len > maxBytes) {
+        log?.push(`${url.hostname}: too big`);
+        return null;
+      }
       const reader = res.body.getReader();
       const parts: Uint8Array[] = [];
       let total = 0;
@@ -94,12 +112,14 @@ async function safeFetch(raw: string, maxBytes: number, accept: string): Promise
         total += value.length;
         if (total > maxBytes) {
           await reader.cancel();
+          log?.push(`${url.hostname}: too big`);
           return null;
         }
         parts.push(value);
       }
       return { url: url.toString(), type: res.headers.get("content-type") ?? "", bytes: Buffer.concat(parts) };
-    } catch {
+    } catch (e) {
+      log?.push(`${url?.hostname ?? hostOf(raw)}: ${(e as Error)?.name === "AbortError" ? "timed out" : "unreachable"}`);
       return null;
     } finally {
       clearTimeout(timer);
@@ -108,9 +128,13 @@ async function safeFetch(raw: string, maxBytes: number, accept: string): Promise
   return null;
 }
 
-async function fetchImage(raw: string, allowSvg: boolean): Promise<string | null> {
-  const got = await safeFetch(raw, 4_000_000, "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8");
-  if (!got || got.bytes.length < 600) return null;
+async function fetchImage(raw: string, allowSvg: boolean, log?: string[]): Promise<string | null> {
+  const got = await safeFetch(raw, 4_000_000, "image/webp,image/png,image/jpeg,image/*;q=0.8", log);
+  if (!got) return null;
+  if (got.bytes.length < 600) {
+    log?.push(`${hostOf(got.url)}: picture too small`);
+    return null;
+  }
   let type = got.type.split(";")[0].trim().toLowerCase();
   if (type === "image/jpg") type = "image/jpeg";
   if (IMG_TYPES.test(type)) return `data:${type};base64,${got.bytes.toString("base64")}`;
@@ -118,6 +142,7 @@ async function fetchImage(raw: string, allowSvg: boolean): Promise<string | null
     const text = got.bytes.toString("utf8");
     if (/<svg[\s>]/i.test(text) && !/<script/i.test(text)) return `data:image/svg+xml;base64,${got.bytes.toString("base64")}`;
   }
+  log?.push(`${hostOf(got.url)}: not a usable picture (${type || "unknown type"})`);
   return null;
 }
 
@@ -139,7 +164,9 @@ export function pagePictures(html: string, pageUrl: string, kind: "item" | "logo
   const og = [...meta("og:image:secure_url"), ...meta("og:image"), ...meta("twitter:image"), ...meta("twitter:image:src")];
   const out: string[] = [];
   if (kind === "item") {
-    out.push(...og, ...links.filter((t) => (attr(t, "rel") ?? "").toLowerCase() === "image_src").map((t) => attr(t, "href") ?? ""));
+    // Shop pages describe the product in JSON-LD; its "image" is the pack shot.
+    const ld = [...head.matchAll(/"image"\s*:\s*(?:\[\s*)?"(https?:[^"\s]+)"/gi)].map((m) => m[1].replace(/\\\//g, "/"));
+    out.push(...og, ...ld.slice(0, 2), ...links.filter((t) => (attr(t, "rel") ?? "").toLowerCase() === "image_src").map((t) => attr(t, "href") ?? ""));
   } else {
     const icons = links
       .filter((t) => /apple-touch-icon|icon/i.test(attr(t, "rel") ?? ""))
@@ -160,13 +187,60 @@ export function pagePictures(html: string, pageUrl: string, kind: "item" | "logo
     .slice(0, 5);
 }
 
-async function pictureFrom(page: Page, kind: "item" | "logo"): Promise<string | null> {
-  if (/\.(jpe?g|png|webp)(\?|$)/i.test(page.url) || (kind === "logo" && /\.svg(\?|$)/i.test(page.url))) return fetchImage(page.url, kind === "logo");
-  const got = await safeFetch(page.url, 3_000_000, "text/html,application/xhtml+xml");
-  if (!got || !/html/i.test(got.type)) return null;
-  for (const src of pagePictures(got.bytes.toString("utf8"), got.url, kind)) {
-    const img = await fetchImage(src, kind === "logo");
+async function pictureFrom(page: Page, kind: "item" | "logo", log?: string[]): Promise<string | null> {
+  if (/\.(jpe?g|png|webp)(\?|$)/i.test(page.url) || (kind === "logo" && /\.svg(\?|$)/i.test(page.url))) return fetchImage(page.url, kind === "logo", log);
+  const got = await safeFetch(page.url, 3_000_000, "text/html,application/xhtml+xml", log);
+  if (!got) return null;
+  if (!/html/i.test(got.type)) {
+    log?.push(`${hostOf(got.url)}: not a web page`);
+    return null;
+  }
+  const pics = pagePictures(got.bytes.toString("utf8"), got.url, kind);
+  if (!pics.length) log?.push(`${hostOf(got.url)}: no picture on the page`);
+  for (const src of pics) {
+    const img = await fetchImage(src, kind === "logo", log);
     if (img) return img;
+  }
+  return null;
+}
+
+// ─── open sources that welcome apps ───────────────────────────────────────────
+
+/** Open Food Facts: crowd-sourced pack shots of grocery products (free to reuse). */
+async function openFoodFactsImage(query: string, log?: string[]): Promise<string | null> {
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,image_front_url,image_url`;
+  const got = await safeFetch(url, 2_000_000, "application/json", log);
+  if (!got) return null;
+  try {
+    const j = JSON.parse(got.bytes.toString("utf8")) as { products?: { image_front_url?: string; image_url?: string }[] };
+    for (const p of j.products ?? []) {
+      const src = p.image_front_url || p.image_url;
+      if (!src) continue;
+      const img = await fetchImage(src, false, log);
+      if (img) return img;
+    }
+    log?.push("openfoodfacts: no match with a photo");
+  } catch {
+    log?.push("openfoodfacts: bad answer");
+  }
+  return null;
+}
+
+/** Wikipedia: the article's lead picture (fresh produce, plain ingredients, generic things). */
+async function wikipediaImage(title: string, log?: string[]): Promise<string | null> {
+  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.trim().replace(/ /g, "_"))}`;
+  const got = await safeFetch(url, 500_000, "application/json", log);
+  if (!got) return null;
+  try {
+    const j = JSON.parse(got.bytes.toString("utf8")) as { thumbnail?: { source?: string }; originalimage?: { source?: string } };
+    const thumb = j.thumbnail?.source?.replace(/\/\d+px-/, "/640px-");
+    for (const src of [thumb, j.originalimage?.source].filter((x): x is string => !!x)) {
+      const img = await fetchImage(src, false, log);
+      if (img) return img;
+    }
+    log?.push(`wikipedia: no picture for ${title}`);
+  } catch {
+    log?.push("wikipedia: bad answer");
   }
   return null;
 }
@@ -182,24 +256,29 @@ function webSearchTool(): Tool {
   } as unknown as Tool;
 }
 
-function parsePages(text: string, seen: string[]): Page[] {
+type Plan = { pages: Page[]; product: string | null; wikipedia: string | null };
+
+function parsePlan(text: string, seen: string[]): Plan {
   const a = text.indexOf("{");
   const z = text.lastIndexOf("}");
-  let pages: Page[] = [];
+  let plan: Plan = { pages: [], product: null, wikipedia: null };
   try {
-    const j = a >= 0 && z > a ? (JSON.parse(text.slice(a, z + 1)) as { pages?: { url?: unknown; exact?: unknown }[] }) : {};
-    pages = (j.pages ?? [])
-      .map((p) => ({ url: String(p.url ?? ""), exact: p.exact === true }))
-      .filter((p) => safeUrl(p.url));
+    const j = a >= 0 && z > a ? (JSON.parse(text.slice(a, z + 1)) as { pages?: { url?: unknown; exact?: unknown }[]; product?: unknown; wikipedia?: unknown }) : {};
+    plan = {
+      pages: (j.pages ?? []).map((p) => ({ url: String(p.url ?? ""), exact: p.exact === true })).filter((p) => safeUrl(p.url)),
+      product: typeof j.product === "string" && j.product.trim() ? j.product.trim().slice(0, 120) : null,
+      wikipedia: typeof j.wikipedia === "string" && j.wikipedia.trim() ? j.wikipedia.trim().slice(0, 120) : null,
+    };
   } catch {
-    pages = [];
+    /* keep the empty plan */
   }
   // The pages the search itself returned are the fallback, in the order it ranked them.
-  for (const url of seen) if (pages.length < 5 && !pages.some((p) => p.url === url) && safeUrl(url)) pages.push({ url, exact: false });
-  return pages.slice(0, 5);
+  for (const url of seen) if (plan.pages.length < 5 && !plan.pages.some((p) => p.url === url) && safeUrl(url)) plan.pages.push({ url, exact: false });
+  plan.pages = plan.pages.slice(0, 5);
+  return plan;
 }
 
-async function askPages(prompt: string, usage: Map<string, Usage>): Promise<Page[]> {
+async function askPages(prompt: string, usage: Map<string, Usage>): Promise<Plan> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 50_000 });
   let lastErr: unknown = null;
   for (const model of MODELS) {
@@ -215,7 +294,7 @@ async function askPages(prompt: string, usage: Map<string, Usage>): Promise<Page
         if (b.type !== "web_search_tool_result" || !Array.isArray(b.content)) continue;
         for (const r of b.content as { type?: string; url?: string }[]) if (r.type === "web_search_result" && r.url) seen.push(r.url);
       }
-      return parsePages(text, seen);
+      return parsePlan(text, seen);
     } catch (e) {
       lastErr = e;
       const status = (e as { status?: number }).status;
@@ -264,20 +343,35 @@ export async function findItemPhoto(itemId: string): Promise<WebImage> {
 Item: "${it.name}"${it.brand ? `, brand ${it.brand}` : ""}${it.kind ? `, kind ${it.kind}` : ""}${it.unit ? `, bought by the ${it.unit}` : ""}.
 ${seenOn.length ? `How it appears on the café's bills: ${seenOn.join("; ")}.` : ""}
 
-Search the web and find the page of this exact product — same brand, same pack size — on a UAE shop (noon.com, amazon.ae, carrefouruae.com, spinneys.com, luluhypermarket.com, kibsons.com, talabat mart, a wholesale supplier) or on the brand's own website.
-If it is not a branded product (fresh fruit or vegetables, ice, eggs, a plain ingredient, a generic cup or lid), find its English Wikipedia article instead (en.wikipedia.org/wiki/…), or a supplier page showing the same kind of thing.
+Search the web and find the page of this exact product — same brand, same pack size. The brand's own website is best (its product page); then a UAE shop or wholesaler that sells it (spinneys.com, luluhypermarket.com, kibsons.com, carrefouruae.com, noon.com, amazon.ae, a catering supplier).
+Also say what the product is in a few words (brand, product, size) so it can be looked up in Open Food Facts, and for things that aren't a branded product (fresh fruit or vegetables, ice, eggs, a plain ingredient, a generic cup or lid) the English Wikipedia article that shows it.
 
 Reply with ONLY this JSON, best first, at most 3 pages, only URLs you saw in the search results:
-{"pages": [{"url": "https://…", "exact": true}], "note": "one short line"}
-exact = true only when the page is this exact product.`;
+{"pages": [{"url": "https://…", "exact": true}], "product": "Al Rawabi full cream milk 2 L", "wikipedia": "Milk", "note": "one short line"}
+exact = true only when the page is this exact product. wikipedia = the article title, or null.`;
   const usage = new Map<string, Usage>();
+  const tried: string[] = [];
   try {
-    const pages = await askPages(prompt, usage);
-    for (const p of pages) {
-      const dataUrl = await pictureFrom(p, "item");
+    const plan = await askPages(prompt, usage);
+    // 1. The product's own page (brand site, shop).
+    for (const p of plan.pages) {
+      const dataUrl = await pictureFrom(p, "item", tried);
       if (dataUrl) return { status: "found", dataUrl, page: p.url, exact: p.exact };
     }
-    return { status: "none", reason: pages.length ? "No usable picture on the pages found" : "No page found" };
+    // 2. Open Food Facts, for packaged groceries.
+    const query = plan.product ?? `${it.brand ? `${it.brand} ` : ""}${it.name.replace(/[—–-].*$/, "").trim()}`;
+    if (!["packaging", "cleaning", "service"].includes(it.kind ?? "")) {
+      const off = await openFoodFactsImage(query, tried);
+      if (off) return { status: "found", dataUrl: off, page: `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}`, exact: false };
+    }
+    // 3. Wikipedia, for produce and plain things: a picture of the same kind of thing.
+    const wiki = plan.wikipedia ?? (["produce", "frozen_fruit"].includes(it.kind ?? "") ? it.name.split(/[—–(,-]/)[0].trim() : null);
+    if (wiki) {
+      const img = await wikipediaImage(wiki, tried);
+      if (img) return { status: "found", dataUrl: img, page: `https://en.wikipedia.org/wiki/${encodeURIComponent(wiki.replace(/ /g, "_"))}`, exact: false };
+    }
+    console.warn(`[photo-web] ${it.name}: nothing usable — ${tried.join(" | ")}`);
+    return { status: "none", reason: plan.pages.length ? "No usable picture on the pages found" : "No page found", tried: tried.slice(0, 12) };
   } catch (e) {
     return { status: "error", reason: friendly(e) };
   } finally {
@@ -329,7 +423,7 @@ Reply with ONLY this JSON, best first, at most 3 pages, only URLs you saw in the
 {"pages": [{"url": "https://…", "exact": true}], "note": "one short line"}`;
   const usage = new Map<string, Usage>();
   try {
-    const pages = await askPages(prompt, usage);
+    const { pages } = await askPages(prompt, usage);
     for (const p of pages) {
       const dataUrl = await pictureFrom(p, "logo");
       if (dataUrl) {
