@@ -38,12 +38,54 @@ export const WRITE_POLICY: Record<string, { ops: Kind[]; denyColumns?: string[] 
 
 const ALWAYS_DENY = new Set(["id", "created_at"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** "$milk": the id of the row an earlier insert in the same change created (that insert has ref "milk"). */
+export const REF_NAME = /^\$[A-Za-z][\w-]{0,39}$/;
+
+/** The table each link column points at (the foreign keys of the writable tables). */
+export const LINKS: Record<string, string> = {
+  inventory_item_id: "inventory_items",
+  same_as: "inventory_items",
+  supplier_id: "suppliers",
+  category_id: "categories",
+  expense_id: "expenses",
+  menu_item_id: "menu_items",
+  barista_id: "baristas",
+  linked_barista_id: "baristas",
+  location_id: "locations",
+};
+export function linkTable(table: string, column: string): string | null {
+  if (column === "parent_id") return table === "categories" ? "categories" : null;
+  return LINKS[column] ?? null;
+}
 
 export class OpError extends Error {}
+
+/** The key a ref is known by: "$milk", or a made-up uuid (lower case) the model gave the insert as its id. */
+function refToken(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const s = raw.trim();
+  if (UUID.test(s)) return s.toLowerCase();
+  const name = s.startsWith("$") ? s : `$${s}`;
+  return REF_NAME.test(name) ? name : null;
+}
+const keyOf = (v: string) => (UUID.test(v) ? v.toLowerCase() : v);
 
 export function validateOps(ops: unknown): Op[] {
   if (!Array.isArray(ops) || ops.length === 0) throw new OpError("No changes given.");
   if (ops.length > 60) throw new OpError("Too many changes in one action (max 60). Split it.");
+  const defined = new Set<string>();
+  const checkRefs = (i: number, cols: Record<string, unknown>) => {
+    for (const [k, v] of Object.entries(cols)) {
+      if (typeof v === "string" && REF_NAME.test(v) && !defined.has(v)) {
+        throw new OpError(`Op ${i + 1}: ${k} = "${v}" points at a new row, but no earlier insert in this change has "ref": "${v.slice(1)}".`);
+      }
+    }
+  };
+  const rowId = (i: number, raw: unknown, what: string): string => {
+    const id = String(raw ?? "").trim();
+    if (UUID.test(id) || defined.has(id)) return id;
+    throw new OpError(`Op ${i + 1}: ${what} needs a valid row id (or the "$ref" of a row inserted earlier in this change).`);
+  };
   return ops.map((raw, i) => {
     const o = raw as Record<string, unknown>;
     const table = String(o.table ?? "");
@@ -53,24 +95,93 @@ export function validateOps(ops: unknown): Op[] {
     if (!policy.ops.includes(kind)) throw new OpError(`Op ${i + 1}: "${kind}" is not allowed on ${table}.`);
     const deny = new Set([...(policy.denyColumns ?? []), ...ALWAYS_DENY]);
     if (kind === "update") {
-      const id = String(o.id ?? "");
-      if (!UUID.test(id)) throw new OpError(`Op ${i + 1}: update needs a valid row id.`);
+      const id = rowId(i, o.id, "update");
       const changes = (o.changes ?? {}) as Record<string, unknown>;
       const keys = Object.keys(changes);
       if (!keys.length) throw new OpError(`Op ${i + 1}: no columns to change.`);
       for (const k of keys) if (deny.has(k)) throw new OpError(`Op ${i + 1}: column "${k}" cannot be changed.`);
+      checkRefs(i, changes);
       return { op: "update", table, id, changes };
     }
     if (kind === "insert") {
       const values = { ...((o.values ?? {}) as Record<string, unknown>) };
       for (const k of Object.keys(values)) if (deny.has(k) && k !== "id") throw new OpError(`Op ${i + 1}: column "${k}" cannot be set.`);
+      // An id the model chose for a new row is never used as the real id; it becomes the row's ref instead.
+      const ref = refToken(o.ref) ?? refToken(values.id);
       delete values.id;
+      checkRefs(i, values);
+      if (ref) {
+        if (defined.has(ref)) throw new OpError(`Op ${i + 1}: ref "${ref}" is used by two inserts.`);
+        defined.add(ref);
+        return { op: "insert", table, values, ref };
+      }
       return { op: "insert", table, values };
     }
-    const id = String(o.id ?? "");
-    if (!UUID.test(id)) throw new OpError(`Op ${i + 1}: delete needs a valid row id.`);
-    return { op: "delete", table, id };
+    return { op: "delete", table, id: rowId(i, o.id, "delete") };
   });
+}
+
+/**
+ * Checks that every row an op points at exists, before anything is saved or
+ * applied. It also fixes the one mistake the model kept making (13 broken
+ * fixes in October): making up an id for a row the same change creates —
+ * "insert the item, link the bill line to a1b2c3d4-…". When exactly one
+ * earlier insert in the change goes into the table the made-up id points at,
+ * the id becomes that insert's ref and applyOps links the real row. Anything
+ * else that points nowhere is an error the model, or the owner, can act on.
+ */
+export async function prepareOps(input: Op[]): Promise<Op[]> {
+  const ops = input.map((o) => ({ ...o })) as Op[];
+  const refs = new Set(ops.flatMap((o) => (o.op === "insert" && o.ref ? [o.ref] : [])));
+  type Use = { i: number; field: string; table: string; id: string };
+  const uses: Use[] = [];
+  ops.forEach((o, i) => {
+    if (o.op !== "insert") uses.push({ i, field: "id", table: o.table, id: o.id.toLowerCase() });
+    const cols = o.op === "update" ? o.changes : o.op === "insert" ? o.values : {};
+    for (const [k, v] of Object.entries(cols)) {
+      const target = linkTable(o.table, k);
+      if (target && typeof v === "string" && UUID.test(v)) uses.push({ i, field: k, table: target, id: v.toLowerCase() });
+    }
+  });
+  const toCheck = uses.filter((u) => UUID.test(u.id) && !refs.has(u.id));
+  if (!toCheck.length) return ops;
+
+  const db = createServiceClient();
+  const byTable = new Map<string, Set<string>>();
+  for (const u of toCheck) {
+    if (!byTable.has(u.table)) byTable.set(u.table, new Set());
+    byTable.get(u.table)!.add(u.id);
+  }
+  const found = new Set<string>();
+  await Promise.all(
+    [...byTable.entries()].map(async ([table, ids]) => {
+      const { data, error } = await db.from(table).select("id").in("id", [...ids]);
+      if (error) throw new OpError(`${table}: ${error.message}`);
+      for (const r of (data ?? []) as { id: string }[]) found.add(`${table}:${String(r.id).toLowerCase()}`);
+    }),
+  );
+  const missing = toCheck.filter((u) => !found.has(`${u.table}:${u.id}`));
+  if (!missing.length) return ops;
+
+  // Bind a made-up id to the one insert it can only mean.
+  const firstUse = new Map<string, Use>();
+  for (const u of missing) if (!firstUse.has(u.id)) firstUse.set(u.id, u);
+  const perTable = new Map<string, Use[]>();
+  for (const u of firstUse.values()) perTable.set(u.table, [...(perTable.get(u.table) ?? []), u]);
+  for (const [table, list] of perTable) {
+    const inserts = ops.map((o, k) => ({ o, k })).filter(({ o, k }) => o.op === "insert" && o.table === table && !o.ref && k < list[0].i);
+    if (list.length === 1 && inserts.length === 1) {
+      (ops[inserts[0].k] as Extract<Op, { op: "insert" }>).ref = list[0].id;
+      continue;
+    }
+    const u = list[0];
+    throw new OpError(
+      u.field === "id"
+        ? `Op ${u.i + 1}: ${table} row ${u.id} not found.`
+        : `Op ${u.i + 1}: ${u.field} ${u.id} is not an existing ${table} row. To point at a row this same change creates, give that insert "ref": "new_item" and write "$new_item" here. Never make up ids.`,
+    );
+  }
+  return ops;
 }
 
 async function locationId(): Promise<string | null> {
@@ -79,15 +190,36 @@ async function locationId(): Promise<string | null> {
   return (data?.id as string) ?? null;
 }
 
-/** Apply ops in order. Returns the before-state aligned with the ops (and ops with inserted ids). */
+/**
+ * Apply ops in order. Returns the before-state aligned with the ops, and the ops
+ * as applied: inserts carry their new id, and every "$ref" (or made-up id bound
+ * to an insert by prepareOps) is replaced by the real id of the row it means.
+ */
 export async function applyOps(input: Op[]): Promise<{ ops: Op[]; before: unknown[] }> {
   const db = createServiceClient();
   const ops: Op[] = [];
   const before: unknown[] = [];
   let loc: string | null | undefined;
+  const real = new Map<string, string>();
+  const swap = (v: unknown): unknown => (typeof v === "string" ? real.get(keyOf(v)) ?? v : v);
+  const swapAll = (i: number, cols: Record<string, unknown>) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(cols)) {
+      out[k] = swap(v);
+      if (typeof out[k] === "string" && REF_NAME.test(out[k] as string)) throw new OpError(`Op ${i + 1}: ${k} points at "${out[k]}", a row this change never created.`);
+    }
+    return out;
+  };
 
   try {
-    for (const op of input) {
+    for (const [i, raw] of input.entries()) {
+      const op: Op =
+        raw.op === "insert"
+          ? { ...raw, values: swapAll(i, raw.values) }
+          : raw.op === "update"
+            ? { ...raw, id: String(swap(raw.id)), changes: swapAll(i, raw.changes) }
+            : { ...raw, id: String(swap(raw.id)) };
+      if (op.op !== "insert" && !UUID.test(op.id)) throw new OpError(`Op ${i + 1}: ${op.id} is a row this change never created.`);
       if (op.op === "update") {
         const cols = Object.keys(op.changes);
         const { data: row, error: readErr } = await db.from(op.table).select(cols.join(",")).eq("id", op.id).maybeSingle();
@@ -107,6 +239,7 @@ export async function applyOps(input: Op[]): Promise<{ ops: Op[]; before: unknow
         const { data, error } = await db.from(op.table).insert(values).select("id").single();
         if (error) throw new OpError(`${op.table}: ${error.message}`);
         const id = (data as { id: string }).id;
+        if (op.ref) real.set(op.ref, id);
         ops.push({ ...op, values, id });
         before.push(null);
         await writeAudit({ actor_id: null, actor_type: "system", action: "ai_created", entity_type: op.table, entity_id: id, after_state: values });
@@ -220,6 +353,16 @@ export async function recordAction(args: {
   }
 }
 
+/** What the owner reads when a fix can't be applied (the raw error stays on the action). */
+export function plainApplyError(message: string): string {
+  if (/foreign key|is not an existing|never created/i.test(message)) {
+    return "This fix points at a record that isn't there, so nothing was changed. Tell the AI what's right in a note and tap Redo — it will rebuild the fix.";
+  }
+  if (/not found/i.test(message)) return "A row this fix changes was removed or changed since, so nothing was changed. Redo it with a note, or dismiss it.";
+  if (/duplicate key|unique constraint/i.test(message)) return "This fix would create a duplicate, so nothing was changed. Redo it with a note, or dismiss it.";
+  return `Nothing was changed: ${message}`;
+}
+
 /** Owner decisions on an existing action. */
 export async function decideAction(id: string, decision: "approve" | "reject" | "undo"): Promise<{ ok: boolean; error?: string; status?: string }> {
   const db = createServiceClient();
@@ -238,13 +381,13 @@ export async function decideAction(id: string, decision: "approve" | "reject" | 
     if (a.status !== "proposed") return { ok: false, error: "Nothing to approve" };
     if (!a.ops?.length) return { ok: false, error: "This one needs the AI to re-check — tap Ask AI" };
     try {
-      const res = await applyOps(validateOps(a.ops));
+      const res = await applyOps(await prepareOps(validateOps(a.ops)));
       await db.from("ai_actions").update({ status: "applied", ops: res.ops, before: res.before, applied_at: now, decided_at: now, error: null }).eq("id", id);
       return { ok: true, status: "applied" };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       await db.from("ai_actions").update({ error: message }).eq("id", id);
-      return { ok: false, error: message };
+      return { ok: false, error: plainApplyError(message) };
     }
   }
 

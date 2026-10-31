@@ -225,6 +225,11 @@ const L = {
   profit: ["Profit", "الربح"],
   margin: ["Margin", "الهامش"],
   price_short: ["Price", "السعر"],
+  app_price: ["App price", "سعر التطبيقات"],
+  app_price_hint: ["Talabat, Keeta and Beanz", "طلبات وكيتا وBeanz"],
+  on_apps: ["On the apps", "على التطبيقات"],
+  on_apps_note: ["App price before VAT, minus the app's fee, minus the recipe cost.", "سعر التطبيق قبل الضريبة، ناقص رسوم التطبيق، ناقص تكلفة الوصفة."],
+  fee: ["fee", "رسوم"],
   before_vat: ["Before VAT on both sides · cost from your latest bills.", "قبل الضريبة للطرفين · التكلفة من آخر فواتيرك."],
   missing: ["no price", "بدون سعر"],
   off_menu: ["Off the menu", "خارج القائمة"],
@@ -304,6 +309,9 @@ export type MenuCostRow = {
   price_ex_vat: number | null;
   profit: number | null;
   margin_pct: number | null;
+  /** Price on Talabat / Keeta / Beanz (incl. VAT), and before VAT. */
+  app_price: number | null;
+  app_price_ex_vat: number | null;
 };
 
 /** One ingredient that blocks a cost — fixed once, every recipe using it updates. */
@@ -336,6 +344,8 @@ export function normMenu(r: Record<string, unknown>): MenuCostRow {
     price_ex_vat: toNum(r.price_ex_vat),
     profit: toNum(r.profit),
     margin_pct: toNum(r.margin_pct),
+    app_price: toNum(r.app_price),
+    app_price_ex_vat: toNum(r.app_price_ex_vat),
     ingredient_count: Number(r.ingredient_count ?? 0),
     costed_count: Number(r.costed_count ?? 0),
   };

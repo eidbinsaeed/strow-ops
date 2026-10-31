@@ -58,7 +58,7 @@ export function DetailsEditor({
   mode = "owner",
   open = false,
 }: {
-  item: { id: string; name: string; section: string | null; price: number | null; method: string | null; is_active: boolean };
+  item: { id: string; name: string; section: string | null; price: number | null; app_price?: number | null; method: string | null; is_active: boolean };
   sections: string[];
   actions?: RecipeActions;
   /** staff: name, section and method only — no price, no on/off menu, no delete. */
@@ -96,6 +96,12 @@ export function DetailsEditor({
             </label>
           ) : null}
         </div>
+        {!staff ? (
+          <label className="text-xs text-neutral-500">
+            {t("app_price")} · {t("app_price_hint")}
+            <input name="app_price" inputMode="decimal" defaultValue={item.app_price ?? ""} placeholder="AED" className={`${field} mt-1 w-full`} />
+          </label>
+        ) : null}
         <label className="text-xs text-neutral-500">
           {t("method")}
           <textarea name="method" rows={4} defaultValue={item.method ?? ""} dir="auto" className={`${field} mt-1 w-full`} />

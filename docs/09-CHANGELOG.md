@@ -1,8 +1,30 @@
 # Strow Ops — Changelog
 
-**Last updated:** 2026-10-20
+**Last updated:** 2026-11-01
 
 ---
+
+## 2026-11-01 — App prices: app orders count at what the customer paid
+
+- **Why:** the apps sell at higher prices than the shop (Latte 20 → 25, Americano 16 → 20), but staff ring most app orders into the POS at shop prices, and the closing copies the POS. October, checkable app orders: POS 17,916 vs 21,687 at app prices. Staff fix Talabat orders sometimes (47 of 133), Beanz and Keeta almost never (5 of 199, 6 of 99).
+- **Migration `0029_app_prices`** (applied via MCP, additive): `menu_items.app_price` (incl. VAT, same on Talabat, Keeta and Beanz; NULL = not on the apps) and `app_price_updated_at`, filled from the owner's Talabat menu (46 items); 5 Talabat items Strow's menu didn't have were added (V60 Grapes 39/44, V60 White Honey −/47, Creamy Matcha Latte −/45, Peach Ice Tea −/25, Qavè Signature Parfait −/42).
+  - `v_pos_app_orders`: every app order with `pos_paid`, `app_value` (items × app price, shop price where none) and `app_sales` = the larger of the two. Free orders stay 0; an order with an item Strow can't match keeps the POS amount.
+  - `v_app_sales_daily`: per day and app, `pos_paid`, `app_sales`, `extra` (what the POS missed), `orders_at_shop_price`, `orders_unpriced`.
+  - `v_menu_item_costs` gains `app_price`, `app_price_ex_vat` (columns added at the end).
+- **Where it counts** (`src/lib/app-prices.ts`, `withAppPrices` / `closingsAtAppPrices`): Home's week / month / year, Sales › Overview (and its "After app fees"), Pulse / Money month figures, Profit & loss (sales, app fees, net, 6-month chart, CSV). The P&L sales line and the Sales app-fee box say how much of it is app orders counted at app prices. October: +3,827 sales, +1,215 app fees, +2,429 profit before VAT.
+- **Left as entered:** the closing record and its cards, the POS vs closing check, cash, and the VAT return. If the app customers paid app prices, output VAT on the difference was not declared — check with the accountant before the next return.
+- **Recipes:** each recipe shows "On the apps": app price, and profit and margin per app after its fee (Talabat 35.8%, Keeta 30%, Beanz 30%). The app price is edited under Details.
+- **Strow AI** knows the app prices and the two views; told to use `app_sales` for app income and fees.
+
+## 2026-11-01 — AI fixes that add new items work, and a note box on Needs you
+
+- **Bug:** a fix that creates a row and links to it in the same change (new inventory item → link the bill line → add the alias) always failed: the AI wrote a made-up id for the new row (`a1b2c3d4-…`, `11111111-aaaa-…`), the database gave the row a real one, and the link hit `fk_line_items_inventory`. 13 fixes broke this way since 2 Oct (Oatly, Family Fruit Tree, Noon items, Nadec milk). Nothing was ever half-saved (each change rolls back).
+- **Fix** (`src/lib/ai/ops.ts`): an insert can carry `ref: "nadec"` and later ops point at it with `"$nadec"`; `applyOps` swaps in the real id. An id the AI gives an insert becomes its ref, never the real id. `prepareOps` checks every id a change points at before it is saved or applied; a made-up id that can only mean one insert in the change is bound to it (so the Nadec fix already waiting applies as it is); anything else that points nowhere is refused with a message telling the AI to use a ref, so it corrects itself instead of saving a broken proposal. A failed Apply now says in plain words that nothing changed and to redo it with a note.
+- **Note box** on every Needs you card: "Add a note before fixing" / "Tell the AI what to do". The AI rebuilds the fix with the note as the truth (it can read the data and the bill photo, never applies anything itself), shows its steps live, and the new fix takes the old card's place with "Your note" on top; tap Apply as usual. If the note means nothing needs changing, the item closes. The old item closes with the note on it. A failed Apply opens the box by itself. `POST /api/ai/actions/revise` (streams the steps), `src/lib/ai/revise.ts`, prompt mode `review`, AI spend source `review`.
+- **Bill photo on more cards:** the photo is found from the finding's record, the bill lines and bills its changes touch, the bill an alias's text came from, or an invoice number in its text (`src/lib/ai/action-context.ts`). The "Benny → Banana" card now shows Good and Fresh invoice 0263.
+- **Readable changes:** cards show names instead of "linked record" — "Item: Not linked → Nadec Long Life Milk Full Fat (new)", "Bill spelling: “Benny” = Banana — fresh", with the bill line each change is on.
+- Prompt: new products are one change with refs; every finding from a bill keeps the bill as its record.
+- Checked: `tsc`, `next build`, 15 tests of the ref logic against an in-memory database (the exact Nadec ops: old behaviour fails, now applies, Undo restores; several new items with made-up ids are refused; a failure half way rolls back), 4 tests of the app-price helpers.
 
 ## 2026-10-20 — VAT return by quarter, Excel for the accountant, all bills in one PDF
 

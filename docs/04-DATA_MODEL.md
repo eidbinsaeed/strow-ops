@@ -1,6 +1,6 @@
 # Strow Ops — Data Model
 
-**Last updated:** 2026-10-20
+**Last updated:** 2026-11-01
 **Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`), POS daily reports (`0019`), POS menu sync (`0020`), Stock counts (`0021`), Waste check (`0025`) and Supplier logos (`0027`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
 
 Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). All transactional tables include `location_id` FK. RLS enabled on every table.
@@ -367,3 +367,13 @@ The bill reader (`/api/expense/extract`) returns `supplier_logo_box` `{x, y, w, 
 
 ### ai_pins (0028)
 Charts/tables pinned from Strow AI to Home. `kind` chart|table, `title`, `block` jsonb (the block as shown — the snapshot), `source_sql` (read-only SELECT that rebuilds it: chart = column `label` + one column per series name; table = one column per column title; NULL = snapshot), `chat_id` → ai_chats (set null), `position`, `created_at`. RLS on, service role only; not in the AI's schema map (ai_ prefix).
+
+## App prices (migration 0029, 2026-11-01)
+- `menu_items.app_price` numeric (≥ 0, incl. VAT): the price on Talabat, Keeta and Beanz (the same on all three). NULL = not on the apps. `app_price_updated_at` timestamptz.
+- `v_pos_app_orders` (`security_invoker`): one row per POS order paid by talabat / keeta / beanz. Items are matched to `menu_items` by `pos_norm(pos_name or name)`. `pos_paid` = `pos_orders.total_paid`; `app_value` = Σ qty × coalesce(app_price, price); `app_sales` = greatest(pos_paid, app_value) when every item matched and at least one has an app price, else `pos_paid`; free orders (pos_paid ≤ 0) stay as they are. `items` jsonb [{item, qty, shop, app}].
+- `v_app_sales_daily` (`security_invoker`): per `location_id`, `business_date`, `app`: `orders`, `pos_paid`, `app_sales`, `extra` = app_sales − pos_paid, `orders_at_shop_price`, `orders_unpriced`.
+- `v_menu_item_costs`: adds `app_price`, `app_price_ex_vat` at the end.
+- The app adds `extra` to the closing figures it reads for sales, fees and profit (`src/lib/app-prices.ts`); the closing rows themselves are unchanged.
+
+## AI changes: refs between ops (2026-11-01, code only)
+`ai_actions.ops` inserts may carry `ref` ("$name", or the made-up uuid the AI gave the row); later ops point at the new row with that token. When applied, the stored ops carry the real ids (inserts keep `ref`), so Undo is exact. A finding redone with the owner's note starts its `detail` with "Owner note: …" on the first line.

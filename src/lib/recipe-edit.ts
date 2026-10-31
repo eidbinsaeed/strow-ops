@@ -60,10 +60,18 @@ export async function updateMenuItemCore(formData: FormData, actor: Actor): Prom
     if (price === "bad") return { error: "Price must be a number." };
     changes.price = price;
     changes.is_active = formData.get("is_active") === "on";
+    if (formData.has("app_price")) {
+      const app = money(formData.get("app_price"));
+      if (app === "bad") return { error: "App price must be a number." };
+      changes.app_price = app;
+    }
   }
   const db = createServiceClient();
-  const { data: before } = await db.from("menu_items").select("name, section, price, method, is_active").eq("id", id).maybeSingle();
+  const { data: before } = await db.from("menu_items").select("name, section, price, app_price, method, is_active").eq("id", id).maybeSingle();
   if (!before) return { error: "Recipe not found." };
+  if ("app_price" in changes && Number((before as { app_price: unknown }).app_price ?? NaN) !== Number(changes.app_price ?? NaN)) {
+    changes.app_price_updated_at = new Date().toISOString();
+  }
   const { error } = await db.from("menu_items").update(changes).eq("id", id);
   if (error) return { error: /uniq_menu_items/.test(error.message) ? `There is already a recipe called "${name}".` : error.message };
   await audit(actor, "updated", "menu_item", id, before as Record<string, unknown>, changes);

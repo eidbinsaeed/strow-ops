@@ -46,7 +46,7 @@ export default async function AiActivityPage({ searchParams }: { searchParams: P
   const rows = (listRes.data ?? []) as Row[];
   const [settings, month, today] = await Promise.all([getSettings(), spendSince(monthStartIso()), spendSince(dayStartIso())]);
   const pct = Math.min(100, Math.round((month.total / settings.aiMonthlyBudget) * 100));
-  const SRC: Record<string, string> = { chat: "Chat", finance: "Finance chat", autopilot: "Autopilot", "photo-closing": "Reading closings", "photo-bill": "Reading bills" };
+  const SRC: Record<string, string> = { chat: "Chat", finance: "Finance chat", autopilot: "Autopilot", review: "Redo with your note", "photo-closing": "Reading closings", "photo-bill": "Reading bills" };
   const parts = Object.entries(month.bySource).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${SRC[k] ?? k} $${v.toFixed(2)}`);
 
   return (

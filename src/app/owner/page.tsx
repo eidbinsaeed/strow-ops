@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getLocale } from "@/lib/i18n/locale";
 import { todayDubai } from "@/lib/dates";
 import { addDays, dayLong, N, WD, WD_AR } from "@/lib/owner-month";
+import { closingsAtAppPrices } from "@/lib/app-prices";
 import { buildPeriods, PERIOD_KEYS, type HomeBill, type HomeClosing, type PeriodKey } from "@/lib/home-periods";
 import { HomeView, type HomeData, type HomeFinding } from "@/components/apple/HomeView";
 import { loadPins } from "@/lib/ai/pins";
@@ -136,7 +137,8 @@ export default async function HomePage() {
     kind: f.status === "info" ? "needs" : f.hasOps ? "fix" : "check",
   }));
 
-  const periods = buildPeriods(rows, (billRes.data ?? []) as HomeBill[], last?.closing_date ?? null, today, ar);
+  // Sales by period count app orders at app prices (src/lib/app-prices.ts); the last-close card above stays the barista's count.
+  const periods = buildPeriods(await closingsAtAppPrices(rows, db), (billRes.data ?? []) as HomeBill[], last?.closing_date ?? null, today, ar);
   const cashRow = ((cashRes.data ?? [])[0] ?? null) as { cash_on_hand: Num } | null;
 
   // The VAT return of the quarter that just ended, until its due date (28 days after).

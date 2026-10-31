@@ -4,7 +4,7 @@
 import type { Tool, TextBlockParam, ImageBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { createServiceClient } from "@/lib/supabase/server";
 import { downloadDriveFile } from "@/lib/drive/upload";
-import { closeOpenItem, recordAction, validateOps } from "./ops";
+import { closeOpenItem, prepareOps, recordAction, validateOps } from "./ops";
 import { runSource } from "./pins";
 import type { ActionBlock, Block, ChartBlock, ChartKind, StatsBlock, StreamEvent, TableBlock } from "./types";
 
@@ -48,9 +48,14 @@ const OP_ITEM = {
   properties: {
     op: { type: "string", enum: ["update", "insert", "delete"] },
     table: { type: "string" },
-    id: { type: "string", description: "Row uuid (update and delete)" },
+    id: { type: "string", description: "Row uuid (update and delete), or the \"$ref\" of a row inserted earlier in this change" },
     changes: { type: "object", description: "update: the columns to set" },
-    values: { type: "object", description: "insert: the columns of the new row" },
+    values: { type: "object", description: "insert: the columns of the new row (never an id)" },
+    ref: {
+      type: "string",
+      description:
+        "insert only: a short name for the new row, e.g. \"nadec_milk\". Later ops in the SAME change point at it with \"$nadec_milk\" (inventory_item_id, menu_item_id, supplier_id…). Never make up a uuid for a row that doesn't exist yet.",
+    },
   },
   required: ["op", "table"],
 };
@@ -68,7 +73,7 @@ const CHANGE_SCHEMA = {
       description:
         "Row changes. Writable tables: closings, expenses, expense_line_items, suppliers, categories, inventory_items, item_aliases, fixed_costs, liabilities, cash_events (insert only), baristas (update only), attendance_days, leave_requests, staff_reports, payroll_adjustments, menu_items, recipe_lines. Deletes only on expense_line_items, item_aliases and recipe_lines — to remove a bill or closing set its status to 'rejected'.",
     },
-    entity_table: { type: "string", description: "Main record this is about, e.g. expenses" },
+    entity_table: { type: "string", description: "Main record this is about. When it comes from a bill or closing, use expenses or closings so the owner sees the photo." },
     entity_id: { type: "string", description: "uuid of that record" },
   },
   required: ["title", "reason", "confidence", "ops"],
@@ -380,7 +385,8 @@ async function queryDb(i: Json): Promise<ToolOutcome> {
 }
 
 async function change(i: Json, ctx: ToolContext, applyNow: boolean): Promise<ToolOutcome> {
-  const ops = validateOps(i.ops);
+  // Checked before it is saved: a proposal that points at rows that don't exist would only fail when the owner taps Apply.
+  const ops = await prepareOps(validateOps(i.ops));
   const confidence = Math.max(0, Math.min(1, num(i.confidence ?? 0.5)));
   const apply = applyNow ? (ctx.mode === "chat" ? true : confidence >= 0.9) : false;
   const sev = ["info", "warn", "critical"].includes(String(i.severity)) ? (i.severity as "info" | "warn" | "critical") : "info";

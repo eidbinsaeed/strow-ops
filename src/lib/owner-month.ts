@@ -6,6 +6,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { todayDubai } from "@/lib/dates";
 import { appSalesOfClosing, feesForDay, sumFees } from "@/lib/app-fees";
+import { closingsAtAppPrices } from "@/lib/app-prices";
 import type { StripDay } from "@/components/pulse/MonthStrip";
 
 type Num = number | string | null;
@@ -63,7 +64,8 @@ export async function loadMonth(ar: boolean) {
 
   const kpi = ((kpiRes.data ?? [])[0] ?? null) as { projected_net: Num; revenue_mtd: Num; fixed_monthly: Num; days_closed_mtd: Num; days_in_month: Num } | null;
   const cash = ((cashRes.data ?? [])[0] ?? null) as CashPos | null;
-  const rows = (closRes.data ?? []) as Closing[];
+  // App orders at app prices (src/lib/app-prices.ts): the POS rings most of them at shop prices.
+  const rows = await closingsAtAppPrices((closRes.data ?? []) as Closing[], db);
   const itemsRow = (Array.isArray(itemsRes.data) ? itemsRes.data[0] : null) as { items?: number; spent?: number } | null;
   const bills = (billsRes.data ?? []) as { total: Num }[];
 

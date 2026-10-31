@@ -8,6 +8,7 @@
  */
 import { createServiceClient } from "@/lib/supabase/server";
 import { addFees, emptyFees, feesForDay, type AppFees } from "@/lib/app-fees";
+import { loadAppExtras, withAppPrices } from "@/lib/app-prices";
 
 type Db = ReturnType<typeof createServiceClient>;
 type Page<T> = { data: T[] | null; error: { message: string } | null };
@@ -124,6 +125,8 @@ export type SalesDay = {
   /** The closing is still waiting for approval. */
   waiting: boolean;
   pos: PosDay | null;
+  /** App sales the POS missed (app orders rung at shop prices), already included in total and the app amounts. */
+  appExtra: number;
 };
 
 type ClosingRow = {
@@ -188,7 +191,7 @@ export const POS_DAY_COLUMNS =
 
 /** Sales per day from `from` to `to`: closings first, POS reports for days without one. */
 export async function loadSalesDays(from: string, to: string, db: Db = createServiceClient()): Promise<Map<string, SalesDay>> {
-  const [closings, reports] = await Promise.all([
+  const [closings, reports, extras] = await Promise.all([
     pageAll<ClosingRow>((a, b) =>
       db
         .from("closings")
@@ -201,6 +204,7 @@ export async function loadSalesDays(from: string, to: string, db: Db = createSer
         .range(a, b),
     ),
     pageAll<PosRow>((a, b) => db.from("pos_daily_reports").select(POS_DAY_COLUMNS).gte("business_date", from).lte("business_date", to).order("business_date").range(a, b)),
+    loadAppExtras(from, to, db),
   ]);
 
   const best = new Map<string, ClosingRow>();
@@ -212,7 +216,9 @@ export async function loadSalesDays(from: string, to: string, db: Db = createSer
   const pos = new Map(reports.map((r) => [r.business_date, posDayOf(r)]));
 
   const out = new Map<string, SalesDay>();
-  for (const [date, c] of best) {
+  for (const [date, raw] of best) {
+    // App orders count at app prices (src/lib/app-prices.ts).
+    const c = withAppPrices(raw, extras.get(date));
     const online = N(c.online_total);
     const t = N(c.talabat_total);
     const k = N(c.keeta_total);
@@ -231,24 +237,27 @@ export async function loadSalesDays(from: string, to: string, db: Db = createSer
       source: "closing",
       waiting: c.status !== "confirmed",
       pos: pos.get(date) ?? null,
+      appExtra: c.app_extra,
     });
   }
   for (const [date, p] of pos) {
     if (out.has(date)) continue;
+    const x = extras.get(date);
     out.set(date, {
       date,
-      total: p.total,
+      total: p.total + (x?.total ?? 0),
       cash: p.cash,
       card: p.card,
-      talabat: p.talabat,
-      keeta: p.keeta,
-      beanz: p.beanz,
+      talabat: p.talabat + (x?.talabat ?? 0),
+      keeta: p.keeta + (x?.keeta ?? 0),
+      beanz: p.beanz + (x?.beanz ?? 0),
       appsUnsplit: 0,
       other: p.other,
       orders: p.orders,
       source: "pos",
       waiting: false,
       pos: p,
+      appExtra: x?.total ?? 0,
     });
   }
   return out;
@@ -273,6 +282,8 @@ export type Totals = {
   best: SalesDay | null;
   /** Delivery-app fees on the app sales, at each day's rates (src/lib/app-fees.ts). */
   appFees: AppFees;
+  /** Of the app sales: orders the POS rang at shop prices, counted at app prices. */
+  appExtra: number;
 };
 
 /** One day's app fees: Talabat, Keeta, Beanz, and "apps combined" for days before the split. */
@@ -281,7 +292,7 @@ export function dayAppFees(d: Pick<SalesDay, "date" | "talabat" | "keeta" | "bea
 }
 
 export function totalsOf(days: Iterable<SalesDay>): Totals {
-  const t: Totals = { total: 0, cash: 0, card: 0, talabat: 0, keeta: 0, beanz: 0, appsUnsplit: 0, other: 0, orders: 0, orderSales: 0, days: 0, daysWithOrders: 0, posOnly: 0, waiting: 0, best: null, appFees: emptyFees() };
+  const t: Totals = { total: 0, cash: 0, card: 0, talabat: 0, keeta: 0, beanz: 0, appsUnsplit: 0, other: 0, orders: 0, orderSales: 0, days: 0, daysWithOrders: 0, posOnly: 0, waiting: 0, best: null, appFees: emptyFees(), appExtra: 0 };
   for (const d of days) {
     t.days++;
     t.total += d.total;
@@ -293,6 +304,7 @@ export function totalsOf(days: Iterable<SalesDay>): Totals {
     t.appsUnsplit += d.appsUnsplit;
     t.other += d.other;
     t.appFees = addFees(t.appFees, dayAppFees(d));
+    t.appExtra += d.appExtra ?? 0;
     if (d.orders != null && d.orders > 0) {
       t.orders += d.orders;
       t.orderSales += d.total;

@@ -72,7 +72,13 @@ export type StreamEvent =
   | { t: "done" }
   | { t: "error"; message: string };
 
+/**
+ * One row change. A row created earlier in the same change can be pointed at
+ * before it exists: give the insert `ref: "milk"` and write "$milk" wherever its
+ * id is needed (a link column, or the id of a later update). applyOps swaps in
+ * the real id once the insert has run.
+ */
 export type Op =
   | { op: "update"; table: string; id: string; changes: Record<string, unknown> }
-  | { op: "insert"; table: string; values: Record<string, unknown>; id?: string }
+  | { op: "insert"; table: string; values: Record<string, unknown>; id?: string; ref?: string }
   | { op: "delete"; table: string; id: string };

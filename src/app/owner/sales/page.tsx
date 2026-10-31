@@ -345,6 +345,13 @@ export default async function SalesOverviewPage({ searchParams }: { searchParams
                   </div>
                 );
               })}
+              {cur.appExtra >= 0.5 ? (
+                <p className="text-[12px] leading-snug text-neutral-500">
+                  {ar
+                    ? `تشمل ${num0(cur.appExtra)} درهم من طلبات التطبيقات التي سُجّلت في نقاط البيع بسعر المحل، محسوبة بسعر التطبيق.`
+                    : `Includes AED ${num0(cur.appExtra)} of app orders the POS rang at shop prices, counted at app prices.`}
+                </p>
+              ) : null}
               <span className="text-xs leading-snug text-neutral-500">
                 {ar
                   ? "تقدير من مبيعات التطبيقات في كل يوم · بدون العروض الترويجية"

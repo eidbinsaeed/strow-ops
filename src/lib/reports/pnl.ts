@@ -21,6 +21,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { todayDubai } from "@/lib/dates";
 import { emptyFees, feesForDay, addFees, ratesText, rateLabel, currentRates, type AppFees } from "@/lib/app-fees";
+import { closingsAtAppPrices } from "@/lib/app-prices";
 
 export type PnlLocale = "en" | "ar";
 
@@ -279,6 +280,8 @@ export type ClosingIn = {
   talabat_total: number;
   keeta_total: number;
   beanz_total: number;
+  /** App sales the POS rang at shop prices, already added to the totals above (src/lib/app-prices.ts). */
+  app_extra?: number;
 };
 
 export type BillIn = {
@@ -339,6 +342,8 @@ export type Pnl = {
   netProfit: number;
   netPct: number | null;
   apps: { total: number; talabat: number; keeta: number; beanz: number; unsplit: number; share: number | null };
+  /** Of the sales: app orders the POS rang at shop prices, counted at app prices. */
+  appExtra: number;
   /** Delivery-app fees on the app sales above, at each day's rates. */
   appFees: AppFees;
   /** Food and drink bills ÷ net sales. */
@@ -370,6 +375,7 @@ export function computePnl(i: PnlInput): Pnl {
   let keeta = 0;
   let beanz = 0;
   let appFees = emptyFees();
+  let appExtra = 0;
   const closed = new Set<string>();
   for (const c of i.closings) {
     if (!inRange(c.closing_date)) continue;
@@ -378,6 +384,7 @@ export function computePnl(i: PnlInput): Pnl {
     talabat += c.talabat_total;
     keeta += c.keeta_total;
     beanz += c.beanz_total;
+    appExtra += c.app_extra ?? 0;
     // App columns read NULL as 0, so a day before the split has all of online in "combined".
     appFees = addFees(
       appFees,
@@ -464,6 +471,7 @@ export function computePnl(i: PnlInput): Pnl {
       unsplit: Math.max(0, online - talabat - keeta - beanz),
       share: sales > 0 ? online / sales : null,
     },
+    appExtra,
     appFees,
     foodCostBills: ofNet(sums.food),
     foodCostRecipes,
@@ -488,7 +496,20 @@ export function statementLines(p: Pnl, locale: PnlLocale = "en"): StatementLine[
   const ar = locale === "ar";
   const ofNet = (x: number) => (p.net > 0 ? x / p.net : null);
   const out: StatementLine[] = [
-    { key: "sales", label: ar ? "المبيعات شاملة الضريبة" : "Sales with VAT", amount: p.sales, pct: null, kind: "line" },
+    {
+      key: "sales",
+      label: ar ? "المبيعات شاملة الضريبة" : "Sales with VAT",
+      amount: p.sales,
+      pct: null,
+      kind: "line",
+      ...(p.appExtra >= 0.5
+        ? {
+            note: ar
+              ? `تشمل ${fmtAed(p.appExtra)} من طلبات التطبيقات التي سُجّلت في نقاط البيع بسعر المحل، محسوبة بسعر التطبيق`
+              : `Includes AED ${fmtAed(p.appExtra)} of app orders the POS rang at shop prices, counted at app prices`,
+          }
+        : {}),
+    },
     { key: "vat", label: ar ? `ضريبة القيمة المضافة ${vatLabel(p.vatRate)}` : `VAT ${vatLabel(p.vatRate)}`, amount: -p.vat, pct: null, kind: "line" },
     { key: "net", label: ar ? "صافي المبيعات" : "Net sales", amount: p.net, pct: p.net > 0 ? 1 : null, kind: "total" },
     { key: "food", label: ar ? "مشتريات الطعام والمشروبات" : "Food and drink bought", amount: -p.purchases.food, pct: ofNet(p.purchases.food), kind: "line" },
@@ -705,13 +726,27 @@ async function fetchClosings(from: string, to: string): Promise<ClosingIn[]> {
       .order("id")
       .range(a, b),
   );
-  return rows.map((r) => ({
-    closing_date: String(r.closing_date),
+  // App orders count at app prices (src/lib/app-prices.ts): the POS, and so the closing, rings most of them at shop prices.
+  // A closing that doesn't split the apps keeps NULL app columns, so withAppPrices adds the difference to "online" (apps combined).
+  const priced = await closingsAtAppPrices(
+    rows.map((r) => ({
+      closing_date: String(r.closing_date),
+      grand_total: r.grand_total as number | string | null,
+      online_total: r.online_total as number | string | null,
+      talabat_total: r.talabat_total as number | string | null,
+      keeta_total: r.keeta_total as number | string | null,
+      beanz_total: r.beanz_total as number | string | null,
+    })),
+    db,
+  );
+  return priced.map((r) => ({
+    closing_date: r.closing_date,
     grand_total: num(r.grand_total),
     online_total: num(r.online_total),
     talabat_total: num(r.talabat_total),
     keeta_total: num(r.keeta_total),
     beanz_total: num(r.beanz_total),
+    app_extra: r.app_extra,
   }));
 }
 

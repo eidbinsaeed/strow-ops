@@ -6,6 +6,8 @@ import { CostFixes } from "../RecipeFixes";
 import { AddLineForm, DetailsEditor, LineRow, RecipePhoto } from "../RecipeEditor";
 import { PosPriceHint } from "../PosPrice";
 import { latestPosPrices } from "@/lib/recipes-pos";
+import { appItemProfit } from "@/lib/app-prices";
+import { appName, currentRates, rateLabel } from "@/lib/app-fees";
 import { dayShort } from "@/lib/period";
 import {
   NON_INGREDIENT_KINDS,
@@ -34,7 +36,7 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
   const db = createServiceClient();
 
   const [itemRes, costRes, linesRes, itemsRes, unitRes, sectionsRes, posPrices] = await Promise.all([
-    db.from("menu_items").select("id, name, section, price, method, is_active, source, photo_drive_url, pos_name, notes").eq("id", id).maybeSingle(),
+    db.from("menu_items").select("id, name, section, price, app_price, method, is_active, source, photo_drive_url, pos_name, notes").eq("id", id).maybeSingle(),
     db.from("v_menu_item_costs").select("*").eq("menu_item_id", id).maybeSingle(),
     db.from("v_recipe_line_costs").select("*").eq("menu_item_id", id).order("position"),
     db.from("inventory_items").select("id, name, kind, unit, default_unit_size, default_size_uom, is_active").order("name"),
@@ -43,7 +45,7 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
     latestPosPrices(db, [id]).catch(() => new Map()),
   ]);
   const pos = posPrices.get(id) ?? null;
-  const item = itemRes.data as { id: string; name: string; section: string | null; price: number | null; method: string | null; is_active: boolean; source: string; photo_drive_url: string | null; pos_name: string | null; notes: string | null } | null;
+  const item = itemRes.data as { id: string; name: string; section: string | null; price: number | null; app_price: number | string | null; method: string | null; is_active: boolean; source: string; photo_drive_url: string | null; pos_name: string | null; notes: string | null } | null;
   if (!item) notFound();
 
   const cost = costRes.data ? normMenu(costRes.data as Record<string, unknown>) : null;
@@ -65,6 +67,14 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
   const sections = [...new Set([...((sectionsRes.data ?? []) as { section: string | null }[]).map((s) => s.section).filter((s): s is string => !!s), ...SECTION_SUGGESTIONS])];
   const fileId = driveFileId(item.photo_drive_url);
   const price = item.price != null ? Number(item.price) : null;
+  const appPrice = item.app_price != null ? Number(item.app_price) : null;
+  // Profit of one sold on each app: app price before VAT − that app's fee − the recipe cost.
+  const rates = currentRates();
+  const vatRate = cost?.price_ex_vat != null && price ? price / cost.price_ex_vat - 1 : 0.05;
+  const onApps =
+    appPrice != null && cost && cost.costed_count > 0
+      ? (["talabat", "keeta", "beanz"] as const).map((k) => ({ key: k, rate: rates[k], ...appItemProfit(appPrice, vatRate, rates[k], cost.cost) }))
+      : null;
   const missing = cost ? cost.ingredient_count - cost.costed_count : 0;
   const steps = (item.method ?? "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
 
@@ -100,6 +110,32 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
         </div>
       </section>
 
+      {appPrice != null ? (
+        <section className="flex flex-col gap-1.5 rounded-[24px] bg-white px-4 py-3.5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="text-sm font-semibold">{t("on_apps")}</span>
+            <span className="text-sm tabular-nums">
+              {t("app_price")} <strong>{aed(appPrice)}</strong>
+              {price != null && appPrice !== price ? <span className="text-neutral-500"> · {locale === "ar" ? "المحل" : "shop"} {aed(price)}</span> : null}
+            </span>
+          </div>
+          {onApps
+            ? onApps.map((a) => (
+                <div key={a.key} className="flex flex-wrap items-center justify-between gap-x-3 border-t border-[#EDF0F3] pt-1.5 text-[13px]">
+                  <span className="text-neutral-600">
+                    {appName(a.key, locale === "ar")} · {t("fee")} {rateLabel(a.rate)}
+                  </span>
+                  <span className="flex items-center gap-2 tabular-nums">
+                    {t("profit")} {aed(a.profit)}
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${marginTone(a.margin)}`}>{a.margin != null ? `${Math.round(a.margin)}%` : "—"}</span>
+                  </span>
+                </div>
+              ))
+            : null}
+          <span className="text-xs text-neutral-400">{t("on_apps_note")}</span>
+        </section>
+      ) : null}
+
       {pos ? <PosPriceHint menuItemId={item.id} posPrice={pos.unit} posDay={dayShort(pos.date, locale)} current={price} locale={locale} /> : null}
 
       {issues.length ? <CostFixes issues={issues} items={pickable} compact /> : null}
@@ -126,7 +162,7 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
         </section>
       ) : null}
 
-      <DetailsEditor item={{ id: item.id, name: item.name, section: item.section, price, method: item.method, is_active: item.is_active }} sections={sections} />
+      <DetailsEditor item={{ id: item.id, name: item.name, section: item.section, price, app_price: appPrice, method: item.method, is_active: item.is_active }} sections={sections} />
     </div>
   );
 }
