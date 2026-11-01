@@ -4,6 +4,13 @@
 
 ---
 
+## 2026-11-01 — Correction: app prices count only from the day each app changed
+
+- **Mistake in 0029:** today's app prices were applied to every October app order, which showed October sales +3,827 and the month near break-even. Wrong: the apps moved to these prices on different days, and before that the POS price was right. Staff have rung Talabat orders at the new prices since 13 Oct (the marked-up POS totals equal today's prices exactly) and Keeta since 28 Oct.
+- **Migration `0031_app_price_start`** (applied): table `app_price_start` (location, app, `starts_on`, note) — Talabat 13 Oct 2026, Keeta 28 Oct 2026, Beanz 1 Nov 2026 (placeholder until the owner gives the real date). `v_pos_app_orders` counts an order at app prices only from its app's date (new column `app_prices_from`); before it, `app_sales = pos_paid`.
+- **October now:** the POS missed only AED 42 (Talabat). Sales 37,331, app fees 6,655, result about −2,800 — the closings were right.
+- Strow AI prompt corrected (never apply today's app prices before an app's start date).
+
 ## 2026-11-01 — Item photos and vendor logos from the web
 
 - **Migration `0030_item_photos`** (applied via MCP, additive): `inventory_items.photo_path`, `photo_source` (`web` | `bill` | `upload`), `photo_page`, `photo_updated_at`, `photo_checked_at`; `suppliers.logo_page`, `logo_web_checked_at`; `suppliers.logo_source` now also allows `web`. Images in the private bucket `item-photos` (made by the app on first use), served by `/api/item-photo/[id]?v=<photo_updated_at>` to the owner or signed-in staff.
