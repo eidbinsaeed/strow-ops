@@ -209,6 +209,14 @@ begin
     raise exception 'ai_kick_worker: bad origin';
   end if;
 
+  -- A call that gets no answer within 6 s counts as not made (a statement through the API may take 8 s).
+  -- Set for this transaction only; the http extension has no limit of its own here.
+  begin
+    perform set_config('http.timeout_msec', '6000', true);
+  exception when others then
+    null;
+  end;
+
   begin
     select r.status into res_status
       from extensions.http((
