@@ -5,6 +5,10 @@
  * Guarantees: a reply cut off by the length limit is never silently dropped
  * (the model is told to redo it in smaller batches), and a chat turn never
  * ends without a written answer.
+ *
+ * opts.signal stops a run from outside (the owner tapped Stop, or the server
+ * run is out of time): no new step starts, the request in flight is dropped,
+ * and the tools that already ran keep their result.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import type {
@@ -95,7 +99,9 @@ export async function runAgent(opts: {
   execute?: (name: string, input: unknown, ctx: ToolContext) => Promise<ToolOutcome>;
   model?: string;
   usageSource?: string;
-}): Promise<{ text: string; model: string; steps: number }> {
+  /** Fires to stop the run: no new step starts and the model request in flight is dropped. */
+  signal?: AbortSignal;
+}): Promise<{ text: string; model: string; steps: number; stopped: boolean }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
   const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 170_000 });
@@ -111,16 +117,18 @@ export async function runAgent(opts: {
   let steps = 0;
   let cutOffs = 0;
   let unfinished = false;
+  let stopped = false;
+  const halted = () => !!opts.signal?.aborted;
 
   const call = async (maxTokens: number, extra: Record<string, unknown> = {}, timeout?: number): Promise<Message> => {
     for (;;) {
       try {
         const params = { model, max_tokens: maxTokens, system: cachedSystem, tools: cachedTools, messages: withCacheBreakpoint(messages), ...extra } as unknown as MessageCreateParamsNonStreaming;
-        const res = await client.messages.create(params, timeout ? { timeout } : undefined);
+        const res = await client.messages.create(params, { ...(timeout ? { timeout } : {}), ...(opts.signal ? { signal: opts.signal } : {}) });
         addUsage(usage, (res as unknown as { usage?: unknown }).usage);
         return res;
       } catch (e) {
-        if (model !== FALLBACK_MODEL && isModelUnavailable(e)) {
+        if (!halted() && model !== FALLBACK_MODEL && isModelUnavailable(e)) {
           model = FALLBACK_MODEL;
           continue;
         }
@@ -131,12 +139,26 @@ export async function runAgent(opts: {
 
   try {
     while (true) {
+      if (halted()) {
+        stopped = true;
+        break;
+      }
       if (steps >= opts.maxSteps || Date.now() > opts.deadline) {
         unfinished = true;
         break;
       }
       steps++;
-      const resp = await call(opts.maxTokens ?? 16000);
+      let resp: Message;
+      try {
+        resp = await call(opts.maxTokens ?? 16000);
+      } catch (e) {
+        // Stopped while the model was thinking: that request is dropped, nothing of it was applied.
+        if (halted()) {
+          stopped = true;
+          break;
+        }
+        throw e;
+      }
       const content = resp.content as ContentBlock[];
       const toolUses = content.filter((b): b is ToolUseBlock => b.type === "tool_use");
       const text = textOf(content);
@@ -169,6 +191,8 @@ export async function runAgent(opts: {
       messages.push({ role: "assistant", content: content as unknown as MessageParam["content"] });
       const results: ToolResultBlockParam[] = [];
       for (const tu of toolUses) {
+        // Stopped between two tools: the ones that ran stay, the rest never start.
+        if (halted()) break;
         // Showing a chart or table is not a step worth listing — the block itself appears.
         const listed = !DISPLAY_TOOLS.has(tu.name);
         if (listed) opts.ctx.emit({ t: "status", text: statusFor(tu.name, tu.input) });
@@ -187,7 +211,7 @@ export async function runAgent(opts: {
     }
 
     // Never end a chat turn silently: ask for a short written answer (no tools).
-    if (opts.ctx.mode === "chat" && !finalText && Date.now() < opts.deadline + 15_000) {
+    if (!stopped && !halted() && opts.ctx.mode === "chat" && !finalText && Date.now() < opts.deadline + 15_000) {
       try {
         opts.ctx.emit({ t: "status", text: "Writing it up" });
         nudge(messages, SUMMARY_NUDGE);
@@ -202,7 +226,7 @@ export async function runAgent(opts: {
       }
     }
 
-    if (unfinished && opts.ctx.mode === "chat") {
+    if (unfinished && !stopped && !halted() && opts.ctx.mode === "chat") {
       const note = "I stopped here to keep things quick — say “continue” and I'll carry on.";
       emitText(opts.ctx, note);
       finalText += (finalText ? "\n\n" : "") + note;
@@ -210,5 +234,5 @@ export async function runAgent(opts: {
   } finally {
     await logUsage(opts.usageSource ?? opts.ctx.mode, model, usage, { chatId: opts.ctx.chatId, runId: opts.ctx.runId });
   }
-  return { text: finalText, model, steps };
+  return { text: finalText, model, steps, stopped: stopped || halted() };
 }

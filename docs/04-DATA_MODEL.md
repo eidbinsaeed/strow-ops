@@ -1,6 +1,6 @@
 # Strow Ops — Data Model
 
-**Last updated:** 2026-11-01
+**Last updated:** 2026-11-22
 **Status:** Implemented — 12 tables, RLS on all, 4 reporting views. The schema below reflects production as of migration `0003`, plus the Recipes (`0018`), POS daily reports (`0019`), POS menu sync (`0020`), Stock counts (`0021`), Waste check (`0025`) and Supplier logos (`0027`) sections at the end. Migrations `0004`–`0017` are not documented here yet. A few Session-1 sketch column names changed during implementation; corrections are noted inline.
 
 Postgres via Supabase. All tables include `created_at` and `updated_at` (auto). All transactional tables include `location_id` FK. RLS enabled on every table.
@@ -385,3 +385,23 @@ Charts/tables pinned from Strow AI to Home. `kind` chart|table, `title`, `block`
 
 ## App price start dates (migration 0031, 2026-11-01)
 - `app_price_start` (`location_id`, `app` talabat|keeta|beanz, `starts_on`, `note`; PK location+app; RLS on, service role only): the day each app started selling at `menu_items.app_price`. `v_pos_app_orders.app_sales` = `pos_paid` before it; from it, greatest(pos_paid, app_value). Column `app_prices_from` added at the end of the view.
+
+## Background AI jobs (migration 0032, 2026-11-22)
+Strow AI runs are rows, so they carry on when no screen is open. RLS on, service role only; not in the AI's schema map (ai_ prefix). Additive.
+
+### `ai_jobs` — one AI run
+- `kind` `chat` (a message in Strow AI; starts at once) | `item` (a Needs-you item handed to the AI; waits in the queue), `mode` `chat` | `finance`
+- `status` `queued` → `running` → `done` | `failed` | `canceled`
+- `chat_id` → ai_chats (cascade), `batch_id` → ai_batches (cascade), `action_id` (the open `ai_actions` row the run handles), `position`, `title`, `prompt`, `page`
+- `cancel_requested` (Stop was tapped), `started_at`, `heartbeat_at` (touched every 3 s while alive), `finished_at`
+- `status_text`, `steps` jsonb, `blocks` jsonb — the run's progress as the screens show it; `summary`, `error`, `model`, `stats` jsonb (`applied`, `proposed`, `flagged`, `steps`, `seconds`, and for queued jobs `via`: how the server run was started — `start` with the hand-over, `db` by the database's call, `app` by the app calling itself, `screen` by an open screen)
+- `outcome` (runs about a Needs-you item): `fixed` | `closed` | `needs_you` | `failed` | `canceled`
+
+### `ai_batches` — items handed over together
+`chat_id` (the chat their answers go into), `total`, `finished_at`, `summary`.
+
+### Functions (execute: service role only)
+- `ai_claim_job(p_stale_seconds)` → the next queued job, marked running, with the owner's message written to its chat in the same step. One caller at a time; nothing while another item job is alive (one lane); a running job silent for longer than `p_stale_seconds` no longer holds the lane.
+- `ai_finish_job(p_id, p_status, p_blocks, p_text, …, p_stale_before)` → closes a running job and saves its answer to the chat in one step; `false` when the job was already closed. With `p_stale_before` it only closes a job whose heartbeat is older (a run that was cut off).
+- `ai_kick_worker(p_origin, p_token)` → the database POSTs `<origin>/api/ai/jobs/work` (http extension) to start the next server run; returns the HTTP status or NULL. Refuses anything but an https origin, and refuses to run inside the assistant's read-only SQL.
+

@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { createServiceClient } from "@/lib/supabase/server";
-import { AssistantChat, type ChatMessage } from "@/components/ai/AssistantChat";
+import { AssistantChat, type ChatLiveStart, type ChatMessage } from "@/components/ai/AssistantChat";
+import { loadChat } from "@/lib/ai/jobs";
 import { BackButton } from "@/components/pulse/BackButton";
 import { HistoryMenu } from "@/components/ai/HistoryMenu";
-import type { Block } from "@/lib/ai/types";
 
 export const dynamic = "force-dynamic";
 
@@ -34,20 +34,9 @@ export default async function FinanceAssistantPage({ searchParams }: { searchPar
   const explicit = sp.c && UUID.test(sp.c) ? sp.c : null;
   const chatId = explicit ?? (!q && sp.new !== "1" ? (chats[0]?.id ?? null) : null);
 
-  const msgsRes = chatId
-    ? await db.from("ai_messages").select("id, role, blocks").eq("chat_id", chatId).order("created_at", { ascending: true }).limit(200)
-    : { data: [] as unknown[] };
-  const initialMessages: ChatMessage[] = ((msgsRes.data ?? []) as { id: string; role: "user" | "assistant"; blocks: Block[] }[]).map((m) => ({
-    id: m.id,
-    role: m.role,
-    blocks: Array.isArray(m.blocks) ? m.blocks : [],
-  }));
-  const actionIds = initialMessages.flatMap((m) => m.blocks.filter((b) => b.type === "action").map((b) => (b as { id: string }).id));
-  if (actionIds.length) {
-    const { data: live } = await db.from("ai_actions").select("id, status").in("id", actionIds);
-    const now = new Map(((live ?? []) as { id: string; status: string }[]).map((a) => [a.id, a.status]));
-    for (const m of initialMessages) m.blocks = m.blocks.map((b) => (b.type === "action" && now.has(b.id) ? { ...b, status: now.get(b.id) as string } : b));
-  }
+  const loaded = chatId ? await loadChat(chatId) : null;
+  const initialMessages: ChatMessage[] = loaded?.messages ?? [];
+  const liveNow: ChatLiveStart | null = loaded?.live ?? null;
 
   return (
     <div dir="rtl" className="flex h-dvh flex-col">
@@ -72,6 +61,7 @@ export default async function FinanceAssistantPage({ searchParams }: { searchPar
           key={chatId ?? `new:${q ?? ""}:${sp.new ?? ""}`}
           initialChatId={chatId}
           initialMessages={initialMessages}
+          initialLive={liveNow}
           initialPrompt={chatId ? undefined : q}
           variant="full"
           mode="finance"

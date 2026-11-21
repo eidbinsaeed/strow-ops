@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Block, FollowupsBlock, Step, StepsBlock, StreamEvent } from "@/lib/ai/types";
-import { applyStepEvent, stepsBlock, visibleSteps } from "@/lib/ai/steps";
+import type { Block, FollowupsBlock, Step, StepsBlock } from "@/lib/ai/types";
+import type { ChatLive, LiveJob, SavedMessage } from "@/lib/ai/job-types";
+import { refreshAiJobs } from "./useAiJobs";
 import { ChatToolsProvider } from "./ChatTools";
 import { Steps } from "./Steps";
 import { Chart, DataTable, Stats } from "./Charts";
@@ -17,11 +18,22 @@ export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   blocks: Block[];
-  pending?: boolean;
-  status?: string;
-  startedAt?: number;
-  steps?: Step[];
+  /** When it was saved (the server's timestamp, passed back as-is to ask for newer messages). */
+  at?: string;
 };
+
+/** The run in progress and what is waiting behind it, as the page read it when it rendered. */
+export type ChatLiveStart = { now: string; job: LiveJob | null; queued: { id: string; title: string | null }[] };
+
+/**
+ * A run in progress as this screen shows it (times in this device's clock).
+ * `key` is the row it is drawn on: the saved answer later takes the same row,
+ * so the live steps fold into "How I got this" instead of the answer jumping in.
+ */
+type LiveView = { key: string; id: string | null; steps: Step[]; blocks: Block[]; startedAt: number; stopping: boolean };
+
+/** How often the screen asks for the run's progress. */
+const POLL_MS = 1100;
 
 const COPY = {
   en: {
@@ -29,24 +41,30 @@ const COPY = {
     thinking: "Thinking",
     welcome: "Ask Strow AI anything",
     sub: "It reads all your sales, bills, items, staff and cash — and fixes mistakes for you. Every change has Undo.",
-    stopped: "Stopped.",
     listening: "Listening…",
     tryThese: "Try one of these",
     error: "Something went wrong",
-    recovering: "Connection dropped — still working, fetching the answer…",
-    lost: "Lost the connection. Open this chat again from History in a minute to see the answer.",
+    expired: "Your session expired — sign in again.",
+    leave: "You can leave this page. It keeps working, and the answer will be here when you come back.",
+    upNext: "Up next",
+    more: "more",
+    stop: "Stop",
+    stopping: "Stopping…",
   },
   ar: {
     placeholder: "اسأل أي شيء عن المقهى…",
     thinking: "أفكر",
     welcome: "اسأل Strow AI أي شيء",
     sub: "يقرأ كل المبيعات والفواتير والأصناف والموظفين والنقد — ويصلح الأخطاء بنفسه. كل تغيير قابل للتراجع.",
-    stopped: "تم الإيقاف.",
     listening: "أستمع…",
     tryThese: "جرّب أحد هذه",
     error: "حدث خطأ",
-    recovering: "انقطع الاتصال — ما زلت أعمل، أجلب الإجابة…",
-    lost: "انقطع الاتصال. افتح هذه المحادثة من السجل بعد دقيقة لترى الإجابة.",
+    expired: "انتهت الجلسة — سجّل الدخول من جديد.",
+    leave: "يمكنك مغادرة هذه الصفحة. سيواصل العمل وستجد الإجابة هنا عند عودتك.",
+    upNext: "التالي",
+    more: "أخرى",
+    stop: "إيقاف",
+    stopping: "جارٍ الإيقاف…",
   },
 };
 
@@ -86,23 +104,6 @@ function getSR(): (new () => SpeechRec) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-async function recoverAnswer(chatId: string, since: string): Promise<Block[] | null> {
-  const until = Date.now() + 5 * 60_000;
-  while (Date.now() < until) {
-    await new Promise((r) => setTimeout(r, 4000));
-    try {
-      const r = await fetch(`/api/ai/chat?c=${encodeURIComponent(chatId)}&after=${encodeURIComponent(since)}`, { cache: "no-store" });
-      if (r.ok) {
-        const j = (await r.json()) as { message?: { blocks?: unknown } | null };
-        if (j.message) return Array.isArray(j.message.blocks) ? (j.message.blocks as Block[]) : [];
-      }
-    } catch {
-      /* still offline — keep trying */
-    }
-  }
-  return null;
-}
-
 function rid(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
 }
@@ -111,9 +112,31 @@ function isCoarse(): boolean {
   return typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 }
 
+function viewOf(job: LiveJob, skew: number, was?: LiveView | null): LiveView {
+  const t = job.startedAt ? Date.parse(job.startedAt) : NaN;
+  // Same run as the one on screen (or the one just sent, whose id wasn't known yet): keep its row and its clock.
+  const same = was && (was.id === job.id || was.id === null) ? was : null;
+  return {
+    key: same?.key ?? `job:${job.id}`,
+    id: job.id,
+    steps: job.steps ?? [],
+    blocks: job.blocks ?? [],
+    startedAt: same && same.id === null ? same.startedAt : Number.isNaN(t) ? Date.now() : t - skew,
+    stopping: !!job.stopping,
+  };
+}
+
+/** New saved messages go on the end; ones already on screen (by id) are left as they are. */
+function mergeSaved(have: ChatMessage[], incoming: SavedMessage[]): ChatMessage[] {
+  const known = new Set(have.map((m) => m.id));
+  const fresh = incoming.filter((m) => !known.has(m.id));
+  return fresh.length ? [...have, ...fresh] : have;
+}
+
 export function AssistantChat({
   initialChatId = null,
   initialMessages = [],
+  initialLive = null,
   variant = "full",
   contextPath,
   initialPrompt,
@@ -125,6 +148,8 @@ export function AssistantChat({
 }: {
   initialChatId?: string | null;
   initialMessages?: ChatMessage[];
+  /** The run already going in this chat when the page rendered (it picks up from there). */
+  initialLive?: ChatLiveStart | null;
   variant?: "full" | "sheet";
   contextPath?: string;
   initialPrompt?: string;
@@ -138,139 +163,212 @@ export function AssistantChat({
   const t = useMemo(() => ({ ...(COPY[locale] ?? COPY.en), ...(copy ?? {}) }), [locale, copy]);
   const [chatId, setChatId] = useState<string | null>(initialChatId);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  // The run in progress lives on the server; this is the screen's copy of it.
+  const [live, setLive] = useState<LiveView | null>(() => (initialLive?.job ? viewOf(initialLive.job, Date.parse(initialLive.now) - Date.now() || 0) : null));
+  const [queued, setQueued] = useState<{ id: string; title: string | null }[]>(initialLive?.queued ?? []);
+  const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [hasMic, setHasMic] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  // Clock-based text (seconds) only after the page is live in the browser, so it matches what the server drew.
+  const [ready, setReady] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const recRef = useRef<SpeechRec | null>(null);
   const chatIdRef = useRef<string | null>(initialChatId);
-  const sinceRef = useRef<string | null>(null);
   const sentInitial = useRef(false);
   const stick = useRef(true);
+  /** Time of the newest saved message on screen, as the server wrote it: "anything newer than this?" */
+  const cursor = useRef<string | null>([...initialMessages].reverse().find((m) => m.at)?.at ?? null);
+  /** Goes up with every send, so an answer to an older question about the chat's state is dropped. */
+  const gen = useRef(0);
+  const sendingRef = useRef(false);
+  const liveRef = useRef<LiveView | null>(live);
+  /** Saved answer id → the row its run was drawn on while it was live. */
+  const rowKey = useRef(new Map<string, string>());
+  /** The loop that follows a run: id 0 = none. */
+  const poll = useRef<{ id: number; timer?: number }>({ id: 0 });
+  const loops = useRef(0);
+
+  const busy = sending || !!live || queued.length > 0;
+  const busyRef = useRef(busy);
 
   useEffect(() => {
     chatIdRef.current = chatId;
   }, [chatId]);
+  useEffect(() => {
+    liveRef.current = live;
+    busyRef.current = busy;
+  }, [live, busy]);
 
   useEffect(() => {
     setHasMic(!!getSR());
+    setNow(Date.now());
+    setReady(true);
     return () => recRef.current?.stop();
   }, []);
 
   useEffect(() => {
-    if (!busy) return;
+    if (!live) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [busy]);
+  }, [live]);
+
+  useEffect(() => {
+    if (!live && !queued.length) setStopping(false);
+  }, [live, queued.length]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stick.current) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, live]);
 
   const onScroll = () => {
     const el = scrollRef.current;
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
   };
 
+  /** Reads the chat's current state from the server. Returns whether something is still running or waiting. */
+  const sync = useCallback(async (): Promise<boolean> => {
+    const cid = chatIdRef.current;
+    if (!cid) return false;
+    const mine = gen.current;
+    const after = cursor.current;
+    const r = await fetch(`/api/ai/jobs/chat?c=${encodeURIComponent(cid)}${after ? `&after=${encodeURIComponent(after)}` : ""}`, { cache: "no-store" });
+    if (r.status === 401) return false;
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = (await r.json()) as ChatLive;
+    // A newer question went out, or another chat was opened, while this was on its way.
+    if (mine !== gen.current || cid !== chatIdRef.current) return true;
+    const skew = (Date.parse(j.now) || Date.now()) - Date.now();
+    if (j.messages.length) {
+      cursor.current = j.messages[j.messages.length - 1].at;
+      // The run that was live just ended: its saved answer takes its row.
+      const was = liveRef.current;
+      if (!j.job && was) {
+        const answer = j.messages.find((m) => m.role === "assistant");
+        if (answer) rowKey.current.set(answer.id, was.key);
+      }
+      setMessages((ms) => mergeSaved(ms, j.messages));
+    }
+    // While a send is still on its way, "nothing running" only means the server hasn't heard of it yet.
+    const job = j.job;
+    if (job) setLive((cur) => viewOf(job, skew, cur));
+    else if (!sendingRef.current) setLive(null);
+    setQueued(j.queued ?? []);
+    return !!j.job || (j.queued ?? []).length > 0 || sendingRef.current;
+  }, []);
+
+  /**
+   * Keeps asking while something runs; stops by itself when the chat is quiet.
+   * Only one loop is ever alive: `now` starts a fresh one that asks at once (the app came back to the front).
+   */
+  const follow = useCallback(
+    (now = false) => {
+      if (poll.current.id && !now) return;
+      window.clearTimeout(poll.current.timer);
+      const me = (loops.current += 1);
+      poll.current.id = me;
+      let fails = 0;
+      const tick = async () => {
+        if (poll.current.id !== me) return;
+        // Nobody is looking (another tab, phone locked): the run carries on server-side, the screen catches up when it is back.
+        if (document.visibilityState !== "visible") {
+          poll.current.timer = window.setTimeout(tick, 3000);
+          return;
+        }
+        let more = true;
+        try {
+          more = await sync();
+          fails = 0;
+        } catch {
+          fails++; // offline or a hiccup: keep asking
+        }
+        if (poll.current.id !== me) return;
+        if (more) poll.current.timer = window.setTimeout(tick, fails ? Math.min(8000, 1500 * fails) : POLL_MS);
+        else poll.current.id = 0;
+      };
+      void tick();
+    },
+    [sync],
+  );
+
+  // On arrival (and whenever the app comes back to the front): catch up with whatever happened while this screen was away.
+  useEffect(() => {
+    if (chatIdRef.current) follow();
+    const onShow = () => {
+      if (document.visibilityState === "visible" && chatIdRef.current) follow(true);
+    };
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("pageshow", onShow);
+    window.addEventListener("online", onShow);
+    const p = poll.current;
+    return () => {
+      p.id = 0;
+      window.clearTimeout(p.timer);
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("pageshow", onShow);
+      window.removeEventListener("online", onShow);
+    };
+  }, [follow]);
+
   const send = useCallback(
     async (raw: string) => {
       const text = raw.trim();
-      if (!text || busy) return;
+      if (!text || busyRef.current || sendingRef.current) return;
       recRef.current?.stop();
-      sinceRef.current = null;
       stick.current = true;
-      setBusy(true);
+      gen.current++;
+      sendingRef.current = true;
+      setSending(true);
       setInput("");
       if (taRef.current) taRef.current.style.height = "";
-      const aid = rid();
-      setMessages((ms) => [
-        ...ms,
-        { id: rid(), role: "user", blocks: [{ type: "text", text }] },
-        { id: aid, role: "assistant", blocks: [], pending: true, status: t.thinking, startedAt: Date.now() },
-      ]);
-      const patch = (fn: (m: ChatMessage) => ChatMessage) => setMessages((ms) => ms.map((m) => (m.id === aid ? fn(m) : m)));
-      const handle = (ev: StreamEvent) => {
-        if (ev.t === "chat") {
-          sinceRef.current = ev.at ?? null;
-          if (ev.chatId !== chatIdRef.current) {
-            chatIdRef.current = ev.chatId;
-            setChatId(ev.chatId);
-            onChatId?.(ev.chatId);
-            if (variant === "full") window.history.replaceState(window.history.state, "", `${basePath}?c=${ev.chatId}`);
-          }
-        } else if (ev.t === "status") patch((m) => ({ ...m, status: ev.text, steps: applyStepEvent(m.steps ?? [], ev) }));
-        else if (ev.t === "note") patch((m) => ({ ...m, steps: applyStepEvent(m.steps ?? [], ev) }));
-        else if (ev.t === "block") patch((m) => ({ ...m, blocks: [...m.blocks, ev.block] }));
-        else if (ev.t === "error") patch((m) => ({ ...m, blocks: [...m.blocks, { type: "text", text: "⚠️ " + ev.message }] }));
-      };
-      const ctrl = new AbortController();
-      abortRef.current = ctrl;
+      const localId = `local:${rid()}`;
+      setMessages((ms) => [...ms, { id: localId, role: "user", blocks: [{ type: "text", text }] }]);
+      setLive({ key: `row:${rid()}`, id: null, steps: [], blocks: [], startedAt: Date.now(), stopping: false });
       try {
         const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chatId: chatIdRef.current, message: text, page: contextPath, mode }),
-          signal: ctrl.signal,
+          body: JSON.stringify({ chatId: chatIdRef.current, message: text, page: contextPath, mode, v: 2 }),
         });
-        if (!res.ok || !res.body) {
-          const body = await res.text().catch(() => "");
-          throw new Error(res.status === 401 ? "Your session expired — sign in again." : body.slice(0, 200) || `HTTP ${res.status}`);
+        const j = (await res.json().catch(() => ({}))) as { chatId?: string; jobId?: string; userMessageId?: string | null; at?: string; attached?: boolean; error?: string };
+        if (!res.ok || !j.chatId || !j.jobId) throw new Error(res.status === 401 ? t.expired : j.error || `HTTP ${res.status}`);
+        // The AI is already on this item in another chat (it was handed over with the list): go and watch that run.
+        if (j.attached && j.chatId !== chatIdRef.current) {
+          window.location.assign(`${basePath}?c=${j.chatId}`);
+          return;
         }
-        const reader = res.body.getReader();
-        const dec = new TextDecoder();
-        let buf = "";
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          let nl = buf.indexOf("\n");
-          while (nl >= 0) {
-            const line = buf.slice(0, nl).trim();
-            buf = buf.slice(nl + 1);
-            if (line) {
-              try {
-                handle(JSON.parse(line) as StreamEvent);
-              } catch {
-                /* ignore a malformed line */
-              }
-            }
-            nl = buf.indexOf("\n");
-          }
+        if (j.chatId !== chatIdRef.current) {
+          chatIdRef.current = j.chatId;
+          setChatId(j.chatId);
+          onChatId?.(j.chatId);
+          if (variant === "full") window.history.replaceState(window.history.state, "", `${basePath}?c=${j.chatId}`);
         }
-        if (buf.trim()) {
-          try {
-            handle(JSON.parse(buf) as StreamEvent);
-          } catch {
-            /* ignore */
-          }
+        if (j.userMessageId && j.at) {
+          const id = j.userMessageId;
+          const at = j.at;
+          // The question now has its saved id. If a catch-up read already brought the saved copy in, the local one just goes.
+          setMessages((ms) => (ms.some((m) => m.id === id) ? ms.filter((m) => m.id !== localId) : ms.map((m) => (m.id === localId ? { ...m, id, at } : m))));
+          if (!cursor.current || Date.parse(at) > Date.parse(cursor.current)) cursor.current = at;
         }
+        const jobId = j.jobId;
+        setLive((l) => (l ? { ...l, id: jobId } : l));
+        sendingRef.current = false;
+        setSending(false);
+        follow();
+        refreshAiJobs();
       } catch (e) {
-        const aborted = (e as Error)?.name === "AbortError";
-        const since = sinceRef.current;
-        const cid = chatIdRef.current;
-        if (!aborted && since && cid) {
-          // The server keeps working and saves the answer — fetch it instead of losing it.
-          patch((m) => ({ ...m, status: t.recovering }));
-          const got = await recoverAnswer(cid, since);
-          patch((m) => ({ ...m, blocks: got ?? [...m.blocks, { type: "text", text: "⚠️ " + t.lost }] }));
-        } else {
-          patch((m) => ({ ...m, blocks: [...m.blocks, { type: "text", text: aborted ? t.stopped : `⚠️ ${(e as Error)?.message || t.error}` }] }));
-        }
+        setLive(null);
+        setMessages((ms) => [...ms, { id: `local:${rid()}`, role: "assistant", blocks: [{ type: "text", text: `⚠️ ${(e as Error)?.message || t.error}` }] }]);
       } finally {
-        abortRef.current = null;
-        patch((m) => {
-          const sb = m.blocks.some((b) => b.type === "steps") ? null : stepsBlock(m.steps ?? [], (Date.now() - (m.startedAt ?? Date.now())) / 1000);
-          return { ...m, pending: false, status: undefined, blocks: sb ? [sb, ...m.blocks] : m.blocks };
-        });
-        setBusy(false);
+        sendingRef.current = false;
+        setSending(false);
       }
     },
-    [busy, contextPath, onChatId, t, variant, mode, basePath],
+    [contextPath, onChatId, t, variant, mode, basePath, follow],
   );
 
   useEffect(() => {
@@ -279,6 +377,20 @@ export function AssistantChat({
       void send(initialPrompt);
     }
   }, [initialPrompt, send]);
+
+  /** Stop really stops the server run (and drops what is waiting behind it). Changes already made stay, each with Undo. */
+  const stopRun = useCallback(async () => {
+    const cid = chatIdRef.current;
+    if (!cid) return;
+    setStopping(true);
+    try {
+      await fetch("/api/ai/jobs/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chatId: cid }) });
+      follow();
+      refreshAiJobs();
+    } catch {
+      setStopping(false);
+    }
+  }, [follow]);
 
   const toggleMic = () => {
     const SR = getSR();
@@ -327,17 +439,59 @@ export function AssistantChat({
       : [];
   const full = variant === "full";
   const tools = useMemo(() => ({ ask: (q: string) => void send(q), chatId, canPin: !mode }), [send, chatId, mode]);
+  const liveSeconds = live && ready ? Math.max(0, Math.round((now - live.startedAt) / 1000)) : 0;
+  const winding = stopping || !!live?.stopping;
+  const canStop = !!chatId && !sending && !winding;
+  // One list for saved and live rows: when a run ends, its saved answer has the same key as its live row and React keeps the row.
+  const rows: React.ReactNode[] = messages.map((m) => {
+    if (m.role === "user") return <UserBubble key={m.id} m={m} />;
+    const saved = m.blocks.find((b): b is StepsBlock => b.type === "steps");
+    return <AnswerRow key={rowKey.current.get(m.id) ?? m.id} steps={saved?.items ?? []} blocks={m.blocks} live={false} seconds={saved?.seconds} fallback={t.thinking} />;
+  });
+  if (live) {
+    rows.push(
+      <AnswerRow
+        key={live.key}
+        steps={live.steps}
+        blocks={live.blocks}
+        live
+        seconds={liveSeconds}
+        fallback={winding ? t.stopping : t.thinking}
+        hint={liveSeconds >= 4 && !winding ? t.leave : undefined}
+      />,
+    );
+  }
 
   return (
     <ChatToolsProvider value={tools}>
     <div className="flex h-full min-h-0 flex-col bg-strow-bg">
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className={`mx-auto w-full space-y-5 ${full ? "max-w-3xl px-4 py-5" : "px-3 py-4"}`}>
-          {messages.length === 0 ? (
+          {messages.length === 0 && !live ? (
             <Welcome t={t} suggestions={suggestions ?? SUGGEST[locale] ?? SUGGEST.en} onPick={(s) => void send(s)} compact={!full} />
           ) : (
-            messages.map((m) => <MessageView key={m.id} m={m} now={now} fallback={t.thinking} />)
+            rows
           )}
+          {queued.length ? (
+            <div className="rounded-2xl border border-neutral-200 bg-white/70 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                {t.upNext} · {queued.length}
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {queued.slice(0, 6).map((q) => (
+                  <li key={q.id} className="flex items-start gap-2 text-sm text-neutral-500">
+                    <span aria-hidden className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-300" />
+                    <span className="min-w-0 truncate" dir="auto">{(q.title ?? "").replace(/^Fix:\s*/i, "") || "…"}</span>
+                  </li>
+                ))}
+                {queued.length > 6 ? (
+                  <li className="ps-3.5 text-xs text-neutral-400">
+                    +{queued.length - 6} {t.more}
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
           {followups.length ? (
             <div className="flex flex-wrap gap-2">
               {followups.map((q, i) => (
@@ -402,9 +556,11 @@ export function AssistantChat({
           {busy ? (
             <button
               type="button"
-              onClick={() => abortRef.current?.abort()}
-              aria-label="Stop"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-strow-ink"
+              onClick={() => void stopRun()}
+              disabled={!canStop}
+              aria-label={t.stop}
+              title={t.stop}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-strow-ink transition disabled:opacity-40"
             >
               <span className="block h-3.5 w-3.5 rounded-[3px] bg-current" />
             </button>
@@ -461,29 +617,30 @@ function Welcome({
   );
 }
 
-function MessageView({ m, now, fallback }: { m: ChatMessage; now: number; fallback: string }) {
-  if (m.role === "user") {
-    const first = m.blocks[0];
-    const text = first && first.type === "text" ? first.text : "";
-    return (
-      <div className="flex justify-end">
-        <div dir="auto" className="ai-rise max-w-[85%] whitespace-pre-wrap rounded-3xl rounded-ee-md bg-strow-ink px-4 py-2.5 text-[15px] leading-relaxed text-white">
-          {text}
-        </div>
+function UserBubble({ m }: { m: ChatMessage }) {
+  const first = m.blocks[0];
+  const text = first && first.type === "text" ? first.text : "";
+  return (
+    <div className="flex justify-end">
+      <div dir="auto" className="ai-rise max-w-[85%] whitespace-pre-wrap rounded-3xl rounded-ee-md bg-strow-ink px-4 py-2.5 text-[15px] leading-relaxed text-white">
+        {text}
       </div>
-    );
-  }
-  const visible = m.blocks.filter((b) => b.type !== "followups" && b.type !== "steps");
-  const saved = m.blocks.find((b): b is StepsBlock => b.type === "steps");
-  const seconds = m.startedAt ? Math.max(0, Math.round((now - m.startedAt) / 1000)) : 0;
+    </div>
+  );
+}
+
+/** One answer: its steps (ticking in while it runs, folded once it is saved) and what the AI wrote. */
+function AnswerRow({ steps, blocks, live, seconds, fallback, hint }: { steps: Step[]; blocks: Block[]; live: boolean; seconds?: number; fallback: string; hint?: string }) {
+  const visible = blocks.filter((b) => b.type !== "followups" && b.type !== "steps");
   return (
     <div className="space-y-3">
-      <Steps items={m.pending ? visibleSteps(m.steps ?? []) : (saved?.items ?? [])} live={!!m.pending} seconds={m.pending ? seconds : saved?.seconds} thinking={fallback} />
+      <Steps items={steps} live={live} seconds={seconds} thinking={fallback} />
       {visible.map((b, i) => (
         <BlockBoundary key={i}>
           <BlockView b={b} />
         </BlockBoundary>
       ))}
+      {hint ? <p className="ai-fade text-xs leading-relaxed text-neutral-400">{hint}</p> : null}
     </div>
   );
 }

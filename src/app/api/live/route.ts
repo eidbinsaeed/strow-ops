@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOwnerSession } from "@/lib/auth/owner-session";
 import { createServiceClient } from "@/lib/supabase/server";
+import { activeJobCount } from "@/lib/ai/jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ const first = (r: { data: unknown }) => ((r.data as Record<string, unknown>[] | 
  * GET /api/live?since=ISO — a cheap "what changed" check for open owner screens:
  *  sig    changes whenever closings, bills, cash or AI items change (screen refreshes)
  *  events new closings / bills / Autopilot findings since `since` (shown as banners)
+ *  aiJobs how many AI runs are working or waiting in the background (wakes the "AI working" pill)
  */
 export async function GET(req: Request) {
   if (!(await getOwnerSession())) return NextResponse.json({ error: "unauth" }, { status: 401 });
@@ -29,12 +31,13 @@ export async function GET(req: Request) {
   const now = new Date().toISOString();
   const db = createServiceClient();
 
-  const [cl, ex, open, lastAi, cash] = await Promise.all([
+  const [cl, ex, open, lastAi, cash, aiJobs] = await Promise.all([
     db.from("closings").select("updated_at", { count: "exact" }).order("updated_at", { ascending: false }).limit(1),
     db.from("expenses").select("updated_at", { count: "exact" }).order("updated_at", { ascending: false }).limit(1),
     db.from("ai_actions").select("id", { count: "exact", head: true }).in("status", ["proposed", "info"]),
     db.from("ai_actions").select("created_at").order("created_at", { ascending: false }).limit(1),
     db.from("cash_events").select("id", { count: "exact", head: true }),
+    activeJobCount().catch(() => 0),
   ]);
   const sig = JSON.stringify([cl.count, first(cl)?.updated_at, ex.count, first(ex)?.updated_at, open.count, first(lastAi)?.created_at, cash.count]);
 
@@ -71,5 +74,5 @@ export async function GET(req: Request) {
       events.push({ key: `ai:${a.id}`, kind: "ai", title: a.status === "info" ? "Autopilot alert" : "Autopilot has a fix for you", subtitle: a.title, href: `/owner/needs-you?id=${a.id}` });
     }
   }
-  return NextResponse.json({ now, sig, events }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ now, sig, events, aiJobs }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getOwnerSession } from "@/lib/auth/owner-session";
 import { reviseAction, type ReviseEvent } from "@/lib/ai/revise";
 
@@ -19,6 +19,11 @@ export async function POST(req: Request) {
   const id = String(body.id ?? "");
   if (!UUID.test(id)) return NextResponse.json({ ok: false, error: "Bad request" }, { status: 400 });
   const note = String(body.note ?? "").slice(0, 2000);
+
+  // The redo finishes even if the phone goes away mid-way: the server run stays alive until it is done.
+  let finished: () => void = () => {};
+  const done = new Promise<void>((resolve) => (finished = resolve));
+  after(() => done);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -47,6 +52,7 @@ export async function POST(req: Request) {
       } catch {
         /* already closed */
       }
+      finished();
     },
   });
   return new Response(stream, {

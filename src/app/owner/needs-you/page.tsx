@@ -99,6 +99,22 @@ export default async function NeedsYouPage({ searchParams }: { searchParams: Pro
   }
   const names = await namesFor(linked);
 
+  // Background AI: what it already found on items it looked at and left open, and what a run costs on average
+  // (for "Let the AI handle all"). Both are extras: the list works without them.
+  const openIds = rows.map((r) => r.id);
+  const [triedRes, usageRes] = await Promise.all([
+    openIds.length
+      ? db.from("ai_jobs").select("action_id, summary, chat_id, finished_at").in("action_id", openIds).eq("status", "done").eq("outcome", "needs_you").order("finished_at", { ascending: false }).limit(200)
+      : Promise.resolve({ data: [] as unknown[] }),
+    db.from("ai_usage").select("cost_usd").in("source", ["chat", "handover"]).gt("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString()).order("created_at", { ascending: false }).limit(40),
+  ]);
+  const aiNotes = new Map<string, { summary: string | null; chatId: string | null }>();
+  for (const j of (triedRes.data ?? []) as { action_id: string; summary: string | null; chat_id: string | null }[]) {
+    if (!aiNotes.has(j.action_id)) aiNotes.set(j.action_id, { summary: j.summary, chatId: j.chat_id });
+  }
+  const costs = ((usageRes.data ?? []) as { cost_usd: number | string }[]).map((u) => Number(u.cost_usd)).filter((n) => Number.isFinite(n) && n > 0);
+  const estUsd = costs.length >= 3 ? Math.round((costs.reduce((a, b) => a + b, 0) / costs.length) * 100) / 100 : null;
+
   // The bill or closing each finding is about, for its photo and the line under the title.
   const paper = await paperFor(rows);
   const expIds = [...new Set([...paper.values()].filter((p) => p.table === "expenses").map((p) => p.id))];
@@ -206,6 +222,7 @@ export default async function NeedsYouPage({ searchParams }: { searchParams: Pro
       context,
       entityTable: r.entity_table,
       entityId: r.entity_id,
+      aiNote: aiNotes.get(r.id) ?? null,
     };
   });
   const start = Math.max(0, items.findIndex((x) => x.id === sp.id));
@@ -213,7 +230,7 @@ export default async function NeedsYouPage({ searchParams }: { searchParams: Pro
   return (
     <div className="page">
       {/* A new id in the URL (after "Redo with my note") starts the flow again on that finding. */}
-      <NeedsYouFlow key={sp.id ?? "start"} items={items} start={start} />
+      <NeedsYouFlow key={sp.id ?? "start"} items={items} start={start} estUsd={estUsd} />
     </div>
   );
 }

@@ -1,8 +1,21 @@
 # Strow Ops — Changelog
 
-**Last updated:** 2026-11-01
+**Last updated:** 2026-11-22
 
 ---
+
+## 2026-11-22 — Strow AI works in the background; "Let the AI handle all" on Needs you
+
+- **Why:** an AI run lived inside the web request of the page that started it. Leaving the Strow AI page mid-run left nothing to come back to (the page looked stuck, and the server run could be cut off once the page was gone), and Needs you had to be worked through one item at a time.
+- **Now every AI run is a job in the database** (`ai_jobs`, migration `0032_ai_jobs`, additive). `POST /api/ai/chat` saves the message, answers at once with the chat and job ids, and the AI works after the response (`after()`). The job saves its steps and blocks as it goes (at most every 0.7 s) and writes the finished answer to the chat. The screen follows it with `GET /api/ai/jobs/chat` about once a second: leave the page, browse anywhere, come back (or open the chat on another device) and the live steps or the finished answer are there. **Stop** now really stops the server run (noticed within 3 s; changes already made stay, each with Undo).
+- **Needs you › Let the AI handle all** (`components/pulse/HandOver`, `POST /api/ai/jobs/batch`): one tap queues every open item that has no fix yet (the list the page shows, up to 60). They run **one after another** in the background (two runs never touch the same bill or create the same new item twice), each as its own server run, into one chat ("AI handles all · N items") with a closing summary. Items with a fix ready are not handed over: they still wait for the owner's own tap. Items the AI already looked at and left open are not sent again (the bar offers "Try again" when only those are left); their cards show what the AI found and a link to its full answer. The bar shows an estimate from recent runs (about $0.27 an item in November on the Deep model). AI spend source: `handover`.
+- **"AI working · 2 of 7" pill on every owner page** (`components/ai/AiJobsPill`, `useAiJobs`, `GET /api/ai/jobs`) while anything runs, "AI finished · 4 fixed · 2 need you" / "Your answer is ready" when it ends; tap to open the run. A lock-screen notification is sent when a hand-over finishes.
+- **How the queue keeps moving without a screen:** a Vercel function lives 300 s and is stopped if it keeps calling itself, so when a queued job ends the **database** makes the call that starts the next server run: `ai_kick_worker(origin, token)` → `POST /api/ai/jobs/work` through the `http` extension (already installed). The token is derived from a server secret; nothing is stored and there is nothing to configure. The app checks that the next job really started and tries again; any open owner screen also restarts a queue that stands still.
+- **If a server run is cut off:** a running job touches `heartbeat_at` every 3 s. A job silent for 75 s is closed as interrupted with the steps and changes it had saved ("This run was cut off…"), and the queue moves on. Each run has 235 s to work and is wound down at 262 s, so it never hits the 300 s wall mid-write.
+- A browser tab still showing the old page keeps working (it gets the chat id, then fetches the saved answer). "Redo with my note" now also finishes when the phone goes away mid-way.
+- Optional env: `STROW_APP_URL` (fixed public address for the hand-over call; default = the address the request came in on).
+- Checked: `tsc`, `next build`; the migration and its three functions on a local Postgres 16 (claim order, one lane, a dead run doesn't hold the lane, double finish refused, the assistant's read-only SQL can't call them); then the whole app on a private copy (local Postgres, a stand-in for Supabase's REST API, a scripted stand-in for the AI) driven in Chrome on desktop and phone sizes, English and Arabic: ask and leave mid-run and come back, come back after it finished, hand over 5 items and browse other pages, Stop in chat and half way through a hand-over, a model call that never answers, the server killed mid-run, a chat deleted mid-run, an old tab.
+
 
 ## 2026-11-01 — Correction: app prices count only from the day each app changed
 

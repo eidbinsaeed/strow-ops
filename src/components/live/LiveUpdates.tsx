@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { BooksIcon, CameraIcon, Sparkle } from "@/components/pulse/icons";
 import { motion, reducedMotion } from "@/lib/motion";
+import { noteAiJobs } from "@/components/ai/useAiJobs";
 
 type LiveEvent = { key: string; kind: "closing" | "expense" | "ai"; title: string; subtitle: string; href: string };
 
@@ -44,7 +45,9 @@ export function LiveUpdates() {
       const qs = sinceRef.current ? `?since=${encodeURIComponent(sinceRef.current)}` : "";
       const r = await fetch(`/api/live${qs}`, { cache: "no-store" });
       if (!r.ok) return;
-      const j = (await r.json()) as { now?: string; sig?: string; events?: LiveEvent[] };
+      const j = (await r.json()) as { now?: string; sig?: string; events?: LiveEvent[]; aiJobs?: number };
+      // AI runs going on in the background (started here or on another device): wake the "AI working" pill.
+      if (typeof j.aiJobs === "number") noteAiJobs(j.aiJobs);
       const changed = sigRef.current !== null && !!j.sig && j.sig !== sigRef.current;
       if (j.sig) sigRef.current = j.sig;
       if (j.now) sinceRef.current = j.now;

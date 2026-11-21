@@ -8,6 +8,7 @@ import { getLocale, dirFor } from "@/lib/i18n/locale";
 import { TabBar } from "@/components/apple/TabBar";
 import { PhoneTopBar } from "@/components/apple/PhoneTopBar";
 import { AiFab } from "@/components/ai/AiFab";
+import { AiJobsPill } from "@/components/ai/AiJobsPill";
 import { PageAiBar } from "@/components/ai/PageAiBar";
 import { ThemeScope } from "@/components/pulse/ThemeScope";
 import { LiveUpdates } from "@/components/live/LiveUpdates";
@@ -79,6 +80,7 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
         </main>
         <TabBar locale={locale} badge={aiOpen + (badges?.pending_count ?? 0)} />
         <AiFab />
+        <AiJobsPill locale={locale} />
         <LiveUpdates />
       </ThemeScope>
     </LocaleProvider>

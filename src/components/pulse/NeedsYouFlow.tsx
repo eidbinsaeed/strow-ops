@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { PhotoViewer, photoSrc } from "@/components/ai/PhotoViewer";
 import { askAiHref } from "@/components/ai/ActionButtons";
+import { useAiJobs } from "@/components/ai/useAiJobs";
+import { HandOver } from "./HandOver";
 import { SuccessTick } from "@/components/motion/SuccessTick";
 import { motion, reducedMotion } from "@/lib/motion";
 import { BackIcon, CheckIcon } from "./icons";
@@ -30,7 +32,15 @@ export type NyItem = {
   context: string | null;
   entityTable: string | null;
   entityId: string | null;
+  /** The AI already worked on this one and left it open: what it found, and the chat with its full answer. */
+  aiNote?: { summary: string | null; chatId: string | null } | null;
 };
+
+/** What Strow AI is doing with an item right now, or did with it a moment ago (from the background jobs). */
+type AiOn =
+  | { state: "running"; text: string | null; chatId: string | null }
+  | { state: "queued"; ahead: number; chatId: string | null }
+  | { state: "done"; outcome: string | null; summary: string | null; chatId: string | null };
 
 function sentences(t: string | null): string[] {
   if (!t) return [];
@@ -43,9 +53,11 @@ function sentences(t: string | null): string[] {
 }
 
 /** One finding at a time: the bill, what the app read vs what it should be, the proof, and one tap to fix. */
-export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: number }) {
+export function NeedsYouFlow({ items, start = 0, estUsd = null }: { items: NyItem[]; start?: number; estUsd?: number | null }) {
   const [i, setI] = useState(() => Math.min(Math.max(0, start), Math.max(0, items.length - 1)));
   const [st, setSt] = useState<Record<string, string>>({});
+  // Background AI runs (the whole list handed over, or one item sent from its card).
+  const jobs = useAiJobs();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [zoom, setZoom] = useState(false);
@@ -92,10 +104,53 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
     return () => window.clearTimeout(t);
   }, [toast]);
 
+  const aiOn = (id: string): AiOn | null => {
+    if (!jobs) return null;
+    const run = jobs.running.find((j) => j.actionId === id);
+    if (run) return { state: "running", text: run.statusText, chatId: run.chatId };
+    const at = jobs.queued.findIndex((j) => j.actionId === id);
+    if (at >= 0) return { state: "queued", ahead: at + (jobs.running.some((j) => j.kind === "item") ? 1 : 0), chatId: jobs.queued[at].chatId };
+    const done = jobs.recent.find((j) => j.actionId === id);
+    return done ? { state: "done", outcome: done.outcome, summary: done.summary, chatId: done.chatId } : null;
+  };
+  /** An item's status as it is now: what was tapped here, else what the AI did with it in the background, else as loaded. */
+  const statusOf = (x: NyItem): string => {
+    if (st[x.id]) return st[x.id];
+    const a = aiOn(x.id);
+    return a?.state === "done" && (a.outcome === "fixed" || a.outcome === "closed") ? "resolved" : x.status;
+  };
+  const isOpenNow = (x: NyItem) => ["proposed", "info"].includes(statusOf(x));
+  // The bar at the top: what can be handed to the AI (no fix yet, not looked at before, not already with it).
+  const withAi = (x: NyItem) => {
+    const a = aiOn(x.id);
+    return a?.state === "running" || a?.state === "queued";
+  };
+  // Looked at and left open for the owner (a run that failed or was stopped doesn't count: the AI can take it again).
+  const leftForOwner = (x: NyItem) => {
+    const a = aiOn(x.id);
+    return a?.state === "done" && a.outcome === "needs_you";
+  };
+  const triedBefore = (x: NyItem) => isOpenNow(x) && (!!x.aiNote || leftForOwner(x));
+  const openNoFix = items.filter((x) => isOpenNow(x) && !x.hasOps && !withAi(x));
+  const handOver = (
+    <HandOver
+      jobs={jobs}
+      eligible={openNoFix.filter((x) => !triedBefore(x)).length}
+      tried={openNoFix.filter(triedBefore).length}
+      ready={items.filter((x) => statusOf(x) === "proposed" && x.hasOps).length}
+      estUsd={estUsd}
+      onFinished={() => {
+        // The AI went through the list: if nothing is left open, this is the all-clear.
+        if (items.length && !items.some(isOpenNow)) setCleared(true);
+      }}
+    />
+  );
+
   if (!items.length || cleared) {
-    const handled = items.filter((x) => ["applied", "rejected", "undone", "resolved"].includes(st[x.id] ?? x.status)).length;
+    const handled = items.filter((x) => ["applied", "rejected", "undone", "resolved"].includes(statusOf(x))).length;
     return (
       <>
+        {items.length ? <div className="mx-auto mb-3.5 w-full max-w-[440px]">{handOver}</div> : null}
         <div ref={stage} className="mx-auto flex max-w-[440px] flex-col items-center gap-3 rounded-[28px] bg-white p-10 text-center">
           {cleared ? <SuccessTick size={76} label="All clear" /> : <span className="ai-orb h-12 w-12" aria-hidden />}
           <p className="font-display text-xl font-bold">All clear</p>
@@ -112,14 +167,23 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
   }
 
   const it = items[i];
-  const status = st[it.id] ?? it.status;
-  const resolved = (x: NyItem) => ["applied", "rejected", "undone", "resolved"].includes(st[x.id] ?? x.status);
+  const status = statusOf(it);
+  const ai = aiOn(it.id);
+  const aiBusy = ai?.state === "running" || ai?.state === "queued";
+  // What the AI found when it worked on this one and left it open (from this visit's run, or an earlier one).
+  const aiSaid =
+    status === "proposed" || status === "info" ? (ai?.state === "done" && ai.outcome === "needs_you" ? { summary: ai.summary, chatId: ai.chatId } : (it.aiNote ?? null)) : null;
+  const resolved = (x: NyItem) => ["applied", "rejected", "undone", "resolved"].includes(statusOf(x));
   const doneCount = items.filter(resolved).length;
   const src = it.photo ? photoSrc(it.photo.table, it.photo.id) : null;
   const proof = sentences(it.detail);
   const open = status === "proposed" || status === "info";
   const tag =
-    status === "applied"
+    ai?.state === "running"
+      ? { t: "AI working", c: "bg-[#E3EAFB] text-[#1A3FA8]" }
+      : ai?.state === "queued"
+        ? { t: "Waiting for AI", c: "bg-[#EEF0F3] text-[#3F4A57]" }
+        : status === "applied"
       ? { t: "Fixed", c: "bg-emerald-50 text-emerald-700" }
       : status === "info"
         ? { t: "Needs you", c: "bg-[#FBE9E7] text-[#9A1B12]" }
@@ -163,7 +227,7 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
       setSt(after);
       setToast({ id: it.id, title: it.title, kind: decision === "approve" ? "fixed" : "dismissed", side });
       setZoom(false);
-      const isOpen = (x: NyItem) => ["proposed", "info"].includes(after[x.id] ?? x.status);
+      const isOpen = (x: NyItem) => ["proposed", "info"].includes(after[x.id] ?? statusOf(x));
       const order = [...items.slice(i + 1), ...items.slice(0, i)];
       const nxt = order.find(isOpen);
       if (nxt) setI(items.findIndex((x) => x.id === nxt.id));
@@ -262,7 +326,7 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
       setComposer(false);
       setNoteText("");
       setToast({ id: it.id, title: it.title, kind: "closed", side: 1 });
-      const isOpen = (x: NyItem) => ["proposed", "info"].includes(after[x.id] ?? x.status);
+      const isOpen = (x: NyItem) => ["proposed", "info"].includes(after[x.id] ?? statusOf(x));
       const nxt = [...items.slice(i + 1), ...items.slice(0, i)].find(isOpen);
       if (nxt) setI(items.findIndex((x) => x.id === nxt.id));
       else setCleared(true);
@@ -307,6 +371,8 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
           {doneCount ? ` · ${doneCount} done` : ""}
         </span>
       </div>
+
+      {handOver}
 
       <div className="flex gap-1">
         {items.slice(0, 16).map((x, k) => (
@@ -388,9 +454,39 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
         {it.confidence != null && it.status !== "info" ? (
           <p className="text-xs text-neutral-500">Confidence {Math.round(Number(it.confidence) * 100)}%</p>
         ) : null}
+        {aiSaid && !aiBusy ? (
+          <div className="flex flex-col gap-1 rounded-2xl bg-[#F2F2F7] px-3.5 py-3">
+            <span className="text-xs font-semibold text-neutral-500">The AI looked at this and left it for you</span>
+            {aiSaid.summary ? <span className="text-sm leading-snug">{aiSaid.summary.length > 320 ? aiSaid.summary.slice(0, 319) + "…" : aiSaid.summary}</span> : null}
+            {aiSaid.chatId ? (
+              <Link href={`/owner/assistant?c=${aiSaid.chatId}` as Route} className="mt-0.5 text-[13px] font-semibold text-strow-blue">
+                See its full answer ›
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
-      {status === "proposed" && it.hasOps ? (
+      {aiBusy && open ? (
+        <div className="pulse-pop flex items-center gap-3 rounded-3xl bg-white px-[18px] py-4">
+          {ai?.state === "running" ? (
+            <span aria-hidden className="block h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-strow-blue border-t-transparent motion-reduce:animate-none" />
+          ) : (
+            <span aria-hidden className="block h-2.5 w-2.5 shrink-0 rounded-full bg-[#C9CFD7]" />
+          )}
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[15px] font-semibold">{ai?.state === "running" ? "The AI is working on this" : "Waiting for the AI"}</span>
+            <span dir="auto" className="truncate text-[13px] text-neutral-500">
+              {ai?.state === "running" ? ai.text || "Reading your books" : ai?.state === "queued" ? (ai.ahead > 0 ? `${ai.ahead} before it` : "Next") : ""}
+            </span>
+          </div>
+          {ai?.chatId ? (
+            <Link href={`/owner/assistant?c=${ai.chatId}` as Route} className="flex h-11 shrink-0 items-center rounded-full bg-[#F2F2F7] px-4 text-sm font-semibold text-strow-ink">
+              Watch
+            </Link>
+          ) : null}
+        </div>
+      ) : status === "proposed" && it.hasOps ? (
         <div className="flex flex-col gap-1.5">
           <button
             type="button"
@@ -451,8 +547,23 @@ export function NeedsYouFlow({ items, start = 0 }: { items: NyItem[]; start?: nu
           </button>
         </div>
       ) : (
-        <div className="pulse-pop rounded-3xl bg-white px-[18px] py-4 text-sm text-neutral-500">
-          {status === "undone" ? "Undone — back to how it was." : status === "resolved" ? "Closed — nothing needed changing." : "Dismissed."}
+        <div className="pulse-pop flex items-center justify-between gap-3 rounded-3xl bg-white px-[18px] py-4 text-sm text-neutral-500">
+          <span>
+            {status === "undone"
+              ? "Undone — back to how it was."
+              : status === "resolved"
+                ? ai?.state === "done" && ai.outcome === "fixed"
+                  ? "Fixed by the AI. Each change has Undo."
+                  : ai?.state === "done"
+                    ? "Closed by the AI — nothing needed changing."
+                    : "Closed — nothing needed changing."
+                : "Dismissed."}
+          </span>
+          {status === "resolved" && ai?.state === "done" && ai.chatId ? (
+            <Link href={`/owner/assistant?c=${ai.chatId}` as Route} className="shrink-0 text-[13px] font-semibold text-strow-blue">
+              See what it did ›
+            </Link>
+          ) : null}
         </div>
       )}
       </div>
