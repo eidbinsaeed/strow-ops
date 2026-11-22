@@ -7,11 +7,12 @@ import { AppFeeLine } from "@/components/owner/AppFeeLine";
 import { Suspense } from "react";
 import { TableFilters } from "@/components/owner/TableFilters";
 import { FlipList } from "@/components/motion/FlipList";
-import { parseFilters } from "@/lib/filters";
+import { LIST_MAX, containsPattern, olderHref, orValue, parseFilters, parseShow } from "@/lib/filters";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { StatusPill } from "@/components/owner/StatusPill";
-import { POS_DAY_COLUMNS, posDayOf, type PosDay } from "@/lib/sales";
+import { POS_DAY_COLUMNS, pageAll, posDayOf, type PosDay } from "@/lib/sales";
+import { LoadOlder } from "@/components/owner/LoadOlder";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -65,10 +66,13 @@ function addDaysUTC(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** How far back the missing-day alarm looks. */
+const MISSING_WINDOW_DAYS = 120;
+
 // Days with no sales closing, from when regular recording began up to
 // yesterday. A rolling window keeps a stray old entry from flagging long
 // dormant periods (e.g. a lone test day a year before daily tracking started).
-function computeMissingDays(recorded: string[], todayIso: string, windowDays = 120): string[] {
+function computeMissingDays(recorded: string[], todayIso: string, windowDays = MISSING_WINDOW_DAYS): string[] {
   const set = new Set(recorded);
   const windowStart = addDaysUTC(todayIso, -windowDays);
   const inWindow = recorded.filter((d) => d >= windowStart).sort();
@@ -99,40 +103,58 @@ export default async function OwnerSalesPage({
 }) {
   const params = await searchParams;
   const filters = parseFilters(params);
+  // The newest 200 first; "Load older" under the list adds 200 at a time.
+  const show = parseShow(params);
   const locale = await getLocale();
 
   const supabase = createServiceClient();
+  const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+
+  // The search runs in the database, over every closing: staff name or note.
+  let staffIds: string[] = [];
+  if (filters.q) {
+    const { data: staff } = await supabase.from("baristas").select("id").ilike("name", containsPattern(filters.q)).limit(100);
+    staffIds = ((staff ?? []) as { id: string }[]).map((b) => b.id);
+  }
+
   let query = supabase
     .from("closings")
     .select(
       "id, closing_date, cash_total, card_total, online_total, talabat_total, keeta_total, beanz_total, transactions, transactions_by_method, grand_total, status, notes, photo_drive_url, baristas(name)",
+      { count: "exact" },
     )
     .order("closing_date", { ascending: false })
-    .limit(200);
+    .order("id", { ascending: false })
+    .limit(show);
 
   if (filters.from) query = query.gte("closing_date", filters.from);
   if (filters.to) query = query.lte("closing_date", filters.to);
   if (filters.statuses.length > 0) query = query.in("status", filters.statuses);
-
-  const { data, error } = await query;
-  let closings = (data ?? []) as unknown as ClosingRow[];
-
-  // Free-text filter applied in JS over barista name + notes
   if (filters.q) {
-    const q = filters.q.toLowerCase();
-    closings = closings.filter(
-      (c) =>
-        (c.baristas?.name || "").toLowerCase().includes(q) ||
-        (c.notes || "").toLowerCase().includes(q),
-    );
+    const text = orValue(containsPattern(filters.q));
+    query = query.or([`notes.ilike.${text}`, staffIds.length ? `barista_id.in.(${staffIds.join(",")})` : null].filter(Boolean).join(","));
   }
 
+  // Missing-day alarm, over the last 120 days whatever the filter above says (the window computeMissingDays looks at).
+  const [{ data, error, count }, { data: recentDates }] = await Promise.all([
+    query,
+    supabase.from("closings").select("closing_date").gte("closing_date", addDaysUTC(todayIso, -MISSING_WINDOW_DAYS)).order("closing_date", { ascending: true }).limit(1000),
+  ]);
+  const closings = (data ?? []) as unknown as ClosingRow[];
+  /** How many closings match in all (the list may show fewer). */
+  const matching = Math.max(count ?? 0, closings.length);
+  const partial = matching > closings.length;
+
   // POS report of the same day, to show next to the barista's count.
-  const posDates = [...new Set(closings.map((c) => c.closing_date))];
   const posByDate = new Map<string, PosDay>();
-  if (posDates.length) {
-    const { data: posRows } = await supabase.from("pos_daily_reports").select(POS_DAY_COLUMNS).in("business_date", posDates);
-    for (const r of (posRows ?? []) as Parameters<typeof posDayOf>[0][]) posByDate.set(r.business_date, posDayOf(r));
+  if (closings.length) {
+    const days = closings.map((c) => c.closing_date);
+    const first = days.reduce((a, b) => (a < b ? a : b));
+    const last = days.reduce((a, b) => (a > b ? a : b));
+    const posRows = await pageAll<Parameters<typeof posDayOf>[0]>((a, b) =>
+      supabase.from("pos_daily_reports").select(POS_DAY_COLUMNS).gte("business_date", first).lte("business_date", last).order("business_date").order("id").range(a, b),
+    ).catch(() => []);
+    for (const r of posRows) posByDate.set(r.business_date, posDayOf(r));
   }
 
   const grandSum = closings.reduce(
@@ -140,15 +162,9 @@ export default async function OwnerSalesPage({
     0,
   );
 
-  // Missing-day alarm — runs over ALL closings (ignores the current filter).
-  const { data: allDates } = await supabase
-    .from("closings")
-    .select("closing_date")
-    .order("closing_date", { ascending: true });
   const recordedDates = Array.from(
-    new Set(((allDates ?? []) as { closing_date: string }[]).map((r) => r.closing_date)),
+    new Set(((recentDates ?? []) as { closing_date: string }[]).map((r) => r.closing_date)),
   );
-  const todayIso = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
   const missingDays = computeMissingDays(recordedDates, todayIso);
   const missingRanges = groupRanges(missingDays);
 
@@ -158,7 +174,8 @@ export default async function OwnerSalesPage({
         <div>
           <h1 className="text-2xl font-light tracking-tight">{tr("page.sales", locale)}</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            {closings.length} {tr("summary.sales_count", locale)} - {formatAed(grandSum)} {tr("summary.total_label", locale)}
+            {partial ? `${closings.length} ${tr("list.of", locale)} ${matching}` : closings.length} {tr("summary.sales_count", locale)} - {formatAed(grandSum)}{" "}
+            {tr(partial ? "list.total_shown" : "summary.total_label", locale)}
           </p>
         </div>
       </header>
@@ -250,6 +267,14 @@ export default async function OwnerSalesPage({
           ))}
         </FlipList>
       )}
+
+      {!error && partial ? (
+        show < LIST_MAX ? (
+          <LoadOlder href={olderHref("/owner/closings", params, show)} label={tr("list.load_older", locale)} loadingLabel={tr("list.loading", locale)} />
+        ) : (
+          <p className="mt-4 text-center text-xs text-neutral-500">{tr("list.newest_only", locale)}</p>
+        )
+      ) : null}
 
       <p className="mt-6 text-xs text-neutral-400">
         <Link href="/owner" className="underline hover:text-strow-ink">

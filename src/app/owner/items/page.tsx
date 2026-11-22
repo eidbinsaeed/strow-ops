@@ -8,6 +8,7 @@ import { WebPictureFinder } from "@/components/owner/WebPictureFinder";
 import { itemsWithoutPhoto } from "@/lib/ai/find-web-image";
 import { PhotoCell } from "./PhotoCell";
 import { saveItemPhotoFromWeb } from "./photo-actions";
+import { pageAll } from "@/lib/sales";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -165,14 +166,24 @@ export default async function OwnerItemsPage() {
   const locale = await getLocale();
   const supabase = createServiceClient();
 
-  const { data, error } = await supabase
-    .from("expense_line_items")
-    .select(
-      "id, quantity, unit_price, line_total, vat_amount, discount, description, inventory_item_id, line_kind, count_qty, count_uom, unit_size, size_uom, pack_qty, pack_type, units_per_pack, base_qty, base_uom, set_parts, inventory_items(id, name, kind, unit, base_uom, brand, photo_path, photo_source, photo_page, photo_updated_at), expenses(expense_date, photo_drive_url, goods_received, suppliers(name))",
-    )
-    .limit(2000);
-
-  const rows = (data ?? []) as unknown as LineRow[];
+  // Every bill line, read 1,000 at a time in a fixed order: one request returns at most 1,000 rows,
+  // so a single read would silently drop lines once there are more than that.
+  let rows: LineRow[] = [];
+  let error: { message: string } | null = null;
+  try {
+    rows = await pageAll<LineRow>(
+      (a, b) =>
+        supabase
+          .from("expense_line_items")
+          .select(
+            "id, quantity, unit_price, line_total, vat_amount, discount, description, inventory_item_id, line_kind, count_qty, count_uom, unit_size, size_uom, pack_qty, pack_type, units_per_pack, base_qty, base_uom, set_parts, inventory_items(id, name, kind, unit, base_uom, brand, photo_path, photo_source, photo_page, photo_updated_at), expenses(expense_date, photo_drive_url, goods_received, suppliers(name))",
+          )
+          .order("id")
+          .range(a, b) as unknown as PromiseLike<{ data: LineRow[] | null; error: { message: string } | null }>,
+    );
+  } catch (e) {
+    error = { message: e instanceof Error ? e.message : String(e) };
+  }
 
   const { data: itemRows } = await supabase
     .from("inventory_items")

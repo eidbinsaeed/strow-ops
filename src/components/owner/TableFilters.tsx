@@ -37,6 +37,8 @@ export function TableFilters({
 
   function setParam(key: string, value: string | null) {
     const next = new URLSearchParams(params);
+    // A changed filter starts the list from its newest rows again.
+    next.delete("show");
     if (value == null || value === "") {
       next.delete(key);
     } else {

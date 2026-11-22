@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-11-22 — Speed: POS matching through an index, search over every bill and closing, no read cut at 1,000 rows
+
+- **Why:** the speed audit of 22 Nov (7/10 for a one-café app). One slow spot: matching POS sales to menu items was redone for every sale on every read (29% of the database time Strow's pages used since 15 Sep). And three things that break without any error as the data grows.
+- **Migration `0033_speed`** (applied to production 22 Nov, together with `0032_ai_jobs`; additive: indexes and one read-only view):
+  - Two indexes on `menu_items` over the POS name key (`pos_norm(coalesce(pos_name, name))` and `pos_norm(name)`, each with `location_id`). `v_pos_product_sales`, the views that read through it (`v_pos_daily`, `v_pos_ingredient_usage`) and `v_pos_app_orders` now look the menu item up. Live: the match went from 1,274 sales × 59 menu items to 64 lookups (5.6 ms), and the 1,000-row sales read from 400–460 ms to 70 ms.
+  - `v_pos_latest_prices` (`security_invoker`, service role only): one row per menu item with its newest POS sales day. Same rule as the code it replaces (checked live: 57 items, no difference).
+  - An index on the 11 foreign keys that had none on tables that hold data (listed in `04-DATA_MODEL.md`). The staff tables that are still empty were left.
+- **Recipes** (`src/lib/recipes-pos.ts`): `latestPosPrices` reads `v_pos_latest_prices`, one read of 57 rows in 65 ms. It used to read every sale ever made, 1,000 rows at a time: two reads, about 0.9 s, and one more read every ~41 days. If the view is missing it reads the old way.
+- **Bills and Closings** (`/owner/expenses`, `/owner/closings`): the search runs in the database over every record (bills: vendor, invoice number, note; closings: staff name, note). It used to look only inside the newest 200, so the 98 oldest bills could be found only by setting dates first. The header says "200 of 298" when the list shows fewer, and the total is "for the ones shown". **Load older** (`components/owner/LoadOlder`) adds 200 at a time and keeps the reader's place; at 1,000 a line says to use the dates or the search. Changing a filter starts from the newest again. What is typed is searched as typed: `%`, `_`, commas, brackets and quotes are escaped (`containsPattern`, `orValue` in `src/lib/filters.ts`).
+- **Closings:** the missing-day alarm reads the last 120 days (the window it looks at) where it read every closing date; POS reports are read by date range.
+- **No read cut at 1,000 rows** (the API returns at most 1,000 rows per request): Items reads every bill line in pages, in a fixed order (it was one read with `.limit(2000)`, which would have dropped lines without any error from about May 2027). Finance (`loadFinance`) reads confirmed closings and bills in pages; the finance assistant does the same for budget lines and bill lines.
+- **Staff app:** `src/app/(barista)/loading.tsx`: a loading screen shows at once on every tap (the owner side already had one).
+- **Left as is:** saving a bill still runs its small queries one line at a time, and daily sales numbers are not cached. Neither is felt at this size.
+- Checked: `tsc`, `next build`; the migration twice on a local Postgres 16; on a private copy with 1,250 bills, 2,534 bill lines, 260 closings and 1,320 budget lines, 32 checks in Chrome (lists, Load older in place, searches with awkward characters, totals against the database, the staff loading screen, Arabic), and the background-AI checks again (15 + 14). After the migration, on the live database: both name indexes in the plan, the new view against the old rule.
+
 ## 2026-11-22 — Strow AI works in the background; "Let the AI handle all" on Needs you
 
 - **Why:** an AI run lived inside the web request of the page that started it. Leaving the Strow AI page mid-run left nothing to come back to (the page looked stuck, and the server run could be cut off once the page was gone), and Needs you had to be worked through one item at a time.

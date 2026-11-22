@@ -405,3 +405,18 @@ Strow AI runs are rows, so they carry on when no screen is open. RLS on, service
 - `ai_finish_job(p_id, p_status, p_blocks, p_text, …, p_stale_before)` → closes a running job and saves its answer to the chat in one step; `false` when the job was already closed. With `p_stale_before` it only closes a job whose heartbeat is older (a run that was cut off).
 - `ai_kick_worker(p_origin, p_token)` → the database POSTs `<origin>/api/ai/jobs/work` (http extension) to start the next server run; returns the HTTP status or NULL. Refuses anything but an https origin, and refuses to run inside the assistant's read-only SQL.
 
+## Speed (migration 0033, 2026-11-22)
+Additive: indexes and one read-only view. No table, column, existing view or function changed.
+
+### Indexes for the POS name match
+- `menu_items_pos_key_idx` on `menu_items (location_id, pos_norm(coalesce(pos_name, name)))` and `menu_items_pos_name_key_idx` on `menu_items (location_id, pos_norm(name))`.
+- `v_pos_product_sales` (and `v_pos_daily`, `v_pos_ingredient_usage`, which read through it) and `v_pos_app_orders` match each POS sale to a menu item by this name key. With the indexes the match is a lookup; before, each sale was compared with every menu item on every read.
+- The indexes hold the results of `pos_norm`. If its definition ever changes, rebuild both (`reindex index menu_items_pos_key_idx; reindex index menu_items_pos_name_key_idx;`).
+
+### `v_pos_latest_prices` (`security_invoker`, service role only)
+One row per menu item the POS has sold: `menu_item_id`, `business_date` (its newest sales day), `qty` and `gross` of that day (price incl. VAT = gross ÷ qty). Built on `v_pos_product_sales`, so it follows the same match. Read by the recipe screens (`latestPosPrices` in `src/lib/recipes-pos.ts`).
+
+### Foreign-key indexes
+One on each of the 11 foreign keys that had none, on tables that hold data: `expense_line_items (inventory_item_id)`, `ai_actions (run_id)`, `stock_items (supplier_id)`, `inventory_items (same_as)`, `inventory_items (location_id)`, `pos_category_sales (location_id, business_date)`, `pos_modifier_sales (location_id, business_date)`, `ai_pins (chat_id)`, `stock_counts (barista_id)`, `finance_payments (location_id)`, `fixed_costs (linked_barista_id)`.
+
+Left for when they are used: the staff tables that are still empty (`attendance_devices`, `attendance_punches`, `leave_requests`, `disciplinary_actions`, `payroll_adjustments`, `staff_reports`) and `ai_batches (chat_id)`.

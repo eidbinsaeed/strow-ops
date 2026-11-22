@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getOwnerSession } from "@/lib/auth/owner-session";
+import { fetchAll } from "@/lib/finance/load";
 
 export const dynamic = "force-dynamic";
 
@@ -28,14 +29,14 @@ export async function POST(req: Request) {
   if (!message.trim()) return NextResponse.json({ reply: "اكتب سؤالك أو أمرك.", action: null });
 
   const supabase = createServiceClient();
-  const [linesRes, instRes, peopleRes, eliRes] = await Promise.all([
-    supabase.from("finance_budget_lines").select("month,section,label,amount,checked"),
+  // The budget lines and the bill lines are read 1,000 at a time: a single read stops at 1,000 rows.
+  const [lines, instRes, peopleRes, eli] = await Promise.all([
+    fetchAll<any>((a, b) => supabase.from("finance_budget_lines").select("month,section,label,amount,checked").order("id").range(a, b)).catch(() => [] as any[]),
     supabase.from("finance_installments").select("*").order("position", { ascending: true }),
     supabase.from("finance_people").select("*").order("position", { ascending: true }),
-    supabase.from("expense_line_items").select("description,quantity,line_total"),
+    fetchAll<any>((a, b) => supabase.from("expense_line_items").select("description,quantity,line_total").order("id").range(a, b)).catch(() => [] as any[]),
   ]);
 
-  const lines = (linesRes.data ?? []) as any[];
   const get = (m: string, sec: string) => lines.filter((r) => r.month === m && r.section === sec);
   const sumChk = (m: string, sec: string) => get(m, sec).filter((r) => r.checked).reduce((a, r) => a + (+r.amount || 0), 0);
   const plans = ((instRes.data ?? []) as any[]).map((it) => { const count = Math.max(+it.installments_count || 1, 1); const monthly = count > 0 ? (+it.total || 0) / count : 0; const si = ORDER.indexOf(it.start_month); const end = si >= 0 ? ORDER[Math.min(si + count - 1, ORDER.length - 1)] : it.start_month; return { name: it.name || "", group: it.group_name || "أخرى", monthly, count, start: it.start_month || ORDER[0], end, paid: Math.max(+it.paid_count || 0, 0) }; });
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
   const curLines: any = {};
   ["income", "expense", "wife", "bills", "debt", "personal", "reserve"].forEach((sec) => { const rows = get(cur, sec).map((r) => ({ label: r.label || "", amount: +r.amount || 0, checked: !!r.checked })); if (rows.length) curLines[sec] = rows; });
   const items: Record<string, any> = {};
-  for (const r of (eliRes.data ?? []) as any[]) { const k = (r.description || "").trim() || "(غير مسمى)"; const it = items[k] || (items[k] = { item: k, times: 0, spend: 0, qty: 0 }); it.times += 1; it.spend += +r.line_total || 0; it.qty += +r.quantity || 0; }
+  for (const r of eli) { const k = (r.description || "").trim() || "(غير مسمى)"; const it = items[k] || (items[k] = { item: k, times: 0, spend: 0, qty: 0 }); it.times += 1; it.spend += +r.line_total || 0; it.qty += +r.quantity || 0; }
   const top_items = Object.values(items).sort((a: any, b: any) => b.spend - a.spend).slice(0, 8).map((x: any) => ({ item: x.item, times: x.times, spend: Math.round(x.spend), qty: Math.round(x.qty) }));
   const ctx = { months_order: ORDER, series, current_month: cur, current_month_lines: curLines, installment_plans: planView, debts: people, cafe_top_items: top_items, cafe_note: "أرقام الكافيه مرجعية فقط وغير محتسبة في الميزانية الشخصية" };
 

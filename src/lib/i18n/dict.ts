@@ -129,6 +129,16 @@ export const DICT: Record<string, Record<Locale, string>> = {
 
 export type DictKey = keyof typeof DICT;
 
+// Long lists (Bills, Closings): how many are shown, and "Load older"
+DICT["list.of"] = { en: "of", ar: "من" };
+DICT["list.total_shown"] = { en: "for the ones shown", ar: "للمعروض منها" };
+DICT["list.load_older"] = { en: "Load older", ar: "عرض الأقدم" };
+DICT["list.loading"] = { en: "Loading…", ar: "جارٍ التحميل…" };
+DICT["list.newest_only"] = {
+  en: "These are the newest 1,000. Use the dates or the search to reach older ones.",
+  ar: "هذه أحدث 1,000 سجل. استخدم التواريخ أو البحث للوصول إلى الأقدم.",
+};
+
 // More keys appended in mobile/i18n follow-up
 DICT["card.cash"] = { en: "Cash", ar: "نقد" };
 DICT["card.card"] = { en: "Card", ar: "بطاقة" };

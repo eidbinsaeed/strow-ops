@@ -30,8 +30,9 @@ export async function loadFinance(): Promise<FinanceData> {
     fetchAll<{ description: string | null; quantity: number; line_total: number }>((a, b) => supabase.from("expense_line_items").select("description,quantity,line_total").order("id").range(a, b)),
     supabase.from("finance_installments").select("*").order("position", { ascending: true }),
     supabase.from("finance_people").select("*").order("position", { ascending: true }),
-    supabase.from("closings").select("closing_date,grand_total").eq("status", "confirmed"),
-    supabase.from("expenses").select("expense_date,total").eq("status", "confirmed"),
+    // Every confirmed closing and bill, 1,000 at a time: a single read stops at 1,000 rows and the totals would come up short.
+    fetchAll<{ closing_date: string; grand_total: number }>((a, b) => supabase.from("closings").select("closing_date,grand_total").eq("status", "confirmed").order("id").range(a, b)).catch(() => []),
+    fetchAll<{ expense_date: string; total: number }>((a, b) => supabase.from("expenses").select("expense_date,total").eq("status", "confirmed").order("id").range(a, b)).catch(() => []),
     supabase.from("fixed_costs").select("amount").eq("is_active", true).eq("frequency", "monthly"),
   ]);
 
@@ -64,11 +65,11 @@ export async function loadFinance(): Promise<FinanceData> {
     original: Number(p.original_amount) || 0,
   }));
   const incBy: Record<string, number> = {}, expBy: Record<string, number> = {};
-  for (const r of (cloRes.data ?? []) as Array<{ closing_date: string; grand_total: number }>) {
+  for (const r of cloRes) {
     const m = String(r.closing_date).slice(0, 7);
     incBy[m] = (incBy[m] || 0) + Number(r.grand_total || 0);
   }
-  for (const r of (expRes.data ?? []) as Array<{ expense_date: string; total: number }>) {
+  for (const r of expRes) {
     const m = String(r.expense_date).slice(0, 7);
     expBy[m] = (expBy[m] || 0) + Number(r.total || 0);
   }

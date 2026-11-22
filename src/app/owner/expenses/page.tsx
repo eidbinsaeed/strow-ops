@@ -3,12 +3,13 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { RowActions } from "@/components/owner/RowActions";
 import { Suspense } from "react";
 import { TableFilters } from "@/components/owner/TableFilters";
-import { parseFilters } from "@/lib/filters";
+import { LIST_MAX, containsPattern, olderHref, orValue, parseFilters, parseShow } from "@/lib/filters";
 import { getLocale } from "@/lib/i18n/locale";
 import { tr } from "@/lib/i18n/tr";
 import { StatusPill } from "@/components/owner/StatusPill";
 import { FlipList } from "@/components/motion/FlipList";
 import { SupplierLogo } from "@/components/owner/SupplierLogo";
+import { LoadOlder } from "@/components/owner/LoadOlder";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -68,33 +69,44 @@ export default async function OwnerPurchasesPage({
 }) {
   const params = await searchParams;
   const filters = parseFilters(params);
+  // The newest 200 first; "Load older" under the list adds 200 at a time.
+  const show = parseShow(params);
   const locale = await getLocale();
 
   const supabase = createServiceClient();
+
+  // The search runs in the database, over every bill: vendor name, invoice number or note.
+  let vendorIds: string[] = [];
+  if (filters.q) {
+    const { data: vendors } = await supabase.from("suppliers").select("id").ilike("name", containsPattern(filters.q)).limit(100);
+    vendorIds = ((vendors ?? []) as { id: string }[]).map((v) => v.id);
+  }
+
   let query = supabase
     .from("expenses")
     .select(
       "id, expense_date, invoice_number, subtotal, vat_amount, total, payment_method, status, notes, photo_drive_url, suppliers(id, name, logo_path, logo_updated_at), categories(name), baristas(name)",
+      { count: "exact" },
     )
     .order("expense_date", { ascending: false })
-    .limit(200);
+    .order("id", { ascending: false })
+    .limit(show);
 
   if (filters.from) query = query.gte("expense_date", filters.from);
   if (filters.to) query = query.lte("expense_date", filters.to);
   if (filters.statuses.length > 0) query = query.in("status", filters.statuses);
-
-  const { data, error } = await query;
-  let expenses = (data ?? []) as unknown as ExpenseRow[];
-
   if (filters.q) {
-    const q = filters.q.toLowerCase();
-    expenses = expenses.filter(
-      (e) =>
-        (e.suppliers?.name || "").toLowerCase().includes(q) ||
-        (e.invoice_number || "").toLowerCase().includes(q) ||
-        (e.notes || "").toLowerCase().includes(q),
+    const text = orValue(containsPattern(filters.q));
+    query = query.or(
+      [`invoice_number.ilike.${text}`, `notes.ilike.${text}`, vendorIds.length ? `supplier_id.in.(${vendorIds.join(",")})` : null].filter(Boolean).join(","),
     );
   }
+
+  const { data, error, count } = await query;
+  const expenses = (data ?? []) as unknown as ExpenseRow[];
+  /** How many bills match in all (the list may show fewer). */
+  const matching = Math.max(count ?? 0, expenses.length);
+  const partial = matching > expenses.length;
 
   const total = expenses.reduce((sum, e) => sum + Number(e.total ?? 0), 0);
 
@@ -104,7 +116,8 @@ export default async function OwnerPurchasesPage({
         <div>
           <h1 className="text-2xl font-light tracking-tight">{tr("page.purchases", locale)}</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            {expenses.length} {tr("summary.bills_count", locale)} - {formatAed(total)} {tr("summary.total_label", locale)}
+            {partial ? `${expenses.length} ${tr("list.of", locale)} ${matching}` : expenses.length} {tr("summary.bills_count", locale)} - {formatAed(total)}{" "}
+            {tr(partial ? "list.total_shown" : "summary.total_label", locale)}
           </p>
         </div>
       </header>
@@ -186,6 +199,14 @@ export default async function OwnerPurchasesPage({
           ))}
         </FlipList>
       )}
+
+      {!error && partial ? (
+        show < LIST_MAX ? (
+          <LoadOlder href={olderHref("/owner/expenses", params, show)} label={tr("list.load_older", locale)} loadingLabel={tr("list.loading", locale)} />
+        ) : (
+          <p className="mt-4 text-center text-xs text-neutral-500">{tr("list.newest_only", locale)}</p>
+        )
+      ) : null}
 
       <p className="mt-6 text-xs text-neutral-400">
         <Link href="/owner" className="underline hover:text-strow-ink">
